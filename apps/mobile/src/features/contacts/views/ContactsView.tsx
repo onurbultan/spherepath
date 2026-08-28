@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Archive, ContactRound, LogOut, Pencil, Plus, UserRoundPlus, X } from "lucide-react-native";
+import { Archive, ContactRound, LogOut, Pencil, Plus, ShieldCheck, UserRoundPlus, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   apiQueryKeys,
@@ -19,15 +19,23 @@ import {
   contactRoles,
   contactSourceLabels,
   contactSources,
+  contactPrivacyDraftSchema,
+  iysStatusLabels,
+  iysStatuses,
+  legalBasisLabels,
+  legalBases,
+  marketingChannelLabels,
+  marketingChannels,
   referralDraftSchema,
   type ContactDraft,
+  type ContactPrivacyDraft,
 } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
 import { SpCard } from "@/shared/ui/SpCard";
 import { SpText } from "@/shared/ui/SpText";
 import { radius, space } from "@/shared/ui/tokens.generated";
 import { useSpTheme } from "@/shared/ui/theme";
-import { archiveContact, listContacts, saveContact, type ContactRecord } from "../resources/contacts";
+import { archiveContact, listContacts, saveContact, saveContactPrivacy, type ContactRecord } from "../resources/contacts";
 import { listReferrals, saveReferral } from "@/features/referrals/resources/referrals";
 
 const emptyDraft: ContactDraft = {
@@ -47,6 +55,7 @@ function draftFrom(contact: ContactRecord): ContactDraft {
     role: contact.roles[0] ?? "unknown",
   };
 }
+function privacyDraft(contact: ContactRecord): ContactPrivacyDraft { return { contactId: contact.id, coreCrmLegalBasis: contact.privacy.purposes?.core_crm?.legalBasis ?? "legitimate_interest", noticeStatus: contact.privacy.noticeStatus, noticeMethod: contact.privacy.noticeMethod, noticeVersion: contact.privacy.noticeVersion, marketingConsent: contact.privacy.marketingConsent, marketingChannels: contact.privacy.marketingChannels ?? [], iysStatus: contact.privacy.iysStatus ?? "unknown", profilingObjection: contact.privacy.profilingObjection }; }
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "İşlem tamamlanamadı.";
@@ -64,6 +73,8 @@ export default function ContactsView() {
   const [referralSource, setReferralSource] = useState<ContactRecord | null>(null);
   const [referredContactId, setReferredContactId] = useState("");
   const [referredLabel, setReferredLabel] = useState("");
+  const [privacyEditing, setPrivacyEditing] = useState<ContactRecord | null>(null);
+  const [privacy, setPrivacy] = useState<ContactPrivacyDraft | null>(null);
 
   const contactsQuery = useQuery({
     queryKey: apiQueryKeys.contacts,
@@ -125,6 +136,7 @@ export default function ContactsView() {
     catch (nextError) { setError(messageFrom(nextError)); }
     finally { setPending(false); }
   }
+  async function submitPrivacy() { if (!session || !privacy) return; const parsed = contactPrivacyDraftSchema.safeParse(privacy); if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Uyum bilgilerini kontrol et."); setPending(true); setError(null); try { await saveContactPrivacy(session, parsed.data); setPrivacyEditing(null); setPrivacy(null); await queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }); } catch (nextError) { setError(messageFrom(nextError)); } finally { setPending(false); } }
 
   const inputStyle = [styles.input, { backgroundColor: theme.background, borderColor: theme.line, color: theme.textPrimary }];
   return (
@@ -146,7 +158,7 @@ export default function ContactsView() {
             <View style={styles.contactTop}><View style={[styles.avatar, { backgroundColor: theme.deedBg }]}><SpText variant="title" color="deed">{(contact.fullName ?? contact.label ?? "?").slice(0, 1).toLocaleUpperCase("tr-TR")}</SpText></View><View style={styles.contactCopy}><SpText variant="title">{contact.fullName ?? contact.label}</SpText><SpText variant="bodySmall" color="secondary">{contact.phone ?? "Telefon eklenmedi"}</SpText></View></View>
             <View style={styles.chips}><View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="bodySmall" color="secondary">{contactRoleLabels[contact.roles[0] ?? "unknown"]}</SpText></View><View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="bodySmall" color="secondary">{contactSourceLabels[contact.source]}</SpText></View></View>
             <SpText variant="bodySmall" color="secondary">{contact.metAtPlace || "Tanışma yeri belirtilmedi"}</SpText>
-            <View style={[styles.actions, { borderTopColor: theme.line }]}><Pressable onPress={() => { setReferralSource(contact); setError(null); }} style={styles.action}><UserRoundPlus color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Referans</SpText></Pressable><Pressable onPress={() => openEdit(contact)} style={styles.action}><Pencil color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Düzenle</SpText></Pressable><Pressable onPress={() => remove(contact)} style={styles.action}><Archive color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Arşivle</SpText></Pressable></View>
+            <View style={styles.compliance}><View style={[styles.complianceChip, { backgroundColor: contact.privacy.noticeStatus === "completed" ? theme.deedBg : theme.askBg }]}><SpText variant="bodySmall" color={contact.privacy.noticeStatus === "completed" ? "deed" : "ask"}>{contact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</SpText></View></View><View style={[styles.actions, { borderTopColor: theme.line }]}><Pressable onPress={() => { setReferralSource(contact); setError(null); }} style={styles.action}><UserRoundPlus color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Referans</SpText></Pressable><Pressable onPress={() => { setPrivacyEditing(contact); setPrivacy(privacyDraft(contact)); setError(null); }} style={styles.action}><ShieldCheck color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Uyum</SpText></Pressable><Pressable onPress={() => openEdit(contact)} style={styles.action}><Pencil color={theme.textSecondary} size={16} /></Pressable><Pressable onPress={() => remove(contact)} style={styles.action}><Archive color={theme.textSecondary} size={16} /></Pressable></View>
           </SpCard>
         ))}
       </ScrollView>
@@ -166,8 +178,14 @@ export default function ContactsView() {
         </SafeAreaView>
       </Modal>
       <Modal animationType="slide" onRequestClose={() => setReferralSource(null)} presentationStyle="pageSheet" visible={Boolean(referralSource)}><SafeAreaView style={[styles.safe, { backgroundColor: theme.card }]}><ScrollView contentContainerStyle={styles.form}><View style={styles.sheetHeader}><View><SpText variant="eyebrow" color="deed">REFERANS KAYDI</SpText><SpText variant="hero">{referralSource?.fullName ?? referralSource?.label}</SpText></View><Pressable onPress={() => setReferralSource(null)} style={[styles.iconButton, { borderColor: theme.line }]}><X color={theme.textSecondary} size={20} /></Pressable></View><SpText variant="title">Kayıtlı kişi · varsa</SpText><View style={styles.chips}><Pressable onPress={() => setReferredContactId("")} style={[styles.choice, { backgroundColor: !referredContactId ? theme.deedBg : theme.background, borderColor: !referredContactId ? theme.deed : theme.line }]}><SpText variant="bodySmall" color={!referredContactId ? "deed" : "secondary"}>Henüz kaydı yok</SpText></Pressable>{contacts.filter((item) => item.id !== referralSource?.id).map((item) => <Pressable key={item.id} onPress={() => setReferredContactId(item.id)} style={[styles.choice, { backgroundColor: referredContactId === item.id ? theme.deedBg : theme.background, borderColor: referredContactId === item.id ? theme.deed : theme.line }]}><SpText variant="bodySmall" color={referredContactId === item.id ? "deed" : "secondary"}>{item.fullName ?? item.label}</SpText></Pressable>)}</View>{!referredContactId ? <><SpText variant="title">Kısa tanım</SpText><TextInput placeholder="Örn. Komşusu Mehmet Bey" placeholderTextColor={theme.textTertiary} style={inputStyle} value={referredLabel} onChangeText={setReferredLabel} /></> : null}<View style={[styles.privacyHint, { backgroundColor: theme.deedBg }]}><SpText variant="bodySmall" color="deed">Bu referans doğrudan pazarlamaya alınmaz. İlk temasta aydınlatma tamamlanmalıdır.</SpText></View>{error ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText color="ask">{error}</SpText></View> : null}<Pressable disabled={pending} onPress={() => void submitReferral()} style={[styles.primary, { backgroundColor: theme.ask }]}><SpText style={{ color: theme.onAsk }}>{pending ? "Kaydediliyor…" : "Referansı kaydet"}</SpText></Pressable></ScrollView></SafeAreaView></Modal>
+      <Modal animationType="slide" onRequestClose={() => setPrivacyEditing(null)} presentationStyle="pageSheet" visible={Boolean(privacyEditing)}><SafeAreaView style={[styles.safe, { backgroundColor: theme.card }]}><ScrollView contentContainerStyle={styles.form}>{privacy ? <><View style={styles.sheetHeader}><View><SpText variant="eyebrow" color="deed">AYDINLATMA VE İZİN</SpText><SpText variant="hero">{privacyEditing?.fullName ?? privacyEditing?.label}</SpText></View><Pressable onPress={() => setPrivacyEditing(null)} style={[styles.iconButton, { borderColor: theme.line }]}><X color={theme.textSecondary} size={20} /></Pressable></View><SpText variant="title">CRM hukuki sebebi</SpText><View style={styles.chips}>{legalBases.map((item) => <PrivacyChoice key={item} label={legalBasisLabels[item]} selected={privacy.coreCrmLegalBasis === item} choose={() => setPrivacy({ ...privacy, coreCrmLegalBasis: item })} />)}</View><SpText variant="title">Aydınlatma · rızadan ayrı</SpText><View style={styles.chips}><PrivacyChoice label="Bekliyor" selected={privacy.noticeStatus === "pending"} choose={() => setPrivacy({ ...privacy, noticeStatus: "pending", noticeMethod: null, noticeVersion: null })} /><PrivacyChoice label="Okudum/anladım kaydı tamam" selected={privacy.noticeStatus === "completed"} choose={() => setPrivacy({ ...privacy, noticeStatus: "completed", noticeMethod: privacy.noticeMethod ?? "verbal", noticeVersion: privacy.noticeVersion ?? "v1" })} /></View>{privacy.noticeStatus === "completed" ? <><SpText variant="title">Aydınlatma yöntemi</SpText><View style={styles.chips}>{(["verbal", "written", "electronic"] as const).map((item) => <PrivacyChoice key={item} label={item === "verbal" ? "Sözlü" : item === "written" ? "Yazılı" : "Elektronik"} selected={privacy.noticeMethod === item} choose={() => setPrivacy({ ...privacy, noticeMethod: item })} />)}</View><SpText variant="title">Metin sürümü</SpText><TextInput style={inputStyle} value={privacy.noticeVersion ?? ""} onChangeText={(noticeVersion) => setPrivacy({ ...privacy, noticeVersion })} /></> : null}<SpText variant="title">Pazarlama rızası</SpText><View style={styles.chips}>{(["unknown", "granted", "withdrawn"] as const).map((item) => <PrivacyChoice key={item} label={item === "unknown" ? "Bilinmiyor" : item === "granted" ? "Verildi" : "Geri alındı"} selected={privacy.marketingConsent === item} choose={() => setPrivacy({ ...privacy, marketingConsent: item, marketingChannels: item === "granted" ? privacy.marketingChannels : [] })} />)}</View>{privacy.marketingConsent === "granted" ? <><SpText variant="title">İzinli kanallar</SpText><View style={styles.chips}>{marketingChannels.map((item) => <PrivacyChoice key={item} label={marketingChannelLabels[item]} selected={privacy.marketingChannels.includes(item)} choose={() => setPrivacy({ ...privacy, marketingChannels: privacy.marketingChannels.includes(item) ? privacy.marketingChannels.filter((channel) => channel !== item) : [...privacy.marketingChannels, item] })} />)}</View></> : null}<SpText variant="title">İYS durumu</SpText><View style={styles.chips}>{iysStatuses.map((item) => <PrivacyChoice key={item} label={iysStatusLabels[item]} selected={privacy.iysStatus === item} choose={() => setPrivacy({ ...privacy, iysStatus: item })} />)}</View><Pressable onPress={() => setPrivacy({ ...privacy, profilingObjection: !privacy.profilingObjection })} style={[styles.privacyHint, { backgroundColor: privacy.profilingObjection ? theme.askBg : theme.background, borderColor: theme.line, borderWidth: StyleSheet.hairlineWidth }]}><SpText variant="bodySmall" color={privacy.profilingObjection ? "ask" : "secondary"}>{privacy.profilingObjection ? "✓ " : ""}Otomatik analiz/eşleştirme itirazı var</SpText></Pressable>{error ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText color="ask">{error}</SpText></View> : null}<Pressable disabled={pending} onPress={() => void submitPrivacy()} style={[styles.primary, { backgroundColor: theme.ask }]}><SpText style={{ color: theme.onAsk }}>{pending ? "Kaydediliyor…" : "Uyum kaydını güncelle"}</SpText></Pressable></> : null}</ScrollView></SafeAreaView></Modal>
     </SafeAreaView>
   );
+}
+
+function PrivacyChoice({ label, selected, choose }: { label: string; selected: boolean; choose(): void }) {
+  const theme = useSpTheme();
+  return <Pressable onPress={choose} style={[styles.choice, { backgroundColor: selected ? theme.deedBg : theme.background, borderColor: selected ? theme.deed : theme.line }]}><SpText variant="bodySmall" color={selected ? "deed" : "secondary"}>{label}</SpText></Pressable>;
 }
 
 const styles = StyleSheet.create({
@@ -180,7 +198,7 @@ const styles = StyleSheet.create({
   card: { gap: space.md }, contactTop: { flexDirection: "row", gap: space.md, alignItems: "center" }, contactCopy: { flex: 1, gap: space.xs },
   avatar: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" }, chips: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   chip: { paddingHorizontal: space.md, paddingVertical: space.sm, borderRadius: radius.sm },
-  referrals: { gap: space.sm }, referralCard: { gap: space.xs }, privacyHint: { padding: space.md, borderRadius: radius.md },
+  referrals: { gap: space.sm }, referralCard: { gap: space.xs }, privacyHint: { padding: space.md, borderRadius: radius.md }, compliance: { flexDirection: "row" }, complianceChip: { paddingHorizontal: space.sm, paddingVertical: space.xs, borderRadius: radius.sm },
   actions: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: space.md, flexDirection: "row", gap: space.xl }, action: { minHeight: 40, flexDirection: "row", alignItems: "center", gap: space.sm },
   error: { padding: space.md, borderRadius: radius.md }, form: { padding: space.xl, paddingBottom: space["5xl"], gap: space.md },
   sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: space.md, marginBottom: space.lg },

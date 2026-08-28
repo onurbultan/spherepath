@@ -151,5 +151,23 @@ describe("callable API vertical slice", () => {
     const listListings = httpsCallable(functions, "listListings");
     const listedListings = (await listListings(envelope(undefined, "request-list-listings"))).data as { listings: Array<{ id: string; status: string }> };
     expect(listedListings.listings).toEqual([expect.objectContaining({ id: listing.listing.id, status: "active" })]);
-  }, 25_000);
+
+    const updateContactPrivacy = httpsCallable(functions, "updateContactPrivacy");
+    await updateContactPrivacy(envelope({ contactId: created.contact.id, coreCrmLegalBasis: "legitimate_interest", noticeStatus: "completed", noticeMethod: "verbal", noticeVersion: "v1", marketingConsent: "granted", marketingChannels: ["whatsapp"], iysStatus: "approved", profilingObjection: false }, "request-privacy", "command-privacy"));
+    const createPresentation = httpsCallable(functions, "createPresentation");
+    const presentation = (await createPresentation(envelope({ listingId: listing.listing.id, contactId: created.contact.id, message: "Integration listing presentation", channel: "whatsapp" }, "request-presentation", "command-presentation"))).data as { presentationId: string };
+    const advancePresentation = httpsCallable(functions, "advancePresentation");
+    await advancePresentation(envelope({ presentationId: presentation.presentationId, toStatus: "user_approved" }, "request-presentation-approved", "command-presentation-approved"));
+    await advancePresentation(envelope({ presentationId: presentation.presentationId, toStatus: "sent" }, "request-presentation-sent", "command-presentation-sent"));
+
+    const createDeal = httpsCallable(functions, "createDeal");
+    const deal = (await createDeal(envelope({ listingId: listing.listing.id, buyerContactId: created.contact.id }, "request-deal", "command-deal"))).data as { dealId: string };
+    const advanceDeal = httpsCallable(functions, "advanceDeal");
+    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "viewing", offerAmount: null, currency: null, lostReason: null }, "request-deal-viewing", "command-deal-viewing"));
+    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "offer", offerAmount: 9_500_000, currency: "TRY", lostReason: null }, "request-deal-offer", "command-deal-offer"));
+    const getClosingOverview = httpsCallable(functions, "getClosingOverview");
+    const closing = (await getClosingOverview(envelope(undefined, "request-closing"))).data as { presentations: Array<{ id: string; status: string }>; deals: Array<{ id: string; stage: string }> };
+    expect(closing.presentations).toEqual([expect.objectContaining({ id: presentation.presentationId, status: "sent" })]);
+    expect(closing.deals).toEqual([expect.objectContaining({ id: deal.dealId, stage: "offer" })]);
+  }, 35_000);
 });

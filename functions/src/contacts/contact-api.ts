@@ -2,9 +2,11 @@ import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/fires
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   contactDraftSchema,
+  contactPrivacyDraftSchema,
   createContact as createContactEntity,
   type Contact,
   type ContactDraft,
+  type ContactPrivacyDraft,
 } from "../../../packages/shared/src/index";
 import { requireSpherepathClaims, type SpherepathClaims } from "../auth/claims.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
@@ -34,6 +36,7 @@ function timestamp(value: number | null): Timestamp | null {
 function toContactRecord(id: string, data: DocumentData): ContactRecord {
   const relationship = data.relationship as DocumentData;
   const privacy = data.privacy as DocumentData;
+  const purposes = (privacy.purposes ?? {}) as Record<string, DocumentData>;
   return {
     ...(data as Contact),
     id,
@@ -48,7 +51,11 @@ function toContactRecord(id: string, data: DocumentData): ContactRecord {
     },
     privacy: {
       ...(privacy as Contact["privacy"]),
+      purposes: Object.fromEntries(Object.entries(purposes).map(([key, purpose]) => [key, { legalBasis: (purpose.legalBasis ?? "legitimate_interest") as Contact["privacy"]["purposes"][string]["legalBasis"], startedAt: millis(purpose.startedAt) ?? 0 }])),
       noticeAt: millis(privacy.noticeAt),
+      marketingConsentAt: millis(privacy.marketingConsentAt),
+      marketingWithdrawnAt: millis(privacy.marketingWithdrawnAt),
+      iysCheckedAt: millis(privacy.iysCheckedAt),
       deletionRequestedAt: millis(privacy.deletionRequestedAt),
     },
   };
@@ -68,7 +75,11 @@ function toStoredContact(contact: Contact) {
     },
     privacy: {
       ...contact.privacy,
+      purposes: Object.fromEntries(Object.entries(contact.privacy.purposes).map(([key, purpose]) => [key, { ...purpose, startedAt: Timestamp.fromMillis(purpose.startedAt) }])),
       noticeAt: timestamp(contact.privacy.noticeAt),
+      marketingConsentAt: timestamp(contact.privacy.marketingConsentAt),
+      marketingWithdrawnAt: timestamp(contact.privacy.marketingWithdrawnAt),
+      iysCheckedAt: timestamp(contact.privacy.iysCheckedAt),
       deletionRequestedAt: timestamp(contact.privacy.deletionRequestedAt),
     },
   };
@@ -214,5 +225,54 @@ export const archiveContact = onCall(callableOptions(), async (request): Promise
   });
 
   return { contactId };
+  });
+});
+
+export const updateContactPrivacy = onCall(callableOptions(), async (request): Promise<{ contact: ContactRecord }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<ContactPrivacyDraft>(request.data, { command: true });
+  const parsed = contactPrivacyDraftSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Privacy input is invalid.", parsed.error.flatten());
+  const firestore = getFirestore();
+  const reference = firestore.collection("contacts").doc(parsed.data.contactId);
+  const commandRef = firestore.collection("commands").doc(envelope.commandId!);
+
+  return observeApiRequest("updateContactPrivacy", envelope.requestId, async () => {
+    await firestore.runTransaction(async (transaction) => {
+      const [receipt, snapshot] = await Promise.all([transaction.get(commandRef), transaction.get(reference)]);
+      if (receipt.exists) {
+        const receiptContactId = validateCommandReceipt(receipt.data()!, claims, "updateContactPrivacy");
+        if (receiptContactId !== parsed.data.contactId) throw new HttpsError("permission-denied", "Command receipt target does not match.");
+        return;
+      }
+      if (!snapshot.exists) throw new HttpsError("not-found", "Contact was not found.");
+      const data = snapshot.data()!;
+      if (!canManage(data, claims) || data.deletedAt !== null) throw new HttpsError("permission-denied", "Contact is outside your workspace.");
+      const now = Timestamp.now();
+      const previous = (data.privacy ?? {}) as DocumentData;
+      const consentChangedToGranted = parsed.data.marketingConsent === "granted" && previous.marketingConsent !== "granted";
+      const consentChangedToWithdrawn = parsed.data.marketingConsent === "withdrawn" && previous.marketingConsent !== "withdrawn";
+      transaction.update(reference, {
+        privacy: {
+          purposes: { core_crm: { legalBasis: parsed.data.coreCrmLegalBasis, startedAt: previous.purposes?.core_crm?.startedAt ?? now } },
+          noticeStatus: parsed.data.noticeStatus,
+          noticeAt: parsed.data.noticeStatus === "completed" ? previous.noticeAt ?? now : null,
+          noticeMethod: parsed.data.noticeStatus === "completed" ? parsed.data.noticeMethod : null,
+          noticeVersion: parsed.data.noticeStatus === "completed" ? parsed.data.noticeVersion : null,
+          marketingConsent: parsed.data.marketingConsent,
+          marketingConsentAt: consentChangedToGranted ? now : previous.marketingConsentAt ?? null,
+          marketingWithdrawnAt: consentChangedToWithdrawn ? now : previous.marketingWithdrawnAt ?? null,
+          marketingChannels: parsed.data.marketingConsent === "granted" ? parsed.data.marketingChannels : [],
+          iysStatus: parsed.data.iysStatus,
+          iysCheckedAt: parsed.data.iysStatus === "unknown" ? null : now,
+          profilingObjection: parsed.data.profilingObjection,
+          deletionRequestedAt: previous.deletionRequestedAt ?? null,
+        },
+        updatedAt: now,
+      });
+      transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "updateContactPrivacy", contactId: parsed.data.contactId, createdAt: now });
+    });
+    const snapshot = await reference.get();
+    return { contact: toContactRecord(snapshot.id, snapshot.data()!) };
   });
 });

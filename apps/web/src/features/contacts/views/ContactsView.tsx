@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ContactRound, Pencil, Plus, RefreshCw, UserRoundPlus, X } from "lucide-react";
+import { Archive, ContactRound, Pencil, Plus, RefreshCw, ShieldCheck, UserRoundPlus, X } from "lucide-react";
 import {
   apiQueryKeys,
   contactDraftSchema,
@@ -10,13 +10,21 @@ import {
   contactRoles,
   contactSourceLabels,
   contactSources,
+  contactPrivacyDraftSchema,
+  iysStatusLabels,
+  iysStatuses,
+  legalBasisLabels,
+  legalBases,
+  marketingChannelLabels,
+  marketingChannels,
   referralDraftSchema,
   type ContactDraft,
+  type ContactPrivacyDraft,
 } from "@spherepath/shared";
 import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
 import { useSession } from "@/features/auth/resources/session";
-import { archiveContact, listContacts, saveContact, type ContactRecord } from "../resources/contacts";
+import { archiveContact, listContacts, saveContact, saveContactPrivacy, type ContactRecord } from "../resources/contacts";
 import { listReferrals, saveReferral } from "@/features/referrals/resources/referrals";
 
 const emptyDraft: ContactDraft = {
@@ -26,6 +34,10 @@ const emptyDraft: ContactDraft = {
   source: "in_person",
   role: "unknown",
 };
+
+function privacyDraft(contact: ContactRecord): ContactPrivacyDraft {
+  return { contactId: contact.id, coreCrmLegalBasis: contact.privacy.purposes?.core_crm?.legalBasis ?? "legitimate_interest", noticeStatus: contact.privacy.noticeStatus, noticeMethod: contact.privacy.noticeMethod, noticeVersion: contact.privacy.noticeVersion, marketingConsent: contact.privacy.marketingConsent, marketingChannels: contact.privacy.marketingChannels ?? [], iysStatus: contact.privacy.iysStatus ?? "unknown", profilingObjection: contact.privacy.profilingObjection };
+}
 
 function contactDraft(contact: ContactRecord): ContactDraft {
   return {
@@ -52,6 +64,8 @@ export function ContactsView() {
   const [referralSource, setReferralSource] = useState<ContactRecord | null>(null);
   const [referredContactId, setReferredContactId] = useState("");
   const [referredLabel, setReferredLabel] = useState("");
+  const [privacyEditing, setPrivacyEditing] = useState<ContactRecord | null>(null);
+  const [privacy, setPrivacy] = useState<ContactPrivacyDraft | null>(null);
 
   const contactsQuery = useQuery({
     queryKey: apiQueryKeys.contacts,
@@ -125,6 +139,15 @@ export function ContactsView() {
     finally { setPending(false); }
   }
 
+  async function submitPrivacy(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!session || !privacy) return;
+    const parsed = contactPrivacyDraftSchema.safeParse(privacy); if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Uyum bilgilerini kontrol et.");
+    setPending(true); setError(null);
+    try { await saveContactPrivacy(session, parsed.data); setPrivacyEditing(null); setPrivacy(null); await queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }); }
+    catch (nextError) { setError(messageFrom(nextError)); }
+    finally { setPending(false); }
+  }
+
   return (
     <AppShell>
       <header className="page-header contacts-header">
@@ -146,7 +169,7 @@ export function ContactsView() {
               <div className="contact-summary"><h2>{contact.fullName ?? contact.label}</h2><p>{contact.phone ?? "Telefon eklenmedi"}</p></div>
               <div className="contact-meta"><span>{contactRoleLabels[contact.roles[0] ?? "unknown"]}</span><span>{contactSourceLabels[contact.source]}</span></div>
               <p className="contact-place">{contact.metAtPlace || "Tanışma yeri belirtilmedi"}</p>
-              <div className="card-actions"><button type="button" onClick={() => { setReferralSource(contact); setError(null); }}><UserRoundPlus size={16} aria-hidden /> Referans</button><button type="button" onClick={() => openEdit(contact)}><Pencil size={16} aria-hidden /> Düzenle</button><button type="button" onClick={() => void remove(contact)}><Archive size={16} aria-hidden /> Arşivle</button></div>
+              <div className="privacy-status"><span className={contact.privacy.noticeStatus === "completed" ? "compliant" : "pending"}>{contact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</span><span>{contact.privacy.marketingConsent === "granted" ? "Pazarlama izni var" : "Pazarlama izni yok"}</span></div><div className="card-actions"><button type="button" onClick={() => { setReferralSource(contact); setError(null); }}><UserRoundPlus size={16} aria-hidden /> Referans</button><button type="button" onClick={() => { setPrivacyEditing(contact); setPrivacy(privacyDraft(contact)); setError(null); }}><ShieldCheck size={16} aria-hidden /> Uyum</button><button type="button" onClick={() => openEdit(contact)}><Pencil size={16} aria-hidden /> Düzenle</button><button type="button" onClick={() => void remove(contact)}><Archive size={16} aria-hidden /> Arşivle</button></div>
             </SpCard>
           ))}
         </section>
@@ -171,6 +194,7 @@ export function ContactsView() {
         </div>
       ) : null}
       {referralSource ? <div className="sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setReferralSource(null); }}><section className="form-sheet" role="dialog" aria-modal="true"><div className="sheet-heading"><div><p className="eyebrow">REFERANS KAYDI</p><h2>{referralSource.fullName ?? referralSource.label}</h2></div><button className="icon-action" aria-label="Kapat" type="button" onClick={() => setReferralSource(null)}><X size={20} /></button></div><form className="form-stack" onSubmit={submitReferral}><label>Kayıtlı kişi <span className="optional">varsa</span><select value={referredContactId} onChange={(event) => setReferredContactId(event.target.value)}><option value="">Henüz kişi kaydı yok</option>{contacts.filter((item) => item.id !== referralSource.id).map((item) => <option key={item.id} value={item.id}>{item.fullName ?? item.label}</option>)}</select></label>{!referredContactId ? <label>Kısa tanım<input placeholder="Örn. Komşusu Mehmet Bey" value={referredLabel} onChange={(event) => setReferredLabel(event.target.value)} /></label> : null}<p className="privacy-hint">Bu referans doğrudan pazarlama akışına alınmaz. İlk temasta aydınlatma tamamlanmalıdır.</p>{error ? <p className="form-error">{error}</p> : null}<button className="primary-action auth-submit" disabled={pending} type="submit">{pending ? "Kaydediliyor…" : "Referansı kaydet"}</button></form></section></div> : null}
+      {privacyEditing && privacy ? <div className="sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setPrivacyEditing(null); }}><section className="form-sheet" role="dialog" aria-modal="true"><div className="sheet-heading"><div><p className="eyebrow">AYDINLATMA VE İZİN</p><h2>{privacyEditing.fullName ?? privacyEditing.label}</h2></div><button className="icon-action" aria-label="Kapat" type="button" onClick={() => setPrivacyEditing(null)}><X size={20} /></button></div><form className="form-stack" onSubmit={submitPrivacy}><label>CRM hukuki sebebi<select value={privacy.coreCrmLegalBasis} onChange={(event) => setPrivacy({ ...privacy, coreCrmLegalBasis: event.target.value as ContactPrivacyDraft["coreCrmLegalBasis"] })}>{legalBases.map((item) => <option key={item} value={item}>{legalBasisLabels[item]}</option>)}</select></label><fieldset><legend>Aydınlatma</legend><div className="chip-row"><button type="button" className={`choice-chip ${privacy.noticeStatus === "pending" ? "selected" : ""}`} onClick={() => setPrivacy({ ...privacy, noticeStatus: "pending", noticeMethod: null, noticeVersion: null })}>Bekliyor</button><button type="button" className={`choice-chip ${privacy.noticeStatus === "completed" ? "selected" : ""}`} onClick={() => setPrivacy({ ...privacy, noticeStatus: "completed", noticeMethod: privacy.noticeMethod ?? "verbal", noticeVersion: privacy.noticeVersion ?? "v1" })}>Okudum/anladım kaydı tamam</button></div></fieldset>{privacy.noticeStatus === "completed" ? <div className="form-row"><label>Yöntem<select value={privacy.noticeMethod ?? "verbal"} onChange={(event) => setPrivacy({ ...privacy, noticeMethod: event.target.value as "verbal" | "written" | "electronic" })}><option value="verbal">Sözlü</option><option value="written">Yazılı</option><option value="electronic">Elektronik</option></select></label><label>Metin sürümü<input value={privacy.noticeVersion ?? ""} onChange={(event) => setPrivacy({ ...privacy, noticeVersion: event.target.value })} /></label></div> : null}<fieldset><legend>Pazarlama rızası · aydınlatmadan ayrı</legend><div className="chip-row">{(["unknown", "granted", "withdrawn"] as const).map((item) => <button type="button" className={`choice-chip ${privacy.marketingConsent === item ? "selected" : ""}`} key={item} onClick={() => setPrivacy({ ...privacy, marketingConsent: item, marketingChannels: item === "granted" ? privacy.marketingChannels : [] })}>{item === "unknown" ? "Bilinmiyor" : item === "granted" ? "Verildi" : "Geri alındı"}</button>)}</div></fieldset>{privacy.marketingConsent === "granted" ? <fieldset><legend>İzinli kanallar</legend><div className="chip-row">{marketingChannels.map((item) => <button type="button" className={`choice-chip ${privacy.marketingChannels.includes(item) ? "selected" : ""}`} key={item} onClick={() => setPrivacy({ ...privacy, marketingChannels: privacy.marketingChannels.includes(item) ? privacy.marketingChannels.filter((channel) => channel !== item) : [...privacy.marketingChannels, item] })}>{marketingChannelLabels[item]}</button>)}</div></fieldset> : null}<label>İYS durumu<select value={privacy.iysStatus} onChange={(event) => setPrivacy({ ...privacy, iysStatus: event.target.value as ContactPrivacyDraft["iysStatus"] })}>{iysStatuses.map((item) => <option key={item} value={item}>{iysStatusLabels[item]}</option>)}</select></label><label className="check-label"><input checked={privacy.profilingObjection} type="checkbox" onChange={(event) => setPrivacy({ ...privacy, profilingObjection: event.target.checked })} /> Otomatik analiz/eşleştirme itirazı var</label>{error ? <p className="form-error">{error}</p> : null}<button className="primary-action auth-submit" disabled={pending} type="submit">{pending ? "Kaydediliyor…" : "Uyum kaydını güncelle"}</button></form></section></div> : null}
     </AppShell>
   );
 }

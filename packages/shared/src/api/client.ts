@@ -147,5 +147,6 @@ export const apiQueryKeys = {
   opportunityDetail: (opportunityId: string) => ["opportunities", opportunityId] as const,
   listings: ["listings"] as const,
   referrals: ["referrals"] as const,
+  closing: ["closing"] as const,
   todayOverview: ["today", "overview"] as const,
 };

@@ -1,4 +1,4 @@
-import { createCommandId, type Contact, type ContactDraft } from "@spherepath/shared";
+import { createCommandId, type Contact, type ContactDraft, type ContactPrivacyDraft } from "@spherepath/shared";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
 import { apiClient } from "@/shared/api/client";
 
@@ -31,4 +31,8 @@ export async function archiveContact(session: WorkspaceSession, contactId: strin
   await apiClient.command<{ contactId: string }, { contactId: string }>(
     "archiveContact", { contactId }, createCommandId(session.uid),
   );
+}
+
+export async function saveContactPrivacy(session: WorkspaceSession, draft: ContactPrivacyDraft): Promise<ContactRecord> {
+  return (await apiClient.command<ContactPrivacyDraft, { contact: ContactRecord }>("updateContactPrivacy", draft, createCommandId(session.uid))).contact;
 }

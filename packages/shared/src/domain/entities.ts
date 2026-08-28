@@ -71,6 +71,9 @@ export type PropertyFeature =
   | "new_building";
 export type AuthorizationType = "exclusive" | "open" | "verbal" | "unknown";
 export type ListingStatus = "preparing" | "active" | "reserved" | "sold" | "rented" | "removed";
+export type LegalBasis = "legitimate_interest" | "contract" | "legal_obligation" | "explicit_consent";
+export type MarketingChannel = "phone" | "whatsapp" | "sms" | "email";
+export type IysStatus = "unknown" | "approved" | "rejected" | "exempt";
 
 export interface TenantOwned {
   officeId: string;
@@ -120,12 +123,17 @@ export interface Contact extends TenantOwned, Audited {
     referralCount: number;
   };
   privacy: {
+    purposes: Record<string, { legalBasis: LegalBasis; startedAt: Instant }>;
     noticeStatus: "pending" | "completed";
     noticeAt: Instant | null;
     noticeMethod: "verbal" | "written" | "electronic" | null;
     noticeVersion: string | null;
     marketingConsent: "unknown" | "granted" | "withdrawn";
+    marketingConsentAt: Instant | null;
+    marketingWithdrawnAt: Instant | null;
     marketingChannels: Array<"phone" | "whatsapp" | "sms" | "email">;
+    iysStatus: IysStatus;
+    iysCheckedAt: Instant | null;
     profilingObjection: boolean;
     deletionRequestedAt: Instant | null;
   };
@@ -216,6 +224,35 @@ export interface Listing extends TenantOwned, Audited {
   status: ListingStatus;
   acquiredAt: Instant;
   expiresAt: Instant | null;
+  deletedAt: Instant | null;
+}
+
+export type PresentationStatus = "draft" | "user_approved" | "sent" | "delivered" | "read" | "replied" | "failed";
+export interface Presentation extends TenantOwned, Audited {
+  listingId: string;
+  contactId: string;
+  message: string;
+  channel: MarketingChannel;
+  status: PresentationStatus;
+  statusSource: "user_confirmation" | "whatsapp_business_webhook" | null;
+  userConfirmedSentAt: Instant | null;
+  externalMessageId: string | null;
+  sentAt: Instant | null;
+  deliveredAt: Instant | null;
+  readAt: Instant | null;
+  repliedAt: Instant | null;
+  deletedAt: Instant | null;
+}
+
+export type DealStage = "presentation" | "viewing" | "offer" | "contract" | "closed" | "lost";
+export interface Deal extends TenantOwned, Audited {
+  listingId: string;
+  buyerContactId: string | null;
+  stage: DealStage;
+  offerAmount: number | null;
+  currency: CurrencyCode | null;
+  lostReason: string | null;
+  closedAt: Instant | null;
   deletedAt: Instant | null;
 }
 
