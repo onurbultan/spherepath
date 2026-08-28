@@ -143,6 +143,7 @@ export interface Opportunity extends TenantOwned, Audited {
   qualifiedAt: Instant | null;
   stageEnteredAt: Instant;
   nextActionAt: Instant | null;
+  nextActionType: NextActionType | null;
   lostReason: string | null;
   estimatedValue: { amount: number; currency: CurrencyCode } | null;
   closedAt: Instant | null;

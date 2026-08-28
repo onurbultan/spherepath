@@ -11,8 +11,11 @@ export interface TodayContact {
 
 export interface TodayOpportunity {
   id: string;
+  subjectContactId: string;
+  subjectContactName: string;
   stage: Opportunity["stage"];
   nextActionAt: number | null;
+  nextActionType: Opportunity["nextActionType"];
 }
 
 export interface TodayTask {
@@ -22,6 +25,7 @@ export interface TodayTask {
   reason: string;
   dueAt: number | null;
   type: "record_interaction" | "next_action";
+  opportunityId?: string;
 }
 
 export interface TodayOverview {
@@ -73,8 +77,20 @@ export function buildTodayOverview(
       dueAt: null,
       type: "record_interaction",
     }));
-  const tasks = [...scheduled, ...uncontacted]
+  const opportunityTasks = activeOpportunities
+    .filter((opportunity) => opportunity.nextActionAt !== null && opportunity.nextActionType !== null && opportunity.stage !== "won")
+    .map<TodayTask>((opportunity) => ({
+      id: `opportunity-action-${opportunity.id}`,
+      contactId: opportunity.subjectContactId,
+      opportunityId: opportunity.id,
+      title: opportunity.subjectContactName,
+      reason: "Fırsatın kabul edilmiş sonraki aksiyonu",
+      dueAt: opportunity.nextActionAt,
+      type: "next_action",
+    }));
+  const tasks = [...opportunityTasks, ...scheduled, ...uncontacted]
     .filter((task, index, all) => all.findIndex((candidate) => candidate.contactId === task.contactId) === index)
+    .sort((left, right) => (left.dueAt ?? Number.MAX_SAFE_INTEGER) - (right.dueAt ?? Number.MAX_SAFE_INTEGER))
     .slice(0, 5);
 
   const focus = contacts.length === 0

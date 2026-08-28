@@ -143,5 +143,6 @@ export function createCommandId(ownerUid: string): string {
 
 export const apiQueryKeys = {
   contacts: ["contacts"] as const,
+  opportunities: ["opportunities"] as const,
   todayOverview: ["today", "overview"] as const,
 };

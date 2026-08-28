@@ -1,6 +1,6 @@
 import type { OpportunityStage } from "../domain/entities.js";
 
-const allowedTransitions: Readonly<Record<OpportunityStage, readonly OpportunityStage[]>> = {
+export const allowedOpportunityTransitions: Readonly<Record<OpportunityStage, readonly OpportunityStage[]>> = {
   new_lead: ["first_contact", "lost"],
   first_contact: ["appointment", "lost"],
   appointment: ["valuation", "lost"],
@@ -14,7 +14,11 @@ export function canTransitionOpportunity(
   from: OpportunityStage,
   to: OpportunityStage,
 ): boolean {
-  return allowedTransitions[from].includes(to);
+  return allowedOpportunityTransitions[from].includes(to);
+}
+
+export function nextOpportunityStages(from: OpportunityStage): readonly OpportunityStage[] {
+  return allowedOpportunityTransitions[from];
 }
 
 export function assertOpportunityTransition(

@@ -65,8 +65,9 @@ h2 { font-size: 20px; line-height: 1.2; }
 .auth-panel h2 { font-size: 30px; margin-bottom: 28px; }
 .form-stack { display: grid; gap: 18px; }
 .form-stack label { display: grid; gap: 7px; color: var(--text-secondary); font-size: 13px; font-weight: 700; }
-.form-stack input, .form-stack select { width: 100%; min-height: 48px; padding: 0 13px; border: 1px solid var(--line); border-radius: 7px; background: var(--background); color: var(--text-primary); font: inherit; }
-.form-stack input:focus, .form-stack select:focus { border-color: var(--deed); outline: 3px solid var(--deed-bg); }
+.form-stack input, .form-stack select, .form-stack textarea { width: 100%; min-height: 48px; padding: 0 13px; border: 1px solid var(--line); border-radius: 7px; background: var(--background); color: var(--text-primary); font: inherit; }
+.form-stack textarea { min-height: 92px; padding-block: 12px; resize: vertical; }
+.form-stack input:focus, .form-stack select:focus, .form-stack textarea:focus { border-color: var(--deed); outline: 3px solid var(--deed-bg); }
 .form-error { color: var(--ask); background: var(--ask-bg); padding: 11px 13px; border-radius: 6px; margin: 0; font-size: 13px; }
 .form-error.notice { margin-bottom: 20px; }
 .auth-submit { width: 100%; justify-content: center; display: flex; align-items: center; gap: 8px; margin-top: 4px; }
@@ -152,3 +153,9 @@ h2 { font-size: 20px; line-height: 1.2; }
   .form-row { grid-template-columns: 1fr; }
   .capture-actions { align-items: stretch; flex-direction: column; }
 }
+.opportunity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.opportunity-card { min-height: 230px; display: flex; flex-direction: column; gap: 14px; }
+.opportunity-card > p { color: var(--text-secondary); }
+.opportunity-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-secondary); font-size: .82rem; }
+.stage-badge { border-radius: 999px; background: var(--deed-bg); color: var(--deed); padding: .35rem .65rem; font-family: var(--font-ibm-plex-mono); font-size: .68rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.stage-lost { background: var(--ask-bg); color: var(--ask); }

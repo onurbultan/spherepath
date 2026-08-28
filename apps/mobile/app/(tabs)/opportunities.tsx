@@ -1,5 +1,5 @@
-import { FeaturePlaceholderView } from "@/shared/ui/FeaturePlaceholderView";
+import OpportunitiesView from "@/features/opportunities/views/OpportunitiesView";
 
 export default function OpportunitiesRoute() {
-  return <FeaturePlaceholderView eyebrow="PORTFÖY HUNİSİ" title="Fırsatlar" description="Lead, randevu, değerleme ve yetki aşamaları açıklanabilir olaylarla ilerleyecek." />;
+  return <OpportunitiesView />;
 }

@@ -30,4 +30,16 @@ describe("today overview", () => {
     expect(overview.tasks).toHaveLength(5);
     expect(overview.tasks[0]?.contactId).toBe("contact-6");
   });
+
+  it("turns an open opportunity next action into the first task", () => {
+    const overview = buildTodayOverview([], [{
+      id: "opportunity-1",
+      subjectContactId: "contact-1",
+      subjectContactName: "Deniz Aral",
+      stage: "appointment",
+      nextActionAt: 3_000,
+      nextActionType: "appointment",
+    }], 2_000);
+    expect(overview.tasks[0]).toMatchObject({ opportunityId: "opportunity-1", title: "Deniz Aral" });
+  });
 });

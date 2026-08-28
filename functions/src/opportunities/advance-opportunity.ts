@@ -2,7 +2,7 @@ import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   assertOpportunityTransition,
-  opportunityTransitionCommandSchema,
+  opportunityTransitionSchema,
   type OpportunityStage,
 } from "../../../packages/shared/src/index";
 import { requireSpherepathClaims } from "../auth/claims.js";
@@ -25,10 +25,7 @@ export const advanceOpportunity = onCall(
   async (request) => {
     const claims = requireSpherepathClaims(request);
     const envelope = readApiEnvelope<unknown>(request.data, { command: true });
-    const parsed = opportunityTransitionCommandSchema.safeParse({
-      ...(typeof envelope.data === "object" && envelope.data !== null ? envelope.data : {}),
-      commandId: envelope.commandId,
-    });
+    const parsed = opportunityTransitionSchema.safeParse(envelope.data);
     if (!parsed.success) {
       throw new HttpsError("invalid-argument", "Opportunity transition is invalid.", parsed.error.flatten());
     }
@@ -36,7 +33,7 @@ export const advanceOpportunity = onCall(
     const command = parsed.data;
     const firestore = getFirestore();
     const opportunityRef = firestore.collection("opportunities").doc(command.opportunityId);
-    const commandRef = firestore.collection("commands").doc(command.commandId);
+    const commandRef = firestore.collection("commands").doc(envelope.commandId!);
     const eventRef = firestore.collection("stageEvents").doc();
 
     return observeApiRequest("advanceOpportunity", envelope.requestId, async () => {
@@ -79,6 +76,8 @@ export const advanceOpportunity = onCall(
         updatedAt: now,
         closedAt: closing ? now : null,
         lostReason: command.toStage === "lost" ? command.lostReason : null,
+        nextActionAt: command.nextActionAt === null ? null : Timestamp.fromMillis(command.nextActionAt),
+        nextActionType: command.nextActionType,
       });
       transaction.create(eventRef, {
         officeId: opportunity.officeId,
@@ -88,7 +87,7 @@ export const advanceOpportunity = onCall(
         fromStage: opportunity.stage,
         toStage: command.toStage,
         reason: command.reason,
-        commandId: command.commandId,
+        commandId: envelope.commandId,
         occurredAt: now,
         createdAt: now,
       });

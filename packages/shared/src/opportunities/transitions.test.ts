@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { assertOpportunityTransition, canTransitionOpportunity } from "./transitions";
-import { opportunityTransitionCommandSchema } from "./transitions.schema";
+import { opportunityTransitionSchema } from "./transitions.schema";
 
 describe("opportunity transitions", () => {
   it("allows the observable forward path", () => {
@@ -15,14 +15,26 @@ describe("opportunity transitions", () => {
   });
 
   it("requires a loss reason", () => {
-    const result = opportunityTransitionCommandSchema.safeParse({
+    const result = opportunityTransitionSchema.safeParse({
       opportunityId: "opportunity-1",
-      commandId: "9cc4e9a1-d3ee-49f6-b9f8-c6a94ad47f31",
       toStage: "lost",
       reason: null,
       lostReason: null,
+      nextActionType: null,
+      nextActionAt: null,
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("requires the next action for an active stage", () => {
+    expect(opportunityTransitionSchema.safeParse({
+      opportunityId: "opportunity-1",
+      toStage: "first_contact",
+      reason: null,
+      lostReason: null,
+      nextActionType: null,
+      nextActionAt: null,
+    }).success).toBe(false);
   });
 });

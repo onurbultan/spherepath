@@ -60,11 +60,39 @@ describe("callable API vertical slice", () => {
     const interactionReplay = (await recordInteraction({ ...interactionRequest, requestId: "request-interaction-2" })).data as { interactionId: string };
     expect(interactionReplay.interactionId).toBe(interaction.interactionId);
 
+    const createOpportunity = httpsCallable(functions, "createOpportunity");
+    const opportunityRequest = envelope({
+      subjectContactId: created.contact.id,
+      type: "seller_listing",
+      nextActionType: "call",
+      nextActionAt: Date.now() + 86_400_000,
+    }, "request-opportunity-1", "command-create-opportunity");
+    const opportunity = (await createOpportunity(opportunityRequest)).data as { opportunity: { id: string; stage: string } };
+    const opportunityReplay = (await createOpportunity({ ...opportunityRequest, requestId: "request-opportunity-2" })).data as { opportunity: { id: string } };
+    expect(opportunity.opportunity.stage).toBe("new_lead");
+    expect(opportunityReplay.opportunity.id).toBe(opportunity.opportunity.id);
+
+    const advanceOpportunity = httpsCallable(functions, "advanceOpportunity");
+    await advanceOpportunity(envelope({
+      opportunityId: opportunity.opportunity.id,
+      toStage: "first_contact",
+      reason: "Initial call completed",
+      lostReason: null,
+      nextActionType: "appointment",
+      nextActionAt: Date.now() + 172_800_000,
+    }, "request-advance-opportunity", "command-advance-opportunity"));
+
+    const listOpportunities = httpsCallable(functions, "listOpportunities");
+    const listedOpportunities = (await listOpportunities(envelope(undefined, "request-list-opportunities"))).data as { opportunities: Array<{ id: string; stage: string }> };
+    expect(listedOpportunities.opportunities).toEqual([expect.objectContaining({ id: opportunity.opportunity.id, stage: "first_contact" })]);
+
     const getTodayOverview = httpsCallable(functions, "getTodayOverview");
     const today = (await getTodayOverview(envelope(undefined, "request-today"))).data as {
-      overview: { stages: { relationship: number }; tasks: unknown[] };
+      overview: { stages: { relationship: number; lead: number }; tasks: Array<{ opportunityId?: string }> };
     };
     expect(today.overview.stages.relationship).toBe(1);
+    expect(today.overview.stages.lead).toBe(1);
     expect(today.overview.tasks).toHaveLength(1);
-  });
+    expect(today.overview.tasks[0]?.opportunityId).toBe(opportunity.opportunity.id);
+  }, 15_000);
 });

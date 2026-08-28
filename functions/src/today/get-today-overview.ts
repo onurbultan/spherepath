@@ -46,13 +46,17 @@ export const getTodayOverview = onCall(
         };
       })
       .filter((contact) => contact.deletedAt === null);
+    const contactNames = new Map(contacts.map((contact) => [contact.id, contact.name]));
     const opportunities = opportunitiesSnapshot.docs
       .map((item) => {
         const data = item.data();
         return {
           id: item.id,
+          subjectContactId: data.subjectContactId as string,
+          subjectContactName: contactNames.get(data.subjectContactId as string) ?? "İsimsiz kişi",
           stage: data.stage as OpportunityStage,
           nextActionAt: millis(data.nextActionAt),
+          nextActionType: data.nextActionType ?? null,
           deletedAt: millis(data.deletedAt),
         };
       })
