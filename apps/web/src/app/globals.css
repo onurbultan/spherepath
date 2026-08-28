@@ -100,6 +100,11 @@ h2 { font-size: 20px; line-height: 1.2; }
 .sheet-heading h2 { font-size: 30px; }
 .icon-action { min-width: 40px; justify-content: center; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-stack fieldset { margin: 0; padding: 0; border: 0; }
+.form-stack legend { margin-bottom: 8px; font-weight: 700; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.choice-chip { min-height: 38px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--background); color: var(--text-secondary); cursor: pointer; }
+.choice-chip.selected { border-color: var(--deed); background: var(--deed-bg); color: var(--deed); }
 .optional { color: var(--text-tertiary); font-weight: 400; }
 .inline-link { display: inline-flex; align-items: center; justify-content: center; }
 .today-header { max-width: none; display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }

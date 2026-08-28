@@ -1,5 +1,5 @@
-import { FeaturePlaceholderView } from "@/shared/ui/FeaturePlaceholderView";
+import ListingsView from "@/features/listings/views/ListingsView";
 
 export default function ListingsRoute() {
-  return <FeaturePlaceholderView eyebrow="YETKİLİ PORTFÖY" title="Portföy" description="Kazanılan portföyler, uygun alıcı eşleşmeleri ve işlem adımları burada yönetilecek." />;
+  return <ListingsView />;
 }

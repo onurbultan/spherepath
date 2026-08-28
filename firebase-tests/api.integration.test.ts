@@ -105,5 +105,41 @@ describe("callable API vertical slice", () => {
     expect(today.overview.stages.lead).toBe(1);
     expect(today.overview.tasks).toHaveLength(1);
     expect(today.overview.tasks[0]?.opportunityId).toBe(opportunity.opportunity.id);
-  }, 15_000);
+
+    for (const [index, toStage] of ["appointment", "valuation", "mandate_offer", "won"].entries()) {
+      await advanceOpportunity(envelope({
+        opportunityId: opportunity.opportunity.id,
+        toStage,
+        reason: `Advance to ${toStage}`,
+        lostReason: null,
+        nextActionType: toStage === "won" ? null : "appointment",
+        nextActionAt: toStage === "won" ? null : Date.now() + 172_800_000,
+      }, `request-advance-${index}`, `command-advance-${index}`));
+    }
+
+    const createListing = httpsCallable(functions, "createListing");
+    const listingRequest = envelope({
+      opportunityId: opportunity.opportunity.id,
+      address: "Integration Street 1",
+      regionSlug: "Integration Region",
+      propertyType: "apartment",
+      roomCount: 3,
+      areaM2: 120,
+      features: ["parking"],
+      authorizationType: "exclusive",
+      askingPrice: 10_000_000,
+      currency: "TRY",
+      expiresAt: null,
+    }, "request-listing-1", "command-create-listing");
+    const listing = (await createListing(listingRequest)).data as { listing: { id: string; status: string } };
+    const listingReplay = (await createListing({ ...listingRequest, requestId: "request-listing-2" })).data as { listing: { id: string } };
+    expect(listing.listing.status).toBe("preparing");
+    expect(listingReplay.listing.id).toBe(listing.listing.id);
+
+    const advanceListing = httpsCallable(functions, "advanceListing");
+    await advanceListing(envelope({ listingId: listing.listing.id, toStatus: "active", reason: "Ready to market" }, "request-listing-advance", "command-listing-advance"));
+    const listListings = httpsCallable(functions, "listListings");
+    const listedListings = (await listListings(envelope(undefined, "request-list-listings"))).data as { listings: Array<{ id: string; status: string }> };
+    expect(listedListings.listings).toEqual([expect.objectContaining({ id: listing.listing.id, status: "active" })]);
+  }, 25_000);
 });

@@ -57,6 +57,20 @@ export type OpportunityStage =
   | "mandate_offer"
   | "won"
   | "lost";
+export type PropertyType = "apartment" | "villa" | "detached_house" | "land" | "commercial";
+export type PropertyFeature =
+  | "ground_floor"
+  | "no_elevator"
+  | "furnished"
+  | "sea_view"
+  | "parking"
+  | "garden"
+  | "gated_community"
+  | "middle_floor"
+  | "top_floor"
+  | "new_building";
+export type AuthorizationType = "exclusive" | "open" | "verbal" | "unknown";
+export type ListingStatus = "preparing" | "active" | "reserved" | "sold" | "rented" | "removed";
 
 export interface TenantOwned {
   officeId: string;
@@ -159,6 +173,39 @@ export interface StageEvent extends TenantOwned {
   commandId: string;
   occurredAt: Instant;
   createdAt: Instant;
+}
+
+export interface Property extends TenantOwned, Audited {
+  ownerContactId: string | null;
+  address: string;
+  regionSlug: string;
+  geo: { lat: number; lng: number } | null;
+  geohash: string | null;
+  type: PropertyType;
+  roomCount: number | null;
+  areaM2: number | null;
+  features: PropertyFeature[];
+  deletedAt: Instant | null;
+}
+
+export interface Listing extends TenantOwned, Audited {
+  propertyId: string;
+  opportunityId: string;
+  authorizationType: AuthorizationType;
+  propertySummary: {
+    address: string;
+    regionSlug: string;
+    type: PropertyType;
+    roomCount: number | null;
+    areaM2: number | null;
+    features: PropertyFeature[];
+  };
+  askingPrice: number;
+  currency: CurrencyCode;
+  status: ListingStatus;
+  acquiredAt: Instant;
+  expiresAt: Instant | null;
+  deletedAt: Instant | null;
 }
 
 export interface DailyTask extends TenantOwned, Audited {

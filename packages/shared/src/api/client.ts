@@ -145,5 +145,6 @@ export const apiQueryKeys = {
   contacts: ["contacts"] as const,
   opportunities: ["opportunities"] as const,
   opportunityDetail: (opportunityId: string) => ["opportunities", opportunityId] as const,
+  listings: ["listings"] as const,
   todayOverview: ["today", "overview"] as const,
 };
