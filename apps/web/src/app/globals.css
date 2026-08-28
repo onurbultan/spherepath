@@ -127,6 +127,10 @@ h2 { font-size: 20px; line-height: 1.2; }
 .closing-card div span { color: var(--text-secondary); }
 .closing-card button { grid-column: 1 / -1; min-height: 38px; border: 1px solid var(--line); border-radius: 10px; background: var(--background); cursor: pointer; }
 .closing-empty { color: var(--text-secondary); }
+.focus-evidence { display: grid; gap: 5px; padding: 14px; border-radius: 12px; background: var(--background); }
+.focus-evidence span, .focus-evidence small { color: var(--text-secondary); }
+.today-task-list li { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.today-task-list li button { min-height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--background); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 @media (max-width: 800px) { .closing-grid { grid-template-columns: 1fr; } .section-heading { align-items: flex-start; flex-direction: column; } }
 .optional { color: var(--text-tertiary); font-weight: 400; }
 .inline-link { display: inline-flex; align-items: center; justify-content: center; }
