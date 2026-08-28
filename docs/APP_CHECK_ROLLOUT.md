@@ -1,20 +1,21 @@
 # App Check rollout
 
-Spherepath clients initialize Firebase App Check before using Auth, Functions, or Storage. Callable enforcement is controlled at deployment time with `ENFORCE_APP_CHECK` and defaults to `false` so an incomplete native rollout cannot lock out legitimate users.
+Spherepath clients initialize Firebase App Check before using Auth, Functions, or Storage. Production callable enforcement is committed in `functions/.env.spherepath-96ecd` with `ENFORCE_APP_CHECK=true`; Functions detect the Firebase Emulator explicitly and keep enforcement disabled for deterministic local integration tests.
 
 ## Registered providers
 
 - Web app: reCAPTCHA Enterprise, key `spherepath-web-app-check`, for `localhost`, `spherepath-96ecd.web.app`, and `spherepath-96ecd.firebaseapp.com`.
 - iOS app: App Attest, Apple Team ID `R7RWAD9FVH`. Production builds include the production App Attest entitlement. Development builds use the debug provider.
-- Android app: SDK and Play Integrity production provider are configured in code. Firebase provider registration is intentionally pending because the console requires the account owner to accept the Google APIs and Play Integrity terms. Register the release signing SHA-256 fingerprint as well as any debug fingerprint that will be attested.
+- Android app: Play Integrity, with the current development signing SHA-256 fingerprint. Production builds use Play Integrity; development builds use the debug provider.
+- Local native testing: explicit Firebase App Check debug tokens are registered for the iOS Simulator and Android Emulator used on 2026-08-28. Their secret values are not stored in the repository and must be revoked when those test environments are retired.
 
-## Enforcement checklist
+## Enforcement state
 
-1. Register Android Play Integrity and the release SHA-256 fingerprint.
-2. Create and register explicit App Check debug tokens for local iOS and Android development builds.
-3. Deploy and exercise web, iOS, and Android builds while enforcement remains disabled.
-4. Confirm valid-request metrics for all three apps in Firebase App Check.
-5. Set `ENFORCE_APP_CHECK=true` in the Functions deployment environment and redeploy Functions.
-6. Monitor structured `spherepath-api` client diagnostics and Cloud Functions request logs for rejected legitimate traffic.
+- Callable Functions: enforced. A tokenless request is rejected with HTTP 401, while verified web, iOS, and Android requests succeed.
+- Cloud Firestore: enforced. Firestore remains API-first and its rules deny all direct client reads and writes.
+- Cloud Storage: enforced. Storage additionally permits only authenticated, tenant-scoped voice uploads with validated type, size, and metadata.
+- Firebase Authentication: monitoring. Authentication App Check enforcement remains a Firebase Preview feature; verified request coverage was 100% when the rollout was completed.
 
-Firestore remains API-first and denies all direct client reads and writes. Storage permits only authenticated, tenant-scoped voice uploads with validated type, size, and metadata.
+## Release gate
+
+Before the first Google Play release, add the final Play App Signing SHA-256 fingerprint to the Android Play Integrity provider. Continue monitoring structured `spherepath-api` client diagnostics and Cloud Functions request logs for rejected legitimate traffic.
