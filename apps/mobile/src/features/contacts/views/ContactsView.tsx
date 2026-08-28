@@ -1,0 +1,191 @@
+import { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
+import { Archive, ContactRound, LogOut, Pencil, Plus, X } from "lucide-react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  contactDraftSchema,
+  contactRoleLabels,
+  contactRoles,
+  contactSourceLabels,
+  contactSources,
+  type ContactDraft,
+} from "@spherepath/shared";
+import { useSession } from "@/features/auth/resources/session";
+import { SpCard } from "@/shared/ui/SpCard";
+import { SpText } from "@/shared/ui/SpText";
+import { radius, space } from "@/shared/ui/tokens.generated";
+import { useSpTheme } from "@/shared/ui/theme";
+import { archiveContact, listContacts, saveContact, type ContactRecord } from "../resources/contacts";
+
+const emptyDraft: ContactDraft = {
+  fullName: "",
+  phone: "",
+  metAtPlace: "",
+  source: "in_person",
+  role: "unknown",
+};
+
+function draftFrom(contact: ContactRecord): ContactDraft {
+  return {
+    fullName: contact.fullName ?? contact.label ?? "",
+    phone: contact.phone ?? "",
+    metAtPlace: contact.metAtPlace ?? "",
+    source: contact.source,
+    role: contact.roles[0] ?? "unknown",
+  };
+}
+
+function messageFrom(error: unknown) {
+  return error instanceof Error ? error.message : "İşlem tamamlanamadı.";
+}
+
+export default function ContactsView() {
+  const theme = useSpTheme();
+  const { session, signOut } = useSession();
+  const [contacts, setContacts] = useState<ContactRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [editing, setEditing] = useState<ContactRecord | null>(null);
+  const [draft, setDraft] = useState<ContactDraft>(emptyDraft);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!session) return;
+    setLoading(true);
+    try {
+      setContacts(await listContacts(session));
+      setError(null);
+    } catch (nextError) {
+      setError(messageFrom(nextError));
+    } finally {
+      setLoading(false);
+    }
+  }, [session]);
+
+  useEffect(() => {
+    if (!session) return;
+    let active = true;
+    void listContacts(session)
+      .then((items) => {
+        if (active) {
+          setContacts(items);
+          setError(null);
+        }
+      })
+      .catch((nextError: unknown) => {
+        if (active) setError(messageFrom(nextError));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [session]);
+
+  function openCreate() {
+    setEditing(null);
+    setDraft(emptyDraft);
+    setError(null);
+    setPanelOpen(true);
+  }
+
+  function openEdit(contact: ContactRecord) {
+    setEditing(contact);
+    setDraft(draftFrom(contact));
+    setError(null);
+    setPanelOpen(true);
+  }
+
+  async function submit() {
+    if (!session) return;
+    const parsed = contactDraftSchema.safeParse(draft);
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? "Kişi bilgilerini kontrol et.");
+      return;
+    }
+    setPending(true);
+    try {
+      await saveContact(session, parsed.data, editing ?? undefined);
+      setPanelOpen(false);
+      await refresh();
+    } catch (nextError) {
+      setError(messageFrom(nextError));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  function remove(contact: ContactRecord) {
+    Alert.alert("Kişiyi arşivle", `${contact.fullName ?? "Bu kişi"} kişi listesinden kaldırılsın mı?`, [
+      { text: "Vazgeç", style: "cancel" },
+      { text: "Arşivle", style: "destructive", onPress: () => void archiveContact(contact.id).then(refresh).catch((nextError: unknown) => setError(messageFrom(nextError))) },
+    ]);
+  }
+
+  const inputStyle = [styles.input, { backgroundColor: theme.background, borderColor: theme.line, color: theme.textPrimary }];
+  return (
+    <SafeAreaView edges={["top", "left", "right"]} style={[styles.safe, { backgroundColor: theme.background }]}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.headerRow}>
+          <View style={styles.headerCopy}><SpText variant="eyebrow" color="deed">İLİŞKİ AĞI</SpText><SpText variant="hero">Kişiler</SpText><SpText color="secondary">Tanıştığın kişileri ve ilişkinin sıradaki adımını düzenle.</SpText></View>
+          <Pressable accessibilityLabel="Oturumu kapat" onPress={() => void signOut()} style={[styles.iconButton, { borderColor: theme.line }]}><LogOut color={theme.textSecondary} size={19} /></Pressable>
+        </View>
+
+        <Pressable onPress={openCreate} style={({ pressed }) => [styles.primary, { backgroundColor: theme.ask, opacity: pressed ? .72 : 1 }]}><Plus color={theme.onAsk} size={19} /><SpText style={{ color: theme.onAsk }}>Yeni kişi</SpText></Pressable>
+        {error && !panelOpen ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText variant="bodySmall" color="ask">{error}</SpText></View> : null}
+
+        {loading ? <View style={styles.state}><ActivityIndicator color={theme.deed} /><SpText color="secondary">Kişiler yükleniyor…</SpText></View> : contacts.length === 0 ? (
+          <SpCard style={styles.empty}><View style={[styles.largeIcon, { backgroundColor: theme.deedBg }]}><ContactRound color={theme.deed} size={24} /></View><SpText variant="title">İlk kişini ekle</SpText><SpText color="secondary">Ad veya tanımlayıcı, kaynak ve rol başlangıç için yeterli.</SpText></SpCard>
+        ) : contacts.map((contact) => (
+          <SpCard key={contact.id} style={styles.card}>
+            <View style={styles.contactTop}><View style={[styles.avatar, { backgroundColor: theme.deedBg }]}><SpText variant="title" color="deed">{(contact.fullName ?? contact.label ?? "?").slice(0, 1).toLocaleUpperCase("tr-TR")}</SpText></View><View style={styles.contactCopy}><SpText variant="title">{contact.fullName ?? contact.label}</SpText><SpText variant="bodySmall" color="secondary">{contact.phone ?? "Telefon eklenmedi"}</SpText></View></View>
+            <View style={styles.chips}><View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="bodySmall" color="secondary">{contactRoleLabels[contact.roles[0] ?? "unknown"]}</SpText></View><View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="bodySmall" color="secondary">{contactSourceLabels[contact.source]}</SpText></View></View>
+            <SpText variant="bodySmall" color="secondary">{contact.metAtPlace || "Tanışma yeri belirtilmedi"}</SpText>
+            <View style={[styles.actions, { borderTopColor: theme.line }]}><Pressable onPress={() => openEdit(contact)} style={styles.action}><Pencil color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Düzenle</SpText></Pressable><Pressable onPress={() => remove(contact)} style={styles.action}><Archive color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Arşivle</SpText></Pressable></View>
+          </SpCard>
+        ))}
+      </ScrollView>
+
+      <Modal animationType="slide" onRequestClose={() => setPanelOpen(false)} presentationStyle="pageSheet" visible={panelOpen}>
+        <SafeAreaView style={[styles.safe, { backgroundColor: theme.card }]}>
+          <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
+            <View style={styles.sheetHeader}><View><SpText variant="eyebrow" color="deed">HIZLI KAYIT</SpText><SpText variant="hero">{editing ? "Kişiyi düzenle" : "Yeni kişi"}</SpText></View><Pressable accessibilityLabel="Kapat" onPress={() => setPanelOpen(false)} style={[styles.iconButton, { borderColor: theme.line }]}><X color={theme.textSecondary} size={20} /></Pressable></View>
+            <SpText variant="bodySmall" color="secondary">Ad, soyad veya tanımlayıcı</SpText><TextInput autoFocus placeholder="Örn. Ayşe Kaya" placeholderTextColor={theme.textTertiary} style={inputStyle} value={draft.fullName} onChangeText={(fullName) => setDraft({ ...draft, fullName })} />
+            <SpText variant="bodySmall" color="secondary">Telefon · isteğe bağlı</SpText><TextInput keyboardType="phone-pad" placeholder="+90" placeholderTextColor={theme.textTertiary} style={inputStyle} value={draft.phone} onChangeText={(phone) => setDraft({ ...draft, phone })} />
+            <SpText variant="bodySmall" color="secondary">Tanışma yeri · isteğe bağlı</SpText><TextInput placeholder="Örn. Marina açık ev etkinliği" placeholderTextColor={theme.textTertiary} style={inputStyle} value={draft.metAtPlace} onChangeText={(metAtPlace) => setDraft({ ...draft, metAtPlace })} />
+            <SpText variant="bodySmall" color="secondary">Kaynak</SpText><View style={styles.chips}>{contactSources.map((source) => <Pressable key={source} onPress={() => setDraft({ ...draft, source })} style={[styles.choice, { backgroundColor: draft.source === source ? theme.deedBg : theme.background, borderColor: draft.source === source ? theme.deed : theme.line }]}><SpText variant="bodySmall" color={draft.source === source ? "deed" : "secondary"}>{contactSourceLabels[source]}</SpText></Pressable>)}</View>
+            <SpText variant="bodySmall" color="secondary">Rol</SpText><View style={styles.chips}>{contactRoles.map((role) => <Pressable key={role} onPress={() => setDraft({ ...draft, role })} style={[styles.choice, { backgroundColor: draft.role === role ? theme.deedBg : theme.background, borderColor: draft.role === role ? theme.deed : theme.line }]}><SpText variant="bodySmall" color={draft.role === role ? "deed" : "secondary"}>{contactRoleLabels[role]}</SpText></Pressable>)}</View>
+            {error ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText variant="bodySmall" color="ask">{error}</SpText></View> : null}
+            <Pressable disabled={pending} onPress={() => void submit()} style={({ pressed }) => [styles.primary, { backgroundColor: theme.ask, opacity: pressed || pending ? .65 : 1 }]}><SpText style={{ color: theme.onAsk }}>{pending ? "Kaydediliyor…" : editing ? "Değişiklikleri kaydet" : "Kişiyi kaydet"}</SpText></Pressable>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1 }, content: { padding: space.xl, paddingBottom: space["5xl"], gap: space.lg },
+  headerRow: { flexDirection: "row", alignItems: "flex-start", gap: space.md }, headerCopy: { flex: 1, gap: space.sm },
+  iconButton: { width: 44, height: 44, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" },
+  primary: { minHeight: 50, borderRadius: radius.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm },
+  state: { minHeight: 220, alignItems: "center", justifyContent: "center", gap: space.md },
+  empty: { minHeight: 240, gap: space.md, justifyContent: "center" }, largeIcon: { width: 48, height: 48, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  card: { gap: space.md }, contactTop: { flexDirection: "row", gap: space.md, alignItems: "center" }, contactCopy: { flex: 1, gap: space.xs },
+  avatar: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" }, chips: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
+  chip: { paddingHorizontal: space.md, paddingVertical: space.sm, borderRadius: radius.sm },
+  actions: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: space.md, flexDirection: "row", gap: space.xl }, action: { minHeight: 40, flexDirection: "row", alignItems: "center", gap: space.sm },
+  error: { padding: space.md, borderRadius: radius.md }, form: { padding: space.xl, paddingBottom: space["5xl"], gap: space.md },
+  sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: space.md, marginBottom: space.lg },
+  input: { minHeight: 50, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: space.lg, fontFamily: "Karla_400Regular", fontSize: 16 },
+  choice: { minHeight: 40, borderRadius: radius.sm, borderWidth: StyleSheet.hairlineWidth, justifyContent: "center", paddingHorizontal: space.md },
+});

@@ -3,14 +3,14 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   assertOpportunityTransition,
   opportunityTransitionCommandSchema,
-  type FirsatAsamasi,
+  type OpportunityStage,
 } from "../../../packages/shared/src/index";
 import { requireSpherepathClaims } from "../auth/claims.js";
 
 interface OpportunityDocument {
   officeId: string;
   ownerUid: string;
-  stage: FirsatAsamasi;
+  stage: OpportunityStage;
 }
 
 export const advanceOpportunity = onCall(
@@ -41,7 +41,7 @@ export const advanceOpportunity = onCall(
       ]);
 
       if (commandSnapshot.exists) {
-        return commandSnapshot.data() as { opportunityId: string; toStage: FirsatAsamasi; eventId: string };
+        return commandSnapshot.data() as { opportunityId: string; toStage: OpportunityStage; eventId: string };
       }
       if (!opportunitySnapshot.exists) {
         throw new HttpsError("not-found", "Opportunity was not found.");
@@ -62,13 +62,13 @@ export const advanceOpportunity = onCall(
       }
 
       const now = Timestamp.now();
-      const closing = command.toStage === "kazanildi" || command.toStage === "kayip";
+      const closing = command.toStage === "won" || command.toStage === "lost";
       transaction.update(opportunityRef, {
         stage: command.toStage,
         stageEnteredAt: now,
         updatedAt: now,
         closedAt: closing ? now : null,
-        lostReason: command.toStage === "kayip" ? command.lostReason : null,
+        lostReason: command.toStage === "lost" ? command.lostReason : null,
       });
       transaction.create(eventRef, {
         officeId: opportunity.officeId,

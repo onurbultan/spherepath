@@ -1,4 +1,5 @@
 export * from "./analytics/events.js";
+export * from "./contacts/contact-draft.js";
 export * from "./daily-plan/rank-tasks.js";
 export * from "./design/index.js";
 export * from "./domain/entities.js";

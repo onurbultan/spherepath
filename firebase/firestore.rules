@@ -49,6 +49,85 @@ service cloud.firestore {
         && (contact.ownerUid == request.auth.uid || isBroker());
     }
 
+    function validContactDocument() {
+      let data = request.resource.data;
+      return data.keys().hasAll([
+          'officeId', 'ownerUid', 'phone', 'phoneHash', 'fullName', 'label',
+          'metAtPlace', 'metAt', 'source', 'roles', 'relationship', 'privacy',
+          'deletedAt', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'officeId', 'ownerUid', 'phone', 'phoneHash', 'fullName', 'label',
+          'metAtPlace', 'metAt', 'source', 'roles', 'relationship', 'privacy',
+          'deletedAt', 'createdAt', 'updatedAt'
+        ])
+        && data.fullName is string
+        && data.fullName.size() >= 2
+        && data.fullName.size() <= 120
+        && (data.phone == null || data.phone is string)
+        && (data.phone == null || data.phone.size() <= 30)
+        && data.phoneHash == null
+        && data.label == null
+        && (data.metAtPlace == null || data.metAtPlace is string)
+        && (data.metAtPlace == null || data.metAtPlace.size() <= 160)
+        && data.metAt is timestamp
+        && data.source in ['in_person', 'referral', 'listing', 'social', 'door', 'area', 'address_book', 'other']
+        && data.roles is list
+        && data.roles.size() >= 1
+        && data.roles.size() <= 9
+        && data.roles.toSet().hasOnly([
+          'buyer', 'seller', 'tenant', 'landlord', 'investor', 'peer',
+          'information_source', 'referral_source', 'unknown'
+        ])
+        && data.relationship is map
+        && data.relationship.keys().hasAll([
+          'stage', 'meaningfulTouchCount', 'reciprocalTouchCount', 'lastTouchAt',
+          'nextActionAt', 'nextActionType', 'lastObjective', 'lastAskOutcome', 'referralCount'
+        ])
+        && data.relationship.keys().hasOnly([
+          'stage', 'meaningfulTouchCount', 'reciprocalTouchCount', 'lastTouchAt',
+          'nextActionAt', 'nextActionType', 'lastObjective', 'lastAskOutcome', 'referralCount'
+        ])
+        && data.relationship.stage in ['new', 'getting_to_know', 'engaged', 'active', 'referral_source']
+        && data.relationship.meaningfulTouchCount is int
+        && data.relationship.reciprocalTouchCount is int
+        && data.relationship.referralCount is int
+        && (data.relationship.lastTouchAt == null || data.relationship.lastTouchAt is timestamp)
+        && (data.relationship.nextActionAt == null || data.relationship.nextActionAt is timestamp)
+        && (data.relationship.nextActionType == null || data.relationship.nextActionType in [
+          'call', 'message', 'appointment', 'valuation', 'offer',
+          'complete_permission', 'make_ask', 'other'
+        ])
+        && (data.relationship.lastObjective == null || data.relationship.lastObjective in [
+          'get_acquainted', 'provide_value', 'permission', 'appointment',
+          'request_referral', 'request_listing', 'follow_up', 'presentation', 'offer'
+        ])
+        && (data.relationship.lastAskOutcome == null || data.relationship.lastAskOutcome in [
+          'positive', 'unclear', 'negative', 'not_asked', 'not_applicable'
+        ])
+        && data.privacy is map
+        && data.privacy.keys().hasAll([
+          'noticeStatus', 'noticeAt', 'noticeMethod', 'noticeVersion', 'marketingConsent',
+          'marketingChannels', 'profilingObjection', 'deletionRequestedAt'
+        ])
+        && data.privacy.keys().hasOnly([
+          'noticeStatus', 'noticeAt', 'noticeMethod', 'noticeVersion', 'marketingConsent',
+          'marketingChannels', 'profilingObjection', 'deletionRequestedAt'
+        ])
+        && data.privacy.noticeStatus in ['pending', 'completed']
+        && (data.privacy.noticeAt == null || data.privacy.noticeAt is timestamp)
+        && (data.privacy.noticeMethod == null || data.privacy.noticeMethod in ['verbal', 'written', 'electronic'])
+        && (data.privacy.noticeVersion == null || data.privacy.noticeVersion is string)
+        && data.privacy.marketingConsent in ['unknown', 'granted', 'withdrawn']
+        && data.privacy.marketingChannels is list
+        && data.privacy.marketingChannels.toSet().hasOnly(['phone', 'whatsapp', 'sms', 'email'])
+        && data.privacy.profilingObjection is bool
+        && (data.privacy.deletionRequestedAt == null || data.privacy.deletionRequestedAt is timestamp)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (data.deletedAt == null || data.deletedAt is timestamp);
+    }
+
     match /offices/{documentId} {
       allow get: if signedIn() && documentId == officeId();
       allow list, create, update, delete: if false;
@@ -73,14 +152,14 @@ service cloud.firestore {
       allow list: if canReadPrivate() && bounded(200);
       allow create: if incomingSameOffice()
         && ownsIncoming()
-        && request.resource.data.createdAt is timestamp
-        && request.resource.data.updatedAt is timestamp;
+        && request.resource.data.deletedAt == null
+        && validContactDocument();
       allow update: if canReadPrivate()
         && immutableTenant()
-        && request.resource.data.updatedAt is timestamp
+        && validContactDocument()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'phone', 'phoneHash', 'adSoyad', 'takmaEtiket', 'tanismaYeri',
-          'tanismaTarihi', 'kaynak', 'roller', 'relationship', 'updatedAt', 'deletedAt'
+          'phone', 'phoneHash', 'fullName', 'label', 'metAtPlace',
+          'metAt', 'source', 'roles', 'relationship', 'updatedAt', 'deletedAt'
         ])
         && request.resource.data.relationship.diff(resource.data.relationship).affectedKeys().hasOnly([
           'nextActionAt', 'nextActionType'
@@ -106,7 +185,7 @@ service cloud.firestore {
       allow create: if incomingSameOffice()
         && ownsIncoming()
         && contactBelongsToCaller(request.resource.data.subjectContactId)
-        && request.resource.data.stage == 'yeni_lead';
+        && request.resource.data.stage == 'new_lead';
       allow update: if canReadPrivate()
         && immutableTenant()
         && request.resource.data.stage == resource.data.stage

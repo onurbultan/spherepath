@@ -30,3 +30,7 @@ profile
 ```
 
 UI is implemented natively per platform. Domain state machines and decision rules remain shared.
+
+## Language boundary
+
+Internal terminology is English across TypeScript, Firestore fields, enum values, schemas, analytics events, and Function payloads. Turkish is used only for user-facing product copy.

@@ -3,6 +3,7 @@ import { IBM_Plex_Mono, Karla, Zilla_Slab } from "next/font/google";
 import type { ReactNode } from "react";
 import "./theme.generated.css";
 import "./globals.css";
+import { AppProviders } from "./providers";
 
 const karla = Karla({
   subsets: ["latin", "latin-ext"],
@@ -36,7 +37,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="tr">
       <body className={`${karla.variable} ${zillaSlab.variable} ${ibmPlexMono.variable}`}>
-        {children}
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

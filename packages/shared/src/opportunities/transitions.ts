@@ -1,25 +1,25 @@
-import type { FirsatAsamasi } from "../domain/entities.js";
+import type { OpportunityStage } from "../domain/entities.js";
 
-const allowedTransitions: Readonly<Record<FirsatAsamasi, readonly FirsatAsamasi[]>> = {
-  yeni_lead: ["ilk_temas", "kayip"],
-  ilk_temas: ["randevu", "kayip"],
-  randevu: ["degerleme", "kayip"],
-  degerleme: ["teklif_yetki", "kayip"],
-  teklif_yetki: ["kazanildi", "kayip"],
-  kazanildi: [],
-  kayip: ["ilk_temas"],
+const allowedTransitions: Readonly<Record<OpportunityStage, readonly OpportunityStage[]>> = {
+  new_lead: ["first_contact", "lost"],
+  first_contact: ["appointment", "lost"],
+  appointment: ["valuation", "lost"],
+  valuation: ["mandate_offer", "lost"],
+  mandate_offer: ["won", "lost"],
+  won: [],
+  lost: ["first_contact"],
 };
 
 export function canTransitionOpportunity(
-  from: FirsatAsamasi,
-  to: FirsatAsamasi,
+  from: OpportunityStage,
+  to: OpportunityStage,
 ): boolean {
   return allowedTransitions[from].includes(to);
 }
 
 export function assertOpportunityTransition(
-  from: FirsatAsamasi,
-  to: FirsatAsamasi,
+  from: OpportunityStage,
+  to: OpportunityStage,
 ): void {
   if (!canTransitionOpportunity(from, to)) {
     throw new Error(`Invalid opportunity transition: ${from} -> ${to}`);

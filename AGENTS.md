@@ -23,6 +23,7 @@ Spherepath is not a generic CRM. Every feature must advance one of these outcome
 ## Quality gates
 
 - TypeScript stays strict.
+- Code symbols, database collections and fields, enum values, schemas, events, and API payloads use English only. Turkish is reserved for user-facing copy.
 - Pure domain rules require unit tests.
 - Firestore/Storage rules require Emulator tests before production deployment.
 - Web and mobile use the same user-facing Turkish copy and analytics event names for the same product action.
