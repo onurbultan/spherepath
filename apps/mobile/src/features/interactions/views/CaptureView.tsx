@@ -30,6 +30,7 @@ import { SpText } from "@/shared/ui/SpText";
 import { radius, space } from "@/shared/ui/tokens.generated";
 import { useSpTheme } from "@/shared/ui/theme";
 import { saveManualInteraction } from "../resources/interactions";
+import { VoiceCaptureCard } from "../components/VoiceCaptureCard";
 
 const dayOptions = [
   { label: "Yarın", days: 1 },
@@ -125,6 +126,13 @@ export default function CaptureView() {
         ) : saved ? (
           <SpCard style={styles.state}><View style={[styles.icon, { backgroundColor: theme.deedBg }]}><Check color={theme.deed} size={24} /></View><SpText variant="eyebrow" color="deed">KAYDEDİLDİ</SpText><SpText variant="title">Temas ve sonraki aksiyon hazır</SpText><Pressable onPress={reset} style={[styles.primary, { backgroundColor: theme.ask }]}><SpText style={{ color: theme.onAsk }}>Yeni temas kaydet</SpText></Pressable></SpCard>
         ) : <>
+          <VoiceCaptureCard session={session!} contacts={contacts} onSaved={async () => {
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
+              queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
+            ]);
+          }} />
+          <View style={styles.divider}><View style={[styles.line, { backgroundColor: theme.line }]} /><SpText variant="caption" color="secondary">VEYA MANUEL KAYDET</SpText><View style={[styles.line, { backgroundColor: theme.line }]} /></View>
           <SpCard style={styles.section}><SpText variant="eyebrow">1 · KİM VE NASIL</SpText><SpText variant="title">Kişi</SpText><View style={styles.choices}>{contacts.map((contact) => <Pressable key={contact.id} onPress={() => setContactId(contact.id)} style={choice(selectedContactId === contact.id)}><SpText variant="bodySmall" color={selectedContactId === contact.id ? "deed" : "secondary"}>{contact.fullName ?? contact.label}</SpText></Pressable>)}</View><SpText variant="title">Kanal</SpText><View style={styles.choices}>{interactionChannels.map((item) => <Pressable key={item} onPress={() => setChannel(item)} style={choice(channel === item)}><SpText variant="bodySmall" color={channel === item ? "deed" : "secondary"}>{interactionChannelLabels[item]}</SpText></Pressable>)}</View><SpText variant="title">Amaç</SpText><View style={styles.choices}>{interactionObjectives.map((item) => <Pressable key={item} onPress={() => setObjective(item)} style={choice(objective === item)}><SpText variant="bodySmall" color={objective === item ? "deed" : "secondary"}>{interactionObjectiveLabels[item]}</SpText></Pressable>)}</View></SpCard>
           <SpCard style={styles.section}><SpText variant="eyebrow">2 · NE OLDU</SpText><SpText variant="title">Kısa sonuç</SpText><TextInput multiline placeholder="Örn. Salı günü satış planını konuşacağız." placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.multiline]} value={outcome} onChangeText={setOutcome} /><SpText variant="title">Talep sonucu</SpText><View style={styles.choices}>{askOutcomes.map((item) => <Pressable key={item} onPress={() => setAskOutcome(item)} style={choice(askOutcome === item)}><SpText variant="bodySmall" color={askOutcome === item ? "deed" : "secondary"}>{askOutcomeLabels[item]}</SpText></Pressable>)}</View><SpText variant="title">Ek not</SpText><TextInput multiline placeholder="İsteğe bağlı" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.multiline]} value={noteSummary} onChangeText={setNoteSummary} /></SpCard>
           <SpCard style={styles.section}><SpText variant="eyebrow">3 · SONRAKİ ADIM</SpText><SpText variant="title">Aksiyon</SpText><View style={styles.choices}><Pressable onPress={() => { setNextActionType(null); setNextActionDays(null); }} style={choice(nextActionType === null)}><SpText variant="bodySmall" color={nextActionType === null ? "deed" : "secondary"}>Henüz yok</SpText></Pressable>{nextActionTypes.map((item) => <Pressable key={item} onPress={() => { setNextActionType(item); setNextActionDays((current) => current ?? 1); }} style={choice(nextActionType === item)}><SpText variant="bodySmall" color={nextActionType === item ? "deed" : "secondary"}>{nextActionTypeLabels[item]}</SpText></Pressable>)}</View>{nextActionType ? <><SpText variant="title">Zaman</SpText><View style={styles.choices}>{dayOptions.map((item) => <Pressable key={item.days} onPress={() => setNextActionDays(item.days)} style={choice(nextActionDays === item.days)}><SpText variant="bodySmall" color={nextActionDays === item.days ? "deed" : "secondary"}>{item.label}</SpText></Pressable>)}</View></> : null}</SpCard>
@@ -142,4 +150,5 @@ const styles = StyleSheet.create({
   input: { minHeight: 50, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, padding: space.md, fontFamily: "Karla_400Regular", fontSize: 16 }, multiline: { minHeight: 94, textAlignVertical: "top" },
   primary: { minHeight: 52, borderRadius: radius.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm }, error: { padding: space.md, borderRadius: radius.md },
   state: { minHeight: 250, alignItems: "center", justifyContent: "center", gap: space.md }, icon: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" },
+  divider: { flexDirection: "row", alignItems: "center", gap: space.md, marginVertical: space.sm }, line: { height: StyleSheet.hairlineWidth, flex: 1 },
 });

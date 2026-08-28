@@ -11,4 +11,5 @@ export * from "./opportunities/index.js";
 export * from "./referrals/index.js";
 export * from "./privacy/index.js";
 export * from "./today/build-overview.js";
+export * from "./voice/index.js";
 export * from "./api/client.js";

@@ -22,7 +22,7 @@
     "mobile:ios": "pnpm --filter @spherepath/mobile ios",
     "mobile:android": "pnpm --filter @spherepath/mobile android",
     "emulators": "firebase emulators:start",
-    "test:rules": "firebase emulators:exec --only firestore \"pnpm --dir firebase-tests test:rules\"",
+    "test:rules": "firebase emulators:exec --only firestore,storage \"pnpm --dir firebase-tests test:rules\"",
     "test:api": "pnpm functions:build && firebase emulators:exec --only auth,firestore,functions \"pnpm --dir firebase-tests test:api\"",
     "firebase:deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes,storage",
     "functions:build": "pnpm --filter @spherepath/functions build"

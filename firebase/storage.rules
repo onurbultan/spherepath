@@ -11,10 +11,12 @@ service firebase.storage {
 
       allow read: if ownsPath();
       allow create: if ownsPath()
-        && fileName.matches('.*[.]m4a')
+        && fileName.matches('^[A-Za-z0-9_-]+[.](m4a|webm|wav)$')
         && request.resource.size > 0
         && request.resource.size < 25 * 1024 * 1024
-        && request.resource.contentType.matches('audio/.*');
+        && request.resource.contentType.matches('audio/(mp4|m4a|webm|wav|x-wav)')
+        && request.resource.metadata.contactId is string
+        && request.resource.metadata.durationMs is string;
       allow update: if false;
       allow delete: if ownsPath();
     }

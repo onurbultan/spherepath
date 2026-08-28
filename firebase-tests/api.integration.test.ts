@@ -25,7 +25,7 @@ describe("callable API vertical slice", () => {
   it("bootstraps, creates one idempotent contact, records one interaction, and builds Today", async () => {
     const credential = await createUserWithEmailAndPassword(auth, `api-${Date.now()}@example.test`, "Test1234!");
     const bootstrap = httpsCallable(functions, "bootstrapWorkspace");
-    await bootstrap(envelope({ displayName: "API Test" }, "request-bootstrap", "command-bootstrap"));
+    const workspace = (await bootstrap(envelope({ displayName: "API Test" }, "request-bootstrap", "command-bootstrap"))).data as { officeId: string };
     await credential.user.getIdToken(true);
 
     const createContact = httpsCallable(functions, "createContact");
@@ -174,5 +174,42 @@ describe("callable API vertical slice", () => {
     const closing = (await getClosingOverview(envelope(undefined, "request-closing"))).data as { presentations: Array<{ id: string; status: string }>; deals: Array<{ id: string; stage: string }> };
     expect(closing.presentations).toEqual([expect.objectContaining({ id: presentation.presentationId, status: "sent" })]);
     expect(closing.deals).toEqual([expect.objectContaining({ id: deal.dealId, stage: "offer" })]);
+
+    const registerVoiceNote = httpsCallable(functions, "registerVoiceNote");
+    const voiceRequest = envelope({
+      contactId: created.contact.id,
+      storagePath: `offices/${workspace.officeId}/voice/${credential.user.uid}/integration-voice.webm`,
+      durationMs: 12_000,
+      mimeType: "audio/webm",
+      conversationEndedConfirmed: true,
+      emulatorTranscript: "Yarın yeniden arayacağım. Sağlık durumu hakkında ayrıntı anlattı.",
+    }, "request-voice-register", "command-voice-register");
+    const registeredVoice = (await registerVoiceNote(voiceRequest)).data as { voiceNoteId: string };
+    const voiceReplay = (await registerVoiceNote({ ...voiceRequest, requestId: "request-voice-replay" })).data as { voiceNoteId: string };
+    expect(voiceReplay.voiceNoteId).toBe(registeredVoice.voiceNoteId);
+    const getVoiceNote = httpsCallable(functions, "getVoiceNote");
+    const voice = (await getVoiceNote(envelope({ voiceNoteId: registeredVoice.voiceNoteId }, "request-voice-get"))).data as {
+      voiceNote: { status: string; maskedTranscript: string; maskedCategories: string[]; extraction: { interaction: { nextActionType: string; daysFromNow: number } } };
+    };
+    expect(voice.voiceNote.status).toBe("needs_review");
+    expect(voice.voiceNote.maskedTranscript).not.toContain("Sağlık durumu");
+    expect(voice.voiceNote.maskedCategories).toContain("health");
+    expect(voice.voiceNote.extraction.interaction).toMatchObject({ nextActionType: "call", daysFromNow: 1 });
+    const confirmVoiceNote = httpsCallable(functions, "confirmVoiceNote");
+    const confirmedVoice = (await confirmVoiceNote(envelope({
+      voiceNoteId: registeredVoice.voiceNoteId,
+      interaction: {
+        contactId: created.contact.id,
+        channel: "phone",
+        objective: "follow_up",
+        direction: "outbound",
+        outcome: "Yarın yeniden arayacağım.",
+        askOutcome: "not_asked",
+        nextActionType: "call",
+        nextActionAt: Date.now() + 86_400_000,
+        noteSummary: "Yarın yeniden arayacağım. [HASSAS İÇERİK MASKELENDİ]",
+      },
+    }, "request-voice-confirm", "command-voice-confirm"))).data as { interactionId: string };
+    expect(confirmedVoice.interactionId).toBeTruthy();
   }, 35_000);
 });

@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, ContactRound, Mic, Save } from "lucide-react";
+import { Check, ContactRound, Save } from "lucide-react";
 import {
   apiQueryKeys,
   askOutcomeLabels,
@@ -23,6 +23,7 @@ import { listContacts } from "@/features/contacts/resources/contacts";
 import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
 import { saveManualInteraction } from "../resources/interactions";
+import { VoiceCaptureCard } from "../components/VoiceCaptureCard";
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Temas kaydedilemedi.";
@@ -98,6 +99,13 @@ export function CaptureView() {
   return (
     <AppShell>
       <header className="page-header capture-header"><p className="eyebrow">HIZLI KAYIT</p><h1>Temas kaydet</h1><p className="context-sentence">Görüşme sonucunu ve kabul edilmiş sonraki adımı kısa biçimde kapat.</p></header>
+      <VoiceCaptureCard session={session!} contacts={contacts} onSaved={async () => {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
+          queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
+        ]);
+      }} />
+      <div className="capture-divider"><span>veya manuel kaydet</span></div>
       {saved ? (
         <SpCard className="success-state"><div className="success-icon"><Check size={24} aria-hidden /></div><p className="eyebrow">KAYDEDİLDİ</p><h2>Temas ve sonraki aksiyon hazır</h2><p>Bugün ekranındaki ilişki görünümü birkaç saniye içinde güncellenecek.</p><button className="primary-action" type="button" onClick={() => router.push("/")}>Bugün ekranına dön</button></SpCard>
       ) : (
@@ -106,7 +114,7 @@ export function CaptureView() {
           <SpCard className="form-section"><p className="eyebrow">2 · NE OLDU</p><h2>Sonuç</h2><label>Kısa sonuç<textarea value={outcome} onChange={(event) => setOutcome(event.target.value)} placeholder="Örn. Satış planını konuşmak için salı günü buluşacağız." required /></label><label>Talep sonucu<select value={askOutcome} onChange={(event) => setAskOutcome(event.target.value as ManualInteractionDraft["askOutcome"])}>{askOutcomes.map((item) => <option key={item} value={item}>{askOutcomeLabels[item]}</option>)}</select></label><label>Ek not <span className="optional">isteğe bağlı</span><textarea value={noteSummary} onChange={(event) => setNoteSummary(event.target.value)} /></label></SpCard>
           <SpCard className="form-section"><p className="eyebrow">3 · SONRAKİ ADIM</p><h2>Takibi kapat</h2><div className="form-row"><label>Aksiyon<select value={nextActionType ?? ""} onChange={(event) => setNextActionType((event.target.value || null) as ManualInteractionDraft["nextActionType"])}><option value="">Henüz yok</option>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</select></label><label>Tarih ve saat<input type="datetime-local" disabled={!nextActionType} value={nextActionAt} onChange={(event) => setNextActionAt(event.target.value)} /></label></div></SpCard>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
-          <div className="capture-actions"><div className="voice-later"><Mic size={17} aria-hidden /> Sesli not sonraki adımda eklenecek</div><button className="primary-action inline-action" disabled={pending} type="submit"><Save size={18} aria-hidden /> {pending ? "Kaydediliyor…" : "Teması kaydet"}</button></div>
+          <div className="capture-actions"><span className="privacy-copy">Yalnız gerekli iş sonucunu kaydedin.</span><button className="primary-action inline-action" disabled={pending} type="submit"><Save size={18} aria-hidden /> {pending ? "Kaydediliyor…" : "Teması kaydet"}</button></div>
         </form>
       )}
     </AppShell>
