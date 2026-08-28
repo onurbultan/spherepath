@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev -p 5050",
+    "dev": "NEXT_PUBLIC_USE_FIREBASE_EMULATORS=false next dev -p 5050",
+    "dev:emulators": "NEXT_PUBLIC_USE_FIREBASE_EMULATORS=true next dev -p 5050",
     "lint": "eslint .",
     "start": "next start -p 5050",
     "test": "vitest run --passWithNoTests",

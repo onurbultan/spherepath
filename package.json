@@ -16,6 +16,7 @@
     "design:generate": "node scripts/generate-design-tokens.mjs",
     "design:check": "node scripts/generate-design-tokens.mjs --check",
     "web:dev": "pnpm --filter @spherepath/web dev",
+    "web:dev:emulators": "pnpm --filter @spherepath/web dev:emulators",
     "web:build": "pnpm --filter @spherepath/web build",
     "mobile:start": "pnpm --filter @spherepath/mobile start",
     "mobile:ios": "pnpm --filter @spherepath/mobile ios",

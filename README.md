@@ -25,6 +25,7 @@ pnpm web:dev
 ```
 
 The web application runs at `http://localhost:5050` by default.
+`pnpm web:dev` connects to production Firebase; use `pnpm web:dev:emulators` only while the local Firebase emulators are running.
 
 Firebase project alias: `spherepath-96ecd`.
 
