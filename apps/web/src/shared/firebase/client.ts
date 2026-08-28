@@ -1,4 +1,5 @@
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 import { connectAuthEmulator, getAuth } from "firebase/auth";
 import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 import { connectStorageEmulator, getStorage } from "firebase/storage";
@@ -13,12 +14,26 @@ const firebaseConfig = {
 };
 
 let emulatorsConnected = false;
+let appCheckInitialized = false;
+
+function configureAppCheck(app: FirebaseApp) {
+  if (typeof window === "undefined" || appCheckInitialized || process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS === "true") return;
+  const siteKey = process.env.NEXT_PUBLIC_FIREBASE_APP_CHECK_SITE_KEY;
+  if (!siteKey) return;
+  if (process.env.NEXT_PUBLIC_FIREBASE_APP_CHECK_DEBUG === "true") {
+    (globalThis as typeof globalThis & { FIREBASE_APPCHECK_DEBUG_TOKEN?: boolean }).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+  }
+  initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(siteKey), isTokenAutoRefreshEnabled: true });
+  appCheckInitialized = true;
+}
 
 export function getFirebaseApp(): FirebaseApp {
   if (!firebaseConfig.apiKey || !firebaseConfig.appId || !firebaseConfig.projectId) {
     throw new Error("Spherepath Firebase web configuration is incomplete.");
   }
-  return getApps().length ? getApp() : initializeApp(firebaseConfig);
+  const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  configureAppCheck(app);
+  return app;
 }
 
 export function firebaseServices() {

@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { CalendarCheck, Check, RefreshCw, Target } from "lucide-react-native";
-import { useFocusEffect } from "expo-router";
+import { CalendarCheck, Check, RefreshCw, Settings, Target } from "lucide-react-native";
+import { router, useFocusEffect } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiQueryKeys } from "@spherepath/shared";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -39,7 +39,7 @@ export default function TodayView() {
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={[styles.safe, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.headerRow}><View style={styles.header}><SpText variant="eyebrow" color="deed">BUGÜN</SpText><SpText variant="hero">Bugünün odağı</SpText><SpText color="secondary">Gerçek kişi, temas ve fırsat kayıtlarından açıklanabilir bir çalışma planı.</SpText></View><Pressable accessibilityLabel="Yenile" onPress={() => void query.refetch()} style={[styles.refresh, { borderColor: theme.line }]}><RefreshCw color={theme.textSecondary} size={19} /></Pressable></View>
+        <View style={styles.headerRow}><View style={styles.header}><SpText variant="eyebrow" color="deed">BUGÜN</SpText><SpText variant="hero">Bugünün odağı</SpText><SpText color="secondary">Gerçek kişi, temas ve fırsat kayıtlarından açıklanabilir bir çalışma planı.</SpText></View><View style={styles.headerActions}><Pressable accessibilityLabel="Ayarlar" onPress={() => router.push("/(tabs)/settings")} style={[styles.refresh, { borderColor: theme.line }]}><Settings color={theme.textSecondary} size={19} /></Pressable><Pressable accessibilityLabel="Yenile" onPress={() => void query.refetch()} style={[styles.refresh, { borderColor: theme.line }]}><RefreshCw color={theme.textSecondary} size={19} /></Pressable></View></View>
         {query.isPending ? <View style={styles.state}><ActivityIndicator color={theme.deed} /><SpText color="secondary">Bugün görünümü hazırlanıyor…</SpText></View> : query.error ? <SpCard style={styles.state}><SpText variant="title">Görünüm yüklenemedi</SpText><SpText color="secondary">{messageFrom(query.error)}</SpText></SpCard> : query.data ? <>
           <View style={styles.sectionHeading}><View><SpText variant="eyebrow">SATIŞ SİSTEMİ</SpText><SpText variant="title">Beş aşamalı sağlık</SpText></View><View style={[styles.period, { backgroundColor: theme.deedBg }]}><SpText variant="eyebrow" color="deed">30 GÜN</SpText></View></View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stageRow}>{stages.map((stage) => <SpCard key={stage.label} style={styles.stageCard}><SpText variant="eyebrow" color="deed">{stage.label}</SpText><SpText variant="figure">{stage.value}</SpText><SpText variant="bodySmall" color="secondary">{stage.detail}</SpText></SpCard>)}</ScrollView>
@@ -52,6 +52,6 @@ export default function TodayView() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 }, content: { padding: space.xl, paddingBottom: space["5xl"], gap: space.xl }, headerRow: { flexDirection: "row", alignItems: "flex-start", gap: space.md, marginTop: space.xl, marginBottom: space.xl }, header: { flex: 1, gap: space.md }, refresh: { width: 44, height: 44, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" }, state: { minHeight: 240, alignItems: "center", justifyContent: "center", gap: space.md },
+  safe: { flex: 1 }, content: { padding: space.xl, paddingBottom: space["5xl"], gap: space.xl }, headerRow: { flexDirection: "row", alignItems: "flex-start", gap: space.md, marginTop: space.xl, marginBottom: space.xl }, header: { flex: 1, gap: space.md }, headerActions: { gap: space.sm }, refresh: { width: 44, height: 44, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" }, state: { minHeight: 240, alignItems: "center", justifyContent: "center", gap: space.md },
   sectionHeading: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: space.md }, period: { paddingHorizontal: space.md, paddingVertical: space.sm, borderRadius: radius.sm }, stageRow: { gap: space.md, paddingRight: space.xl }, stageCard: { width: 142, minHeight: 132, gap: space.md }, detailCard: { gap: space.md, minHeight: 200 }, icon: { width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", marginBottom: space.md }, evidence: { padding: space.md, borderRadius: radius.md, gap: space.xs }, tasks: { gap: space.sm }, task: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: space.md, gap: space.sm }, complete: { minHeight: 40, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm },
 });

@@ -34,6 +34,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen name="opportunities" options={{ title: "Fırsatlar", tabBarIcon: ({ color }) => <BriefcaseBusiness color={color} size={21} /> }} />
       <Tabs.Screen name="listings" options={{ title: "Portföy", tabBarIcon: ({ color }) => <House color={color} size={21} /> }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );
 }

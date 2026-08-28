@@ -19,4 +19,22 @@ describe("API client", () => {
     expect(shouldRetryApiCall(0, error)).toBe(true);
     expect(shouldRetryApiCall(2, error)).toBe(false);
   });
+
+  it("reports normalized diagnostics without request data", async () => {
+    const complete = vi.fn();
+    const client = createApiClient(async () => { throw { code: "functions/unavailable", message: "Offline" }; }, {
+      createRequestId: () => "request-diagnostic",
+      onRequestComplete: complete,
+    });
+    await expect(client.query("listContacts", undefined)).rejects.toMatchObject({ category: "network" });
+    expect(complete).toHaveBeenCalledWith(expect.objectContaining({
+      endpoint: "listContacts",
+      requestId: "request-diagnostic",
+      succeeded: false,
+      attemptCount: 1,
+      errorCode: "unavailable",
+      errorCategory: "network",
+    }));
+    expect(JSON.stringify(complete.mock.calls)).not.toContain("data");
+  });
 });

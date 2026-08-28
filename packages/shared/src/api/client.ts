@@ -38,6 +38,9 @@ export interface ApiClientOptions {
     requestId: string;
     durationMs: number;
     succeeded: boolean;
+    attemptCount: number;
+    errorCode: string | null;
+    errorCategory: ApiErrorCategory | null;
   }) => void;
 }
 
@@ -106,6 +109,7 @@ export function createApiClient(transport: ApiTransport, options: ApiClientOptio
     const startedAt = Date.now();
     let failureCount = 0;
     let succeeded = false;
+    let finalError: ApiError | null = null;
     try {
       while (true) {
         try {
@@ -114,6 +118,7 @@ export function createApiClient(transport: ApiTransport, options: ApiClientOptio
           return response;
         } catch (cause) {
           const error = normalizeApiError(cause, endpoint, requestId);
+          finalError = error;
           const canRetry = kind === "command" && Boolean(callOptions.commandId);
           if (!canRetry || !shouldRetryApiCall(failureCount, error)) throw error;
           await (options.wait?.(apiRetryDelay(failureCount++)) ?? Promise.resolve());
@@ -126,6 +131,9 @@ export function createApiClient(transport: ApiTransport, options: ApiClientOptio
         requestId,
         durationMs: Date.now() - startedAt,
         succeeded,
+        attemptCount: failureCount + 1,
+        errorCode: finalError?.code ?? null,
+        errorCategory: finalError?.category ?? null,
       });
     }
   }
@@ -149,4 +157,6 @@ export const apiQueryKeys = {
   referrals: ["referrals"] as const,
   closing: ["closing"] as const,
   todayOverview: ["today", "overview"] as const,
+  workspaceSettings: ["workspace", "settings"] as const,
+  dataSubjectRequests: ["privacy", "requests"] as const,
 };

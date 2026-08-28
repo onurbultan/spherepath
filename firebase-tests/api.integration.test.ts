@@ -211,5 +211,71 @@ describe("callable API vertical slice", () => {
       },
     }, "request-voice-confirm", "command-voice-confirm"))).data as { interactionId: string };
     expect(confirmedVoice.interactionId).toBeTruthy();
+
+    const getWorkspaceSettings = httpsCallable(functions, "getWorkspaceSettings");
+    const initialSettings = (await getWorkspaceSettings(envelope(undefined, "request-settings-get"))).data as { settings: { country: string; displayName: string } };
+    expect(initialSettings.settings.country).toBe("TR");
+    const updateWorkspaceSettings = httpsCallable(functions, "updateWorkspaceSettings");
+    const settingsDraft = {
+      displayName: "API Test Advisor",
+      phone: "+90 555 000 00 00",
+      defaultRegions: ["Integration Region"],
+      monthlyPortfolioTarget: 8,
+      weeklyCapacity: 20,
+      country: "TR",
+      dataControllerName: "Integration Data Controller",
+      verbisStatus: "unknown",
+      trncFilingConfirmed: false,
+      trncTransferLicenseConfirmed: false,
+      dailyPlanReminderEnabled: true,
+      dailyPlanReminderHour: 8,
+      dailyPlanReminderMinute: 30,
+    };
+    const settingsRequest = envelope(settingsDraft, "request-settings-update", "command-settings-update");
+    const updatedSettings = (await updateWorkspaceSettings(settingsRequest)).data as { settings: { displayName: string; dailyPlanReminderHour: number } };
+    const replayedSettings = (await updateWorkspaceSettings({ ...settingsRequest, requestId: "request-settings-replay" })).data as { settings: { displayName: string } };
+    expect(updatedSettings.settings).toMatchObject({ displayName: "API Test Advisor", dailyPlanReminderHour: 8 });
+    expect(replayedSettings.settings.displayName).toBe("API Test Advisor");
+
+    const createDataSubjectRequest = httpsCallable(functions, "createDataSubjectRequest");
+    const accessRequest = (await createDataSubjectRequest(envelope({
+      contactId: created.contact.id,
+      type: "access",
+      requesterReference: "integration-access",
+      details: "",
+    }, "request-data-access", "command-data-access"))).data as { request: { id: string; status: string } };
+    expect(accessRequest.request.status).toBe("pending_verification");
+    const getContactDataExport = httpsCallable(functions, "getContactDataExport");
+    const contactExport = (await getContactDataExport(envelope({ contactId: created.contact.id }, "request-contact-export"))).data as { export: { contact: { id: string }; interactions: unknown[]; opportunities: unknown[] } };
+    expect(contactExport.export.contact.id).toBe(created.contact.id);
+    expect(contactExport.export.interactions.length).toBeGreaterThan(0);
+    expect(contactExport.export.opportunities.length).toBeGreaterThan(0);
+    const resolveDataSubjectRequest = httpsCallable(functions, "resolveDataSubjectRequest");
+    await resolveDataSubjectRequest(envelope({ requestId: accessRequest.request.id, decision: "approved", resolutionNote: "Identity verified.", correctedContact: null }, "request-data-access-resolve", "command-data-access-resolve"));
+
+    const deletionContact = (await createContact(envelope({
+      fullName: "Deletion Integration Contact",
+      phone: "+90 555 111 22 33",
+      metAtPlace: "Integration Test",
+      source: "address_book",
+      role: "unknown",
+    }, "request-delete-contact", "command-delete-contact"))).data as { contact: { id: string } };
+    const deletionRequest = (await createDataSubjectRequest(envelope({
+      contactId: deletionContact.contact.id,
+      type: "deletion",
+      requesterReference: "integration-deletion",
+      details: "Verified erasure request",
+    }, "request-data-deletion", "command-data-deletion"))).data as { request: { id: string } };
+    await resolveDataSubjectRequest(envelope({ requestId: deletionRequest.request.id, decision: "approved", resolutionNote: "Identity verified.", correctedContact: null }, "request-data-deletion-resolve", "command-data-deletion-resolve"));
+    const listDataSubjectRequests = httpsCallable(functions, "listDataSubjectRequests");
+    let deletionStatus = "processing";
+    for (let attempt = 0; attempt < 30 && deletionStatus === "processing"; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const requests = (await listDataSubjectRequests(envelope(undefined, `request-data-list-${attempt}`))).data as { requests: Array<{ id: string; status: string }> };
+      deletionStatus = requests.requests.find((item) => item.id === deletionRequest.request.id)?.status ?? "missing";
+    }
+    expect(deletionStatus).toBe("completed");
+    const contactsAfterDeletion = (await listContacts(envelope(undefined, "request-list-after-deletion"))).data as { contacts: Array<{ id: string }> };
+    expect(contactsAfterDeletion.contacts.some((item) => item.id === deletionContact.contact.id)).toBe(false);
   }, 35_000);
 });

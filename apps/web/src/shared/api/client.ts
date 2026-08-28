@@ -15,6 +15,7 @@ const transport: ApiTransport = async <TData, TResponse>({ endpoint, requestId, 
 export const apiClient = createApiClient(transport, {
   wait: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   onRequestComplete(event) {
-    if (process.env.NODE_ENV === "development") console.debug("[api]", event);
+    if (!event.succeeded) console.error("[spherepath-api]", event);
+    else if (process.env.NODE_ENV === "development") console.debug("[spherepath-api]", event);
   },
 });

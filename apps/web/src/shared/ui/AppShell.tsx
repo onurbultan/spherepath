@@ -5,12 +5,14 @@ import { BriefcaseBusiness, ContactRound, House, ListTodo, Plus, Settings } from
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/features/auth/resources/session";
+import { ConnectivityBanner } from "./ConnectivityBanner";
 
 const navigation = [
   { label: "Bugün", icon: ListTodo, href: "/" },
   { label: "Kişiler", icon: ContactRound, href: "/contacts" },
   { label: "Fırsatlar", icon: BriefcaseBusiness, href: "/opportunities" },
   { label: "Portföy", icon: House, href: "/listings" },
+  { label: "Ayarlar", icon: Settings, href: "/settings" },
 ] as const;
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -31,9 +33,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </nav>
-        <button type="button" className="nav-item settings" onClick={() => void signOut()}><Settings size={19} aria-hidden /> Oturumu kapat</button>
+        <button type="button" className="nav-item settings" onClick={() => void signOut()}>Oturumu kapat</button>
       </aside>
-      <main className="main-content">{children}</main>
+      <main className="main-content"><ConnectivityBanner />{children}</main>
       <Link href="/capture" className="record-button" aria-label="Yeni kayıt"><Plus size={28} aria-hidden /></Link>
     </div>
   );

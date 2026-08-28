@@ -1,3 +1,4 @@
+import "./runtime/global-options.js";
 import { initializeApp } from "firebase-admin/app";
 
 initializeApp();
@@ -10,6 +11,10 @@ export { archiveContact, createContact, listContacts, updateContact, updateConta
 export { recordInteraction } from "./interactions/record-interaction.js";
 export { advanceListing, createListing, listListings } from "./listings/listing-api.js";
 export { createReferral, listReferrals } from "./referrals/referral-api.js";
+export { createDataSubjectRequest, getContactDataExport, listDataSubjectRequests, resolveDataSubjectRequest } from "./privacy/data-subject-api.js";
+export { processDeletionJob } from "./privacy/deletion-worker.js";
+export { runRetentionPurge } from "./privacy/retention.js";
+export { getWorkspaceSettings, updateWorkspaceSettings } from "./settings/workspace-api.js";
 export { completeDailyTask, getTodayOverview } from "./today/get-today-overview.js";
 export { confirmVoiceNote, getVoiceNote, processVoiceNote, registerVoiceNote } from "./voice/voice-api.js";
 export { health } from "./system/health.js";

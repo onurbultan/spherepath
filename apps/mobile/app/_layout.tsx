@@ -23,8 +23,11 @@ import { SessionProvider, useSession } from "@/features/auth/resources/session";
 import { AuthView } from "@/features/auth/views/AuthView";
 import { SpText } from "@/shared/ui/SpText";
 import { useSpTheme } from "@/shared/ui/theme";
+import { configureNotificationPresentation } from "@/features/settings/resources/notifications";
+import { ConnectivityBanner } from "@/shared/ui/ConnectivityBanner";
 
 void SplashScreen.preventAutoHideAsync();
+configureNotificationPresentation();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,7 +44,7 @@ function SessionGate() {
     return <View style={[styles.state, { backgroundColor: theme.background }]}><SpText variant="title">Çalışma alanı açılamadı</SpText><SpText color="secondary">{error}</SpText><SpText color="deed" onPress={() => void signOut()}>Oturumu kapat</SpText></View>;
   }
   if (status !== "ready") return <View style={[styles.state, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.deed} /><SpText color="secondary">Çalışma alanın hazırlanıyor…</SpText></View>;
-  return <><Slot /><StatusBar style="auto" /></>;
+  return <><ConnectivityBanner /><Slot /><StatusBar style="auto" /></>;
 }
 
 export default function RootLayout() {

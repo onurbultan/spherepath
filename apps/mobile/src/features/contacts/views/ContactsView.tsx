@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Contact, ContactField } from "expo-contacts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator,
@@ -10,7 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Archive, ContactRound, LogOut, Pencil, Plus, ShieldCheck, UserRoundPlus, X } from "lucide-react-native";
+import { Archive, BookUser, ContactRound, LogOut, Pencil, Plus, ShieldCheck, UserRoundPlus, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   apiQueryKeys,
@@ -91,6 +92,23 @@ export default function ContactsView() {
     setPanelOpen(true);
   }
 
+  async function chooseFromAddressBook() {
+    setError(null);
+    try {
+      const selected = await Contact.presentPicker();
+      if (!selected) return;
+      const details = await selected.getDetails([ContactField.FULL_NAME, ContactField.PHONES]);
+      setDraft({
+        ...draft,
+        fullName: details.fullName?.trim() || draft.fullName,
+        phone: details.phones?.find((item) => item.number)?.number?.trim() || draft.phone,
+        source: "address_book",
+      });
+    } catch (nextError) {
+      setError(`${messageFrom(nextError)} Bilgileri elle girmeye devam edebilirsin.`);
+    }
+  }
+
   function openEdit(contact: ContactRecord) {
     setEditing(contact);
     setDraft(draftFrom(contact));
@@ -167,7 +185,8 @@ export default function ContactsView() {
         <SafeAreaView style={[styles.safe, { backgroundColor: theme.card }]}>
           <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
             <View style={styles.sheetHeader}><View><SpText variant="eyebrow" color="deed">HIZLI KAYIT</SpText><SpText variant="hero">{editing ? "Kişiyi düzenle" : "Yeni kişi"}</SpText></View><Pressable accessibilityLabel="Kapat" onPress={() => setPanelOpen(false)} style={[styles.iconButton, { borderColor: theme.line }]}><X color={theme.textSecondary} size={20} /></Pressable></View>
-            <SpText variant="bodySmall" color="secondary">Ad, soyad veya tanımlayıcı</SpText><TextInput autoFocus placeholder="Örn. Ayşe Kaya" placeholderTextColor={theme.textTertiary} style={inputStyle} value={draft.fullName} onChangeText={(fullName) => setDraft({ ...draft, fullName })} />
+            {!editing ? <Pressable onPress={() => void chooseFromAddressBook()} style={[styles.addressBook, { backgroundColor: theme.deedBg }]}><BookUser color={theme.deed} size={18} /><View style={styles.contactCopy}><SpText color="deed">Rehberden tek kişi seç</SpText><SpText variant="bodySmall" color="secondary">Yalnızca seçtiğin kişinin adı ve telefonu forma alınır.</SpText></View></Pressable> : null}
+            <SpText variant="bodySmall" color="secondary">Ad, soyad veya tanımlayıcı</SpText><TextInput autoFocus={Boolean(editing)} placeholder="Örn. Ayşe Kaya" placeholderTextColor={theme.textTertiary} style={inputStyle} value={draft.fullName} onChangeText={(fullName) => setDraft({ ...draft, fullName })} />
             <SpText variant="bodySmall" color="secondary">Telefon · isteğe bağlı</SpText><TextInput keyboardType="phone-pad" placeholder="+90" placeholderTextColor={theme.textTertiary} style={inputStyle} value={draft.phone} onChangeText={(phone) => setDraft({ ...draft, phone })} />
             <SpText variant="bodySmall" color="secondary">Tanışma yeri · isteğe bağlı</SpText><TextInput placeholder="Örn. Marina açık ev etkinliği" placeholderTextColor={theme.textTertiary} style={inputStyle} value={draft.metAtPlace} onChangeText={(metAtPlace) => setDraft({ ...draft, metAtPlace })} />
             <SpText variant="bodySmall" color="secondary">Kaynak</SpText><View style={styles.chips}>{contactSources.map((source) => <Pressable key={source} onPress={() => setDraft({ ...draft, source })} style={[styles.choice, { backgroundColor: draft.source === source ? theme.deedBg : theme.background, borderColor: draft.source === source ? theme.deed : theme.line }]}><SpText variant="bodySmall" color={draft.source === source ? "deed" : "secondary"}>{contactSourceLabels[source]}</SpText></Pressable>)}</View>
@@ -204,4 +223,5 @@ const styles = StyleSheet.create({
   sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: space.md, marginBottom: space.lg },
   input: { minHeight: 50, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: space.lg, fontFamily: "Karla_400Regular", fontSize: 16 },
   choice: { minHeight: 40, borderRadius: radius.sm, borderWidth: StyleSheet.hairlineWidth, justifyContent: "center", paddingHorizontal: space.md },
+  addressBook: { minHeight: 64, borderRadius: radius.md, padding: space.md, flexDirection: "row", alignItems: "center", gap: space.md },
 });

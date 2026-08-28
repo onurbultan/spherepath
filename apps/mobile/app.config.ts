@@ -16,6 +16,9 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.spherepath.app",
+    entitlements: {
+      "com.apple.developer.devicecheck.appattest-environment": "production",
+    },
     ...(existsSync(iosConfig) ? { googleServicesFile: iosConfig } : {}),
     infoPlist: {
       NSContactsUsageDescription: "Spherepath, yalnızca seçtiğiniz kişileri çalışma alanınıza eklemek için rehber erişimi ister.",
@@ -32,8 +35,10 @@ const config: ExpoConfig = {
     "expo-router",
     "expo-font",
     "expo-contacts",
+    "expo-notifications",
     ["expo-audio", { microphonePermission: "Görüşme sonrası kendi kısa sesli notunuzu kaydetmek için mikrofon erişimi gerekir." }],
     "@react-native-firebase/app",
+    "@react-native-firebase/app-check",
     "@react-native-firebase/auth",
     ["expo-splash-screen", { backgroundColor: "#F6F7F3", imageWidth: 96 }],
   ],
