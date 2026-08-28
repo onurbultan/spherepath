@@ -41,7 +41,7 @@ const config: ExpoConfig = {
     ["@react-native-firebase/app", { ios: { disableSPM: true } }],
     "@react-native-firebase/app-check",
     "@react-native-firebase/auth",
-    ["expo-splash-screen", { backgroundColor: "#F6F7F3", imageWidth: 96 }],
+    ["expo-splash-screen", { backgroundColor: "#F6F7F3", image: "./assets/splash-icon.png", imageWidth: 96 }],
   ],
   experiments: {
     typedRoutes: true,
