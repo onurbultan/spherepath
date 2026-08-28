@@ -24,6 +24,8 @@ PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH" pnpm test:rules
 pnpm web:dev
 ```
 
+The web application runs at `http://localhost:5050` by default.
+
 Firebase project alias: `spherepath-96ecd`.
 
 Production Firebase resources use `europe-west8` (Milan):
