@@ -4,4 +4,7 @@ export * from "./daily-plan/rank-tasks.js";
 export * from "./design/index.js";
 export * from "./domain/entities.js";
 export * from "./domain/interaction-draft.js";
+export * from "./interactions/manual-interaction.js";
 export * from "./opportunities/index.js";
+export * from "./today/build-overview.js";
+export * from "./api/client.js";

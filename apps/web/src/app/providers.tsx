@@ -1,6 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { apiRetryDelay, shouldRetryApiCall } from "@spherepath/shared";
 import { AuthView } from "@/features/auth/views/AuthView";
 import { SessionProvider, useSession } from "@/features/auth/resources/session";
 
@@ -18,5 +20,11 @@ function SessionGate({ children }: { children: ReactNode }) {
 }
 
 export function AppProviders({ children }: { children: ReactNode }) {
-  return <SessionProvider><SessionGate>{children}</SessionGate></SessionProvider>;
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: { staleTime: 60_000, retry: shouldRetryApiCall, retryDelay: apiRetryDelay },
+      mutations: { retry: false },
+    },
+  }));
+  return <QueryClientProvider client={queryClient}><SessionProvider><SessionGate>{children}</SessionGate></SessionProvider></QueryClientProvider>;
 }

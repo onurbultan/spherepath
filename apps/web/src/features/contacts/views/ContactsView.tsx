@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, ContactRound, Pencil, Plus, RefreshCw, X } from "lucide-react";
 import {
+  apiQueryKeys,
   contactDraftSchema,
   contactRoleLabels,
   contactRoles,
@@ -39,45 +41,19 @@ function messageFrom(error: unknown): string {
 
 export function ContactsView() {
   const { session } = useSession();
-  const [contacts, setContacts] = useState<ContactRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [panelOpen, setPanelOpen] = useState(false);
   const [editing, setEditing] = useState<ContactRecord | null>(null);
   const [draft, setDraft] = useState<ContactDraft>(emptyDraft);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (!session) return;
-    setLoading(true);
-    try {
-      setContacts(await listContacts(session));
-      setError(null);
-    } catch (nextError) {
-      setError(messageFrom(nextError));
-    } finally {
-      setLoading(false);
-    }
-  }, [session]);
-
-  useEffect(() => {
-    if (!session) return;
-    let active = true;
-    void listContacts(session)
-      .then((items) => {
-        if (active) {
-          setContacts(items);
-          setError(null);
-        }
-      })
-      .catch((nextError: unknown) => {
-        if (active) setError(messageFrom(nextError));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => { active = false; };
-  }, [session]);
+  const contactsQuery = useQuery({
+    queryKey: apiQueryKeys.contacts,
+    queryFn: listContacts,
+    enabled: Boolean(session),
+  });
+  const contacts = contactsQuery.data ?? [];
 
   function openCreate() {
     setEditing(null);
@@ -108,7 +84,10 @@ export function ContactsView() {
       setPanelOpen(false);
       setEditing(null);
       setDraft(emptyDraft);
-      await refresh();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
+      ]);
     } catch (nextError) {
       setError(messageFrom(nextError));
     } finally {
@@ -119,8 +98,12 @@ export function ContactsView() {
   async function remove(contact: ContactRecord) {
     if (!window.confirm(`${contact.fullName ?? "Bu kişi"} arşivlensin mi?`)) return;
     try {
-      await archiveContact(contact.id);
-      await refresh();
+      if (!session) return;
+      await archiveContact(session, contact.id);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
+      ]);
     } catch (nextError) {
       setError(messageFrom(nextError));
     }
@@ -133,8 +116,8 @@ export function ContactsView() {
         <button className="primary-action inline-action" type="button" onClick={openCreate}><Plus size={18} aria-hidden /> Yeni kişi</button>
       </header>
 
-      {error && !panelOpen ? <p className="form-error notice" role="alert">{error}</p> : null}
-      {loading ? (
+      {(error ?? (contactsQuery.error ? messageFrom(contactsQuery.error) : null)) && !panelOpen ? <p className="form-error notice" role="alert">{error ?? messageFrom(contactsQuery.error)}</p> : null}
+      {contactsQuery.isPending ? (
         <div className="content-state"><RefreshCw className="spin" size={22} aria-hidden /> Kişiler yükleniyor…</div>
       ) : contacts.length === 0 ? (
         <SpCard className="empty-state"><div className="card-icon secondary"><ContactRound size={20} aria-hidden /></div><h2>İlk kişini ekle</h2><p>Ad veya tanımlayıcı, tanışma kaynağı ve rol başlangıç için yeterli.</p><button className="secondary-action" type="button" onClick={openCreate}>Kişi oluştur</button></SpCard>

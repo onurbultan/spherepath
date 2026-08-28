@@ -16,7 +16,8 @@ import {
   updateProfile,
   type User as FirebaseUser,
 } from "@react-native-firebase/auth";
-import { httpsCallable } from "@react-native-firebase/functions";
+import { createCommandId } from "@spherepath/shared";
+import { apiClient } from "@/shared/api/client";
 import { firebaseServices } from "@/shared/firebase/client";
 
 export interface WorkspaceSession {
@@ -48,12 +49,11 @@ async function workspaceFor(user: FirebaseUser, displayName?: string): Promise<W
   let role = token.claims.role;
 
   if (typeof officeId !== "string" || (role !== "agent" && role !== "broker") || displayName) {
-    const { functions } = firebaseServices();
-    const bootstrap = httpsCallable<{ displayName?: string }, { officeId: string; role: "agent" | "broker" }>(
-      functions,
+    await apiClient.command<{ displayName?: string }, { officeId: string; role: "agent" | "broker" }>(
       "bootstrapWorkspace",
+      displayName ? { displayName } : {},
+      createCommandId(user.uid),
     );
-    await bootstrap(displayName ? { displayName } : {});
     token = await getIdTokenResult(user, true);
     officeId = token.claims.officeId;
     role = token.claims.role;

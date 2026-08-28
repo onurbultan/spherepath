@@ -4,6 +4,7 @@ import { useFonts } from "expo-font";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { apiRetryDelay, shouldRetryApiCall } from "@spherepath/shared";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import {
@@ -27,7 +28,7 @@ void SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 60_000, retry: 2, refetchOnWindowFocus: false },
+    queries: { staleTime: 60_000, retry: shouldRetryApiCall, retryDelay: apiRetryDelay, refetchOnWindowFocus: false },
     mutations: { retry: false },
   },
 });

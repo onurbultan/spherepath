@@ -1,107 +1,34 @@
-import { createContact, type Contact, type ContactDraft } from "@spherepath/shared";
-import {
-  Timestamp,
-  addDoc,
-  collection,
-  doc,
-  getDocs,
-  limit,
-  query,
-  updateDoc,
-  where,
-  type DocumentData,
-} from "@react-native-firebase/firestore";
-import { firebaseServices } from "@/shared/firebase/client";
+import { createCommandId, type Contact, type ContactDraft } from "@spherepath/shared";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
+import { apiClient } from "@/shared/api/client";
 
 export interface ContactRecord extends Contact {
   id: string;
 }
 
-function millis(value: unknown): number | null {
-  return value instanceof Timestamp ? value.toMillis() : null;
+export async function listContacts(): Promise<ContactRecord[]> {
+  return (await apiClient.query<undefined, { contacts: ContactRecord[] }>("listContacts", undefined)).contacts;
 }
 
-function fromSnapshot(id: string, data: DocumentData): ContactRecord {
-  const relationship = data.relationship as DocumentData;
-  const privacy = data.privacy as Contact["privacy"];
-  return {
-    ...(data as Contact),
-    id,
-    metAt: millis(data.metAt) ?? Date.now(),
-    createdAt: millis(data.createdAt) ?? Date.now(),
-    updatedAt: millis(data.updatedAt) ?? Date.now(),
-    deletedAt: millis(data.deletedAt),
-    relationship: {
-      ...(relationship as Contact["relationship"]),
-      lastTouchAt: millis(relationship.lastTouchAt),
-      nextActionAt: millis(relationship.nextActionAt),
-    },
-    privacy: {
-      ...privacy,
-      noticeAt: millis(privacy.noticeAt),
-      deletionRequestedAt: millis(privacy.deletionRequestedAt),
-    },
-  };
-}
-
-function timestamp(value: number | null): Timestamp | null {
-  return value === null ? null : Timestamp.fromMillis(value);
-}
-
-function firestoreContact(contact: Contact) {
-  return {
-    ...contact,
-    metAt: timestamp(contact.metAt),
-    createdAt: timestamp(contact.createdAt),
-    updatedAt: timestamp(contact.updatedAt),
-    deletedAt: timestamp(contact.deletedAt),
-    relationship: {
-      ...contact.relationship,
-      lastTouchAt: timestamp(contact.relationship.lastTouchAt),
-      nextActionAt: timestamp(contact.relationship.nextActionAt),
-    },
-    privacy: {
-      ...contact.privacy,
-      noticeAt: timestamp(contact.privacy.noticeAt),
-      deletionRequestedAt: timestamp(contact.privacy.deletionRequestedAt),
-    },
-  };
-}
-
-export async function listContacts(session: WorkspaceSession): Promise<ContactRecord[]> {
-  const snapshot = await getDocs(query(
-    collection(firebaseServices().firestore, "contacts"),
-    where("officeId", "==", session.officeId),
-    where("ownerUid", "==", session.uid),
-    limit(100),
-  ));
-  return snapshot.docs
-    .map((item) => fromSnapshot(item.id, item.data()))
-    .filter((contact) => contact.deletedAt === null)
-    .sort((left, right) => right.createdAt - left.createdAt);
-}
-
-export async function saveContact(session: WorkspaceSession, draft: ContactDraft, existing?: ContactRecord) {
-  const firestore = firebaseServices().firestore;
-  if (!existing) {
-    const contact = createContact(draft, { officeId: session.officeId, ownerUid: session.uid }, Date.now());
-    await addDoc(collection(firestore, "contacts"), firestoreContact(contact));
+export async function saveContact(
+  _session: WorkspaceSession,
+  draft: ContactDraft,
+  existing?: ContactRecord,
+): Promise<void> {
+  if (existing) {
+    await apiClient.command<{ contactId: string; draft: ContactDraft }, { contact: ContactRecord }>(
+      "updateContact", { contactId: existing.id, draft }, createCommandId(_session.uid),
+    );
     return;
   }
 
-  await updateDoc(doc(firestore, "contacts", existing.id), {
-    fullName: draft.fullName.trim(),
-    phone: draft.phone.trim() || null,
-    phoneHash: null,
-    metAtPlace: draft.metAtPlace.trim() || null,
-    source: draft.source,
-    roles: [draft.role],
-    updatedAt: Timestamp.now(),
-  });
+  await apiClient.command<ContactDraft, { contact: ContactRecord }>(
+    "createContact", draft, createCommandId(_session.uid),
+  );
 }
 
-export async function archiveContact(contactId: string) {
-  const now = Timestamp.now();
-  await updateDoc(doc(firebaseServices().firestore, "contacts", contactId), { deletedAt: now, updatedAt: now });
+export async function archiveContact(session: WorkspaceSession, contactId: string): Promise<void> {
+  await apiClient.command<{ contactId: string }, { contactId: string }>(
+    "archiveContact", { contactId }, createCommandId(session.uid),
+  );
 }

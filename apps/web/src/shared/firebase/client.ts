@@ -1,6 +1,5 @@
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import { connectAuthEmulator, getAuth } from "firebase/auth";
-import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 import { connectStorageEmulator, getStorage } from "firebase/storage";
 
@@ -26,7 +25,6 @@ export function firebaseServices() {
   const app = getFirebaseApp();
   const services = {
     auth: getAuth(app),
-    firestore: getFirestore(app),
     functions: getFunctions(app, "europe-west8"),
     storage: getStorage(app),
   };
@@ -38,7 +36,6 @@ export function firebaseServices() {
   ) {
     const host = window.location.hostname;
     connectAuthEmulator(services.auth, `http://${host}:9099`, { disableWarnings: true });
-    connectFirestoreEmulator(services.firestore, host, 8080);
     connectFunctionsEmulator(services.functions, host, 5001);
     connectStorageEmulator(services.storage, host, 9199);
     emulatorsConnected = true;

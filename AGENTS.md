@@ -9,6 +9,8 @@ Spherepath is not a generic CRM. Every feature must advance one of these outcome
 - Web and mobile share domain types, runtime validation, pure rules, copy constants, analytics contracts, and design intent through `@spherepath/shared`.
 - Web and mobile do not share React components, navigation, authentication implementations, Firebase SDK instances, or concrete styling.
 - Firebase Web SDK belongs under `apps/web`; React Native Firebase belongs under `apps/mobile`; Firebase Admin belongs under `functions`.
+- Client Firebase SDKs are limited to Auth, Functions transport, and Storage. Feature code must not access Firestore directly or instantiate callable functions outside the platform API adapter.
+- Domain traffic follows view → React Query → feature resource → shared API client → callable Function. Mutations use idempotent command IDs and invalidate explicit shared query keys.
 - Trusted transitions are server commands. A client must not directly advance an opportunity, manufacture a stage event, or write verified delivery/webhook state.
 - Routes stay thin. Feature code follows `features/<feature>/{views,viewModels,resources,components}`.
 

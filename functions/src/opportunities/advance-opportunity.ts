@@ -6,6 +6,7 @@ import {
   type OpportunityStage,
 } from "../../../packages/shared/src/index";
 import { requireSpherepathClaims } from "../auth/claims.js";
+import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 
 interface OpportunityDocument {
   officeId: string;
@@ -23,7 +24,11 @@ export const advanceOpportunity = onCall(
   },
   async (request) => {
     const claims = requireSpherepathClaims(request);
-    const parsed = opportunityTransitionCommandSchema.safeParse(request.data);
+    const envelope = readApiEnvelope<unknown>(request.data, { command: true });
+    const parsed = opportunityTransitionCommandSchema.safeParse({
+      ...(typeof envelope.data === "object" && envelope.data !== null ? envelope.data : {}),
+      commandId: envelope.commandId,
+    });
     if (!parsed.success) {
       throw new HttpsError("invalid-argument", "Opportunity transition is invalid.", parsed.error.flatten());
     }
@@ -34,6 +39,7 @@ export const advanceOpportunity = onCall(
     const commandRef = firestore.collection("commands").doc(command.commandId);
     const eventRef = firestore.collection("stageEvents").doc();
 
+    return observeApiRequest("advanceOpportunity", envelope.requestId, async () => {
     const result = await firestore.runTransaction(async (transaction) => {
       const [opportunitySnapshot, commandSnapshot] = await Promise.all([
         transaction.get(opportunityRef),
@@ -41,7 +47,11 @@ export const advanceOpportunity = onCall(
       ]);
 
       if (commandSnapshot.exists) {
-        return commandSnapshot.data() as { opportunityId: string; toStage: OpportunityStage; eventId: string };
+        const receipt = commandSnapshot.data()!;
+        if (receipt.officeId !== claims.officeId || receipt.ownerUid !== claims.uid || receipt.type !== "advanceOpportunity") {
+          throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+        }
+        return receipt as { opportunityId: string; toStage: OpportunityStage; eventId: string };
       }
       if (!opportunitySnapshot.exists) {
         throw new HttpsError("not-found", "Opportunity was not found.");
@@ -91,8 +101,8 @@ export const advanceOpportunity = onCall(
       };
       transaction.create(commandRef, {
         ...receipt,
-        officeId: opportunity.officeId,
-        ownerUid: opportunity.ownerUid,
+        officeId: claims.officeId,
+        ownerUid: claims.uid,
         type: "advanceOpportunity",
       });
       return receipt;
@@ -103,5 +113,6 @@ export const advanceOpportunity = onCall(
       toStage: result.toStage,
       eventId: result.eventId,
     };
+    });
   },
 );

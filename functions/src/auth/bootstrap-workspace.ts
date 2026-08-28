@@ -1,6 +1,7 @@
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 
 interface BootstrapWorkspaceInput {
   displayName?: unknown;
@@ -31,12 +32,14 @@ export const bootstrapWorkspace = onCall<BootstrapWorkspaceInput>(
   async (request): Promise<WorkspaceIdentity> => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Authentication is required.");
 
-    const uid = request.auth.uid;
-    const email = typeof request.auth.token.email === "string" ? request.auth.token.email : "Spherepath kullanıcısı";
-    const fallbackName = typeof request.auth.token.name === "string"
-      ? request.auth.token.name
+    const envelope = readApiEnvelope<{ displayName?: unknown }>(request.data, { command: true });
+    return observeApiRequest("bootstrapWorkspace", envelope.requestId, async () => {
+    const uid = request.auth!.uid;
+    const email = typeof request.auth!.token.email === "string" ? request.auth!.token.email : "Spherepath kullanıcısı";
+    const fallbackName = typeof request.auth!.token.name === "string"
+      ? request.auth!.token.name
       : email.split("@")[0] || "Spherepath kullanıcısı";
-    const displayName = normalizeDisplayName(request.data?.displayName, fallbackName);
+    const displayName = normalizeDisplayName(envelope.data?.displayName, fallbackName);
     const firestore = getFirestore();
     const userRef = firestore.collection("users").doc(uid);
     const defaultOfficeRef = firestore.collection("offices").doc(`personal-${uid}`);
@@ -87,5 +90,6 @@ export const bootstrapWorkspace = onCall<BootstrapWorkspaceInput>(
     });
 
     return identity;
+    });
   },
 );

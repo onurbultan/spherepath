@@ -34,7 +34,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <button type="button" className="nav-item settings" onClick={() => void signOut()}><Settings size={19} aria-hidden /> Oturumu kapat</button>
       </aside>
       <main className="main-content">{children}</main>
-      <button type="button" className="record-button" aria-label="Yeni kayıt"><Plus size={28} aria-hidden /></button>
+      <Link href="/capture" className="record-button" aria-label="Yeni kayıt"><Plus size={28} aria-hidden /></Link>
     </div>
   );
 }

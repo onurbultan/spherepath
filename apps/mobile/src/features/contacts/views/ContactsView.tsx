@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ActivityIndicator,
   Alert,
@@ -12,6 +13,7 @@ import {
 import { Archive, ContactRound, LogOut, Pencil, Plus, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
+  apiQueryKeys,
   contactDraftSchema,
   contactRoleLabels,
   contactRoles,
@@ -51,45 +53,19 @@ function messageFrom(error: unknown) {
 export default function ContactsView() {
   const theme = useSpTheme();
   const { session, signOut } = useSession();
-  const [contacts, setContacts] = useState<ContactRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [panelOpen, setPanelOpen] = useState(false);
   const [editing, setEditing] = useState<ContactRecord | null>(null);
   const [draft, setDraft] = useState<ContactDraft>(emptyDraft);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (!session) return;
-    setLoading(true);
-    try {
-      setContacts(await listContacts(session));
-      setError(null);
-    } catch (nextError) {
-      setError(messageFrom(nextError));
-    } finally {
-      setLoading(false);
-    }
-  }, [session]);
-
-  useEffect(() => {
-    if (!session) return;
-    let active = true;
-    void listContacts(session)
-      .then((items) => {
-        if (active) {
-          setContacts(items);
-          setError(null);
-        }
-      })
-      .catch((nextError: unknown) => {
-        if (active) setError(messageFrom(nextError));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => { active = false; };
-  }, [session]);
+  const contactsQuery = useQuery({
+    queryKey: apiQueryKeys.contacts,
+    queryFn: listContacts,
+    enabled: Boolean(session),
+  });
+  const contacts = contactsQuery.data ?? [];
 
   function openCreate() {
     setEditing(null);
@@ -116,7 +92,10 @@ export default function ContactsView() {
     try {
       await saveContact(session, parsed.data, editing ?? undefined);
       setPanelOpen(false);
-      await refresh();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
+      ]);
     } catch (nextError) {
       setError(messageFrom(nextError));
     } finally {
@@ -127,7 +106,7 @@ export default function ContactsView() {
   function remove(contact: ContactRecord) {
     Alert.alert("Kişiyi arşivle", `${contact.fullName ?? "Bu kişi"} kişi listesinden kaldırılsın mı?`, [
       { text: "Vazgeç", style: "cancel" },
-      { text: "Arşivle", style: "destructive", onPress: () => void archiveContact(contact.id).then(refresh).catch((nextError: unknown) => setError(messageFrom(nextError))) },
+      { text: "Arşivle", style: "destructive", onPress: () => session && void archiveContact(session, contact.id).then(() => Promise.all([queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }), queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview })])).catch((nextError: unknown) => setError(messageFrom(nextError))) },
     ]);
   }
 
@@ -141,9 +120,9 @@ export default function ContactsView() {
         </View>
 
         <Pressable onPress={openCreate} style={({ pressed }) => [styles.primary, { backgroundColor: theme.ask, opacity: pressed ? .72 : 1 }]}><Plus color={theme.onAsk} size={19} /><SpText style={{ color: theme.onAsk }}>Yeni kişi</SpText></Pressable>
-        {error && !panelOpen ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText variant="bodySmall" color="ask">{error}</SpText></View> : null}
+        {(error ?? (contactsQuery.error ? messageFrom(contactsQuery.error) : null)) && !panelOpen ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText variant="bodySmall" color="ask">{error ?? messageFrom(contactsQuery.error)}</SpText></View> : null}
 
-        {loading ? <View style={styles.state}><ActivityIndicator color={theme.deed} /><SpText color="secondary">Kişiler yükleniyor…</SpText></View> : contacts.length === 0 ? (
+        {contactsQuery.isPending ? <View style={styles.state}><ActivityIndicator color={theme.deed} /><SpText color="secondary">Kişiler yükleniyor…</SpText></View> : contacts.length === 0 ? (
           <SpCard style={styles.empty}><View style={[styles.largeIcon, { backgroundColor: theme.deedBg }]}><ContactRound color={theme.deed} size={24} /></View><SpText variant="title">İlk kişini ekle</SpText><SpText color="secondary">Ad veya tanımlayıcı, kaynak ve rol başlangıç için yeterli.</SpText></SpCard>
         ) : contacts.map((contact) => (
           <SpCard key={contact.id} style={styles.card}>
