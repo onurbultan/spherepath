@@ -105,6 +105,12 @@ h2 { font-size: 20px; line-height: 1.2; }
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .choice-chip { min-height: 38px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--background); color: var(--text-secondary); cursor: pointer; }
 .choice-chip.selected { border-color: var(--deed); background: var(--deed-bg); color: var(--deed); }
+.referral-strip { display: grid; grid-template-columns: minmax(180px, 1.2fr) repeat(4, minmax(180px, 1fr)); gap: 12px; align-items: stretch; margin-bottom: 24px; }
+.referral-strip h2 { margin: 4px 0 0; font-size: 20px; }
+.referral-mini { display: flex; flex-direction: column; gap: 5px; }
+.referral-mini span, .referral-mini small { color: var(--text-secondary); }
+.privacy-hint { padding: 14px; border-radius: 12px; background: var(--deed-bg); color: var(--deed); font-size: 14px; }
+@media (max-width: 1100px) { .referral-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .optional { color: var(--text-tertiary); font-weight: 400; }
 .inline-link { display: inline-flex; align-items: center; justify-content: center; }
 .today-header { max-width: none; display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }

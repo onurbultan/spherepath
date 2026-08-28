@@ -44,6 +44,16 @@ describe("callable API vertical slice", () => {
     const listed = (await listContacts(envelope(undefined, "request-list"))).data as { contacts: Array<{ id: string }> };
     expect(listed.contacts.map((contact) => contact.id)).toEqual([created.contact.id]);
 
+    const createReferral = httpsCallable(functions, "createReferral");
+    const referralRequest = envelope({ sourceContactId: created.contact.id, referredContactId: null, referredLabel: "Integration Referral" }, "request-referral-1", "command-create-referral");
+    const referral = (await createReferral(referralRequest)).data as { referral: { id: string; status: string } };
+    const referralReplay = (await createReferral({ ...referralRequest, requestId: "request-referral-2" })).data as { referral: { id: string } };
+    expect(referral.referral.status).toBe("first_contact_pending");
+    expect(referralReplay.referral.id).toBe(referral.referral.id);
+    const listReferrals = httpsCallable(functions, "listReferrals");
+    const listedReferrals = (await listReferrals(envelope(undefined, "request-list-referrals"))).data as { referrals: Array<{ id: string; referredContactName: string }> };
+    expect(listedReferrals.referrals).toEqual([expect.objectContaining({ id: referral.referral.id, referredContactName: "Integration Referral" })]);
+
     const recordInteraction = httpsCallable(functions, "recordInteraction");
     const interactionRequest = envelope({
       contactId: created.contact.id,

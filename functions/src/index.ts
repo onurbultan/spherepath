@@ -8,5 +8,6 @@ export { bootstrapWorkspace } from "./auth/bootstrap-workspace.js";
 export { archiveContact, createContact, listContacts, updateContact } from "./contacts/contact-api.js";
 export { recordInteraction } from "./interactions/record-interaction.js";
 export { advanceListing, createListing, listListings } from "./listings/listing-api.js";
+export { createReferral, listReferrals } from "./referrals/referral-api.js";
 export { getTodayOverview } from "./today/get-today-overview.js";
 export { health } from "./system/health.js";

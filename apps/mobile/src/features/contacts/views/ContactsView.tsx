@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Archive, ContactRound, LogOut, Pencil, Plus, X } from "lucide-react-native";
+import { Archive, ContactRound, LogOut, Pencil, Plus, UserRoundPlus, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   apiQueryKeys,
@@ -19,6 +19,7 @@ import {
   contactRoles,
   contactSourceLabels,
   contactSources,
+  referralDraftSchema,
   type ContactDraft,
 } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
@@ -27,6 +28,7 @@ import { SpText } from "@/shared/ui/SpText";
 import { radius, space } from "@/shared/ui/tokens.generated";
 import { useSpTheme } from "@/shared/ui/theme";
 import { archiveContact, listContacts, saveContact, type ContactRecord } from "../resources/contacts";
+import { listReferrals, saveReferral } from "@/features/referrals/resources/referrals";
 
 const emptyDraft: ContactDraft = {
   fullName: "",
@@ -59,6 +61,9 @@ export default function ContactsView() {
   const [draft, setDraft] = useState<ContactDraft>(emptyDraft);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [referralSource, setReferralSource] = useState<ContactRecord | null>(null);
+  const [referredContactId, setReferredContactId] = useState("");
+  const [referredLabel, setReferredLabel] = useState("");
 
   const contactsQuery = useQuery({
     queryKey: apiQueryKeys.contacts,
@@ -66,6 +71,7 @@ export default function ContactsView() {
     enabled: Boolean(session),
   });
   const contacts = contactsQuery.data ?? [];
+  const referralsQuery = useQuery({ queryKey: apiQueryKeys.referrals, queryFn: listReferrals, enabled: Boolean(session) });
 
   function openCreate() {
     setEditing(null);
@@ -110,6 +116,16 @@ export default function ContactsView() {
     ]);
   }
 
+  async function submitReferral() {
+    if (!session || !referralSource) return;
+    const parsed = referralDraftSchema.safeParse({ sourceContactId: referralSource.id, referredContactId: referredContactId || null, referredLabel: referredContactId ? null : referredLabel.trim() || null });
+    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Referans bilgisini kontrol et.");
+    setPending(true); setError(null);
+    try { await saveReferral(session, parsed.data); setReferralSource(null); setReferredContactId(""); setReferredLabel(""); await Promise.all([queryClient.invalidateQueries({ queryKey: apiQueryKeys.referrals }), queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }), queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview })]); }
+    catch (nextError) { setError(messageFrom(nextError)); }
+    finally { setPending(false); }
+  }
+
   const inputStyle = [styles.input, { backgroundColor: theme.background, borderColor: theme.line, color: theme.textPrimary }];
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={[styles.safe, { backgroundColor: theme.background }]}>
@@ -120,6 +136,7 @@ export default function ContactsView() {
         </View>
 
         <Pressable onPress={openCreate} style={({ pressed }) => [styles.primary, { backgroundColor: theme.ask, opacity: pressed ? .72 : 1 }]}><Plus color={theme.onAsk} size={19} /><SpText style={{ color: theme.onAsk }}>Yeni kişi</SpText></Pressable>
+        {(referralsQuery.data?.length ?? 0) > 0 ? <View style={styles.referrals}><SpText variant="eyebrow" color="deed">İLK TEMAS BEKLEYEN REFERANSLAR</SpText>{referralsQuery.data?.slice(0, 3).map((referral) => <SpCard key={referral.id} style={styles.referralCard}><SpText variant="title">{referral.referredContactName}</SpText><SpText variant="bodySmall" color="secondary">{referral.sourceContactName} aracılığıyla · Aydınlatma bekliyor</SpText></SpCard>)}</View> : null}
         {(error ?? (contactsQuery.error ? messageFrom(contactsQuery.error) : null)) && !panelOpen ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText variant="bodySmall" color="ask">{error ?? messageFrom(contactsQuery.error)}</SpText></View> : null}
 
         {contactsQuery.isPending ? <View style={styles.state}><ActivityIndicator color={theme.deed} /><SpText color="secondary">Kişiler yükleniyor…</SpText></View> : contacts.length === 0 ? (
@@ -129,7 +146,7 @@ export default function ContactsView() {
             <View style={styles.contactTop}><View style={[styles.avatar, { backgroundColor: theme.deedBg }]}><SpText variant="title" color="deed">{(contact.fullName ?? contact.label ?? "?").slice(0, 1).toLocaleUpperCase("tr-TR")}</SpText></View><View style={styles.contactCopy}><SpText variant="title">{contact.fullName ?? contact.label}</SpText><SpText variant="bodySmall" color="secondary">{contact.phone ?? "Telefon eklenmedi"}</SpText></View></View>
             <View style={styles.chips}><View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="bodySmall" color="secondary">{contactRoleLabels[contact.roles[0] ?? "unknown"]}</SpText></View><View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="bodySmall" color="secondary">{contactSourceLabels[contact.source]}</SpText></View></View>
             <SpText variant="bodySmall" color="secondary">{contact.metAtPlace || "Tanışma yeri belirtilmedi"}</SpText>
-            <View style={[styles.actions, { borderTopColor: theme.line }]}><Pressable onPress={() => openEdit(contact)} style={styles.action}><Pencil color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Düzenle</SpText></Pressable><Pressable onPress={() => remove(contact)} style={styles.action}><Archive color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Arşivle</SpText></Pressable></View>
+            <View style={[styles.actions, { borderTopColor: theme.line }]}><Pressable onPress={() => { setReferralSource(contact); setError(null); }} style={styles.action}><UserRoundPlus color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Referans</SpText></Pressable><Pressable onPress={() => openEdit(contact)} style={styles.action}><Pencil color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Düzenle</SpText></Pressable><Pressable onPress={() => remove(contact)} style={styles.action}><Archive color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Arşivle</SpText></Pressable></View>
           </SpCard>
         ))}
       </ScrollView>
@@ -148,6 +165,7 @@ export default function ContactsView() {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+      <Modal animationType="slide" onRequestClose={() => setReferralSource(null)} presentationStyle="pageSheet" visible={Boolean(referralSource)}><SafeAreaView style={[styles.safe, { backgroundColor: theme.card }]}><ScrollView contentContainerStyle={styles.form}><View style={styles.sheetHeader}><View><SpText variant="eyebrow" color="deed">REFERANS KAYDI</SpText><SpText variant="hero">{referralSource?.fullName ?? referralSource?.label}</SpText></View><Pressable onPress={() => setReferralSource(null)} style={[styles.iconButton, { borderColor: theme.line }]}><X color={theme.textSecondary} size={20} /></Pressable></View><SpText variant="title">Kayıtlı kişi · varsa</SpText><View style={styles.chips}><Pressable onPress={() => setReferredContactId("")} style={[styles.choice, { backgroundColor: !referredContactId ? theme.deedBg : theme.background, borderColor: !referredContactId ? theme.deed : theme.line }]}><SpText variant="bodySmall" color={!referredContactId ? "deed" : "secondary"}>Henüz kaydı yok</SpText></Pressable>{contacts.filter((item) => item.id !== referralSource?.id).map((item) => <Pressable key={item.id} onPress={() => setReferredContactId(item.id)} style={[styles.choice, { backgroundColor: referredContactId === item.id ? theme.deedBg : theme.background, borderColor: referredContactId === item.id ? theme.deed : theme.line }]}><SpText variant="bodySmall" color={referredContactId === item.id ? "deed" : "secondary"}>{item.fullName ?? item.label}</SpText></Pressable>)}</View>{!referredContactId ? <><SpText variant="title">Kısa tanım</SpText><TextInput placeholder="Örn. Komşusu Mehmet Bey" placeholderTextColor={theme.textTertiary} style={inputStyle} value={referredLabel} onChangeText={setReferredLabel} /></> : null}<View style={[styles.privacyHint, { backgroundColor: theme.deedBg }]}><SpText variant="bodySmall" color="deed">Bu referans doğrudan pazarlamaya alınmaz. İlk temasta aydınlatma tamamlanmalıdır.</SpText></View>{error ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText color="ask">{error}</SpText></View> : null}<Pressable disabled={pending} onPress={() => void submitReferral()} style={[styles.primary, { backgroundColor: theme.ask }]}><SpText style={{ color: theme.onAsk }}>{pending ? "Kaydediliyor…" : "Referansı kaydet"}</SpText></Pressable></ScrollView></SafeAreaView></Modal>
     </SafeAreaView>
   );
 }
@@ -162,6 +180,7 @@ const styles = StyleSheet.create({
   card: { gap: space.md }, contactTop: { flexDirection: "row", gap: space.md, alignItems: "center" }, contactCopy: { flex: 1, gap: space.xs },
   avatar: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" }, chips: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   chip: { paddingHorizontal: space.md, paddingVertical: space.sm, borderRadius: radius.sm },
+  referrals: { gap: space.sm }, referralCard: { gap: space.xs }, privacyHint: { padding: space.md, borderRadius: radius.md },
   actions: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: space.md, flexDirection: "row", gap: space.xl }, action: { minHeight: 40, flexDirection: "row", alignItems: "center", gap: space.sm },
   error: { padding: space.md, borderRadius: radius.md }, form: { padding: space.xl, paddingBottom: space["5xl"], gap: space.md },
   sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: space.md, marginBottom: space.lg },

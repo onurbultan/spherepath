@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ContactRound, Pencil, Plus, RefreshCw, X } from "lucide-react";
+import { Archive, ContactRound, Pencil, Plus, RefreshCw, UserRoundPlus, X } from "lucide-react";
 import {
   apiQueryKeys,
   contactDraftSchema,
@@ -10,12 +10,14 @@ import {
   contactRoles,
   contactSourceLabels,
   contactSources,
+  referralDraftSchema,
   type ContactDraft,
 } from "@spherepath/shared";
 import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
 import { useSession } from "@/features/auth/resources/session";
 import { archiveContact, listContacts, saveContact, type ContactRecord } from "../resources/contacts";
+import { listReferrals, saveReferral } from "@/features/referrals/resources/referrals";
 
 const emptyDraft: ContactDraft = {
   fullName: "",
@@ -47,6 +49,9 @@ export function ContactsView() {
   const [draft, setDraft] = useState<ContactDraft>(emptyDraft);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [referralSource, setReferralSource] = useState<ContactRecord | null>(null);
+  const [referredContactId, setReferredContactId] = useState("");
+  const [referredLabel, setReferredLabel] = useState("");
 
   const contactsQuery = useQuery({
     queryKey: apiQueryKeys.contacts,
@@ -54,6 +59,7 @@ export function ContactsView() {
     enabled: Boolean(session),
   });
   const contacts = contactsQuery.data ?? [];
+  const referralsQuery = useQuery({ queryKey: apiQueryKeys.referrals, queryFn: listReferrals, enabled: Boolean(session) });
 
   function openCreate() {
     setEditing(null);
@@ -109,6 +115,16 @@ export function ContactsView() {
     }
   }
 
+  async function submitReferral(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!session || !referralSource) return;
+    const parsed = referralDraftSchema.safeParse({ sourceContactId: referralSource.id, referredContactId: referredContactId || null, referredLabel: referredContactId ? null : referredLabel.trim() || null });
+    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Referans bilgisini kontrol et.");
+    setPending(true); setError(null);
+    try { await saveReferral(session, parsed.data); setReferralSource(null); setReferredContactId(""); setReferredLabel(""); await Promise.all([queryClient.invalidateQueries({ queryKey: apiQueryKeys.referrals }), queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }), queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview })]); }
+    catch (nextError) { setError(messageFrom(nextError)); }
+    finally { setPending(false); }
+  }
+
   return (
     <AppShell>
       <header className="page-header contacts-header">
@@ -117,6 +133,7 @@ export function ContactsView() {
       </header>
 
       {(error ?? (contactsQuery.error ? messageFrom(contactsQuery.error) : null)) && !panelOpen ? <p className="form-error notice" role="alert">{error ?? messageFrom(contactsQuery.error)}</p> : null}
+      {(referralsQuery.data?.length ?? 0) > 0 ? <section className="referral-strip" aria-label="Son referanslar"><div><p className="eyebrow">REFERANSLAR</p><h2>İlk temas bekleyenler</h2></div>{referralsQuery.data?.slice(0, 4).map((referral) => <SpCard key={referral.id} className="referral-mini"><strong>{referral.referredContactName}</strong><span>{referral.sourceContactName} aracılığıyla</span><small>İlk temas ve aydınlatma bekliyor</small></SpCard>)}</section> : null}
       {contactsQuery.isPending ? (
         <div className="content-state"><RefreshCw className="spin" size={22} aria-hidden /> Kişiler yükleniyor…</div>
       ) : contacts.length === 0 ? (
@@ -129,7 +146,7 @@ export function ContactsView() {
               <div className="contact-summary"><h2>{contact.fullName ?? contact.label}</h2><p>{contact.phone ?? "Telefon eklenmedi"}</p></div>
               <div className="contact-meta"><span>{contactRoleLabels[contact.roles[0] ?? "unknown"]}</span><span>{contactSourceLabels[contact.source]}</span></div>
               <p className="contact-place">{contact.metAtPlace || "Tanışma yeri belirtilmedi"}</p>
-              <div className="card-actions"><button type="button" onClick={() => openEdit(contact)}><Pencil size={16} aria-hidden /> Düzenle</button><button type="button" onClick={() => void remove(contact)}><Archive size={16} aria-hidden /> Arşivle</button></div>
+              <div className="card-actions"><button type="button" onClick={() => { setReferralSource(contact); setError(null); }}><UserRoundPlus size={16} aria-hidden /> Referans</button><button type="button" onClick={() => openEdit(contact)}><Pencil size={16} aria-hidden /> Düzenle</button><button type="button" onClick={() => void remove(contact)}><Archive size={16} aria-hidden /> Arşivle</button></div>
             </SpCard>
           ))}
         </section>
@@ -153,6 +170,7 @@ export function ContactsView() {
           </section>
         </div>
       ) : null}
+      {referralSource ? <div className="sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setReferralSource(null); }}><section className="form-sheet" role="dialog" aria-modal="true"><div className="sheet-heading"><div><p className="eyebrow">REFERANS KAYDI</p><h2>{referralSource.fullName ?? referralSource.label}</h2></div><button className="icon-action" aria-label="Kapat" type="button" onClick={() => setReferralSource(null)}><X size={20} /></button></div><form className="form-stack" onSubmit={submitReferral}><label>Kayıtlı kişi <span className="optional">varsa</span><select value={referredContactId} onChange={(event) => setReferredContactId(event.target.value)}><option value="">Henüz kişi kaydı yok</option>{contacts.filter((item) => item.id !== referralSource.id).map((item) => <option key={item.id} value={item.id}>{item.fullName ?? item.label}</option>)}</select></label>{!referredContactId ? <label>Kısa tanım<input placeholder="Örn. Komşusu Mehmet Bey" value={referredLabel} onChange={(event) => setReferredLabel(event.target.value)} /></label> : null}<p className="privacy-hint">Bu referans doğrudan pazarlama akışına alınmaz. İlk temasta aydınlatma tamamlanmalıdır.</p>{error ? <p className="form-error">{error}</p> : null}<button className="primary-action auth-submit" disabled={pending} type="submit">{pending ? "Kaydediliyor…" : "Referansı kaydet"}</button></form></section></div> : null}
     </AppShell>
   );
 }
