@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { ArrowRight, BriefcaseBusiness, Plus, RefreshCw, X } from "lucide-react";
+import { ArrowRight, BriefcaseBusiness, Clock3, Plus, RefreshCw, X } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   apiQueryKeys,
@@ -21,7 +21,7 @@ import { useSession } from "@/features/auth/resources/session";
 import { listContacts } from "@/features/contacts/resources/contacts";
 import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
-import { listOpportunities, moveOpportunity, saveOpportunity, type OpportunityRecord } from "../resources/opportunities";
+import { getOpportunityDetail, listOpportunities, moveOpportunity, saveOpportunity, type OpportunityRecord } from "../resources/opportunities";
 
 function localDateTime(days = 1): string {
   const date = new Date(Date.now() + days * 86_400_000);
@@ -34,7 +34,12 @@ function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Fırsat işlemi tamamlanamadı.";
 }
 
+const dateTime = (value: number) => new Intl.DateTimeFormat("tr-TR", {
+  day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+}).format(value);
+
 export function OpportunitiesView() {
+  const [referenceTime] = useState(Date.now);
   const { session } = useSession();
   const queryClient = useQueryClient();
   const opportunitiesQuery = useQuery({ queryKey: apiQueryKeys.opportunities, queryFn: listOpportunities });
@@ -43,6 +48,12 @@ export function OpportunitiesView() {
   const contacts = contactsQuery.data ?? [];
   const [createOpen, setCreateOpen] = useState(false);
   const [moving, setMoving] = useState<OpportunityRecord | null>(null);
+  const [selected, setSelected] = useState<OpportunityRecord | null>(null);
+  const detailQuery = useQuery({
+    queryKey: apiQueryKeys.opportunityDetail(selected?.id ?? "none"),
+    queryFn: () => getOpportunityDetail(selected!.id),
+    enabled: Boolean(selected),
+  });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contactId, setContactId] = useState("");
@@ -59,6 +70,7 @@ export function OpportunitiesView() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunities }),
       queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
+      ...(moving ? [queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunityDetail(moving.id) })] : []),
     ]);
   }
 
@@ -101,7 +113,9 @@ export function OpportunitiesView() {
   return <AppShell>
     <header className="page-header contacts-header"><div><p className="eyebrow">PORTFÖY ÜRETİMİ</p><h1>Fırsatlar</h1><p className="context-sentence">Her lead’i net bir aşama ve kabul edilmiş sonraki aksiyonla ilerlet.</p></div><button className="primary-action inline-action" disabled={!contacts.length} onClick={() => { setCreateOpen(true); setError(null); }} type="button"><Plus size={18} /> Yeni fırsat</button></header>
     {error && !createOpen && !moving ? <p className="form-error notice">{error}</p> : null}
-    {opportunitiesQuery.isPending ? <div className="content-state"><RefreshCw className="spin" size={22} /> Fırsatlar yükleniyor…</div> : opportunitiesQuery.error ? <p className="form-error notice">{messageFrom(opportunitiesQuery.error)}</p> : opportunities.length === 0 ? <SpCard className="empty-state"><div className="card-icon secondary"><BriefcaseBusiness size={20} /></div><h2>İlk fırsatını oluştur</h2><p>Kayıtlı bir kişiyi lead’e dönüştür ve sıradaki gerçek aksiyonu belirle.</p>{contacts.length ? <button className="secondary-action" onClick={() => setCreateOpen(true)} type="button">Fırsat oluştur</button> : <p>Önce bir kişi eklemelisin.</p>}</SpCard> : <section className="opportunity-grid" aria-label="Fırsatlar">{opportunities.map((opportunity) => <SpCard key={opportunity.id} className="opportunity-card"><div className="opportunity-top"><span className={`stage-badge stage-${opportunity.stage}`}>{opportunityStageLabels[opportunity.stage]}</span><span>{opportunityTypeLabels[opportunity.type]}</span></div><h2>{opportunity.subjectContactName}</h2><p>{opportunity.nextActionAt ? `${opportunity.nextActionType ? nextActionTypeLabels[opportunity.nextActionType] : "Sonraki aksiyon"} · ${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(opportunity.nextActionAt)}` : "Fırsat kapandı"}</p>{nextOpportunityStages(opportunity.stage).length ? <button className="secondary-action inline-action" onClick={() => openMove(opportunity)} type="button">Aşamayı ilerlet <ArrowRight size={16} /></button> : null}</SpCard>)}</section>}
+    {opportunitiesQuery.isPending ? <div className="content-state"><RefreshCw className="spin" size={22} /> Fırsatlar yükleniyor…</div> : opportunitiesQuery.error ? <p className="form-error notice">{messageFrom(opportunitiesQuery.error)}</p> : opportunities.length === 0 ? <SpCard className="empty-state"><div className="card-icon secondary"><BriefcaseBusiness size={20} /></div><h2>İlk fırsatını oluştur</h2><p>Kayıtlı bir kişiyi lead’e dönüştür ve sıradaki gerçek aksiyonu belirle.</p>{contacts.length ? <button className="secondary-action" onClick={() => setCreateOpen(true)} type="button">Fırsat oluştur</button> : <p>Önce bir kişi eklemelisin.</p>}</SpCard> : <section className="opportunity-grid" aria-label="Fırsatlar">{opportunities.map((opportunity) => <SpCard key={opportunity.id} className="opportunity-card"><div className="opportunity-top"><span className={`stage-badge stage-${opportunity.stage}`}>{opportunityStageLabels[opportunity.stage]}</span><span>{opportunityTypeLabels[opportunity.type]}</span></div><h2>{opportunity.subjectContactName}</h2><p>{opportunity.nextActionAt ? `${opportunity.nextActionType ? nextActionTypeLabels[opportunity.nextActionType] : "Sonraki aksiyon"} · ${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(opportunity.nextActionAt)}` : "Fırsat kapandı"}</p><div className="opportunity-actions"><button className="secondary-action inline-action" onClick={() => setSelected(opportunity)} type="button"><Clock3 size={16} /> Geçmiş</button>{nextOpportunityStages(opportunity.stage).length ? <button className="secondary-action inline-action" onClick={() => openMove(opportunity)} type="button">Aşamayı ilerlet <ArrowRight size={16} /></button> : null}</div></SpCard>)}</section>}
+
+    {selected ? <div className="sheet-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelected(null); }}><section className="form-sheet" role="dialog" aria-modal="true"><div className="sheet-heading"><div><p className="eyebrow">FIRSAT GEÇMİŞİ</p><h2>{selected.subjectContactName}</h2></div><button className="icon-action" aria-label="Kapat" onClick={() => setSelected(null)} type="button"><X size={20} /></button></div>{detailQuery.isPending ? <div className="content-state"><RefreshCw className="spin" size={20} /> Geçmiş yükleniyor…</div> : detailQuery.error ? <p className="form-error">{messageFrom(detailQuery.error)}</p> : <><div className="detail-summary"><span className={`stage-badge stage-${selected.stage}`}>{opportunityStageLabels[selected.stage]}</span><p>Bu aşamada {Math.max(0, Math.floor((referenceTime - selected.stageEnteredAt) / 86_400_000))} gündür.</p></div><ol className="stage-timeline">{detailQuery.data?.stageEvents.map((stageEvent) => <li key={stageEvent.id}><div className="timeline-dot" /><div><strong>{opportunityStageLabels[stageEvent.toStage as OpportunityStage] ?? stageEvent.toStage}</strong><time>{dateTime(stageEvent.occurredAt)}</time>{stageEvent.reason ? <p>{stageEvent.reason}</p> : null}</div></li>)}</ol></>}</section></div> : null}
 
     {createOpen ? <div className="sheet-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) setCreateOpen(false); }}><section className="form-sheet" role="dialog" aria-modal="true"><div className="sheet-heading"><div><p className="eyebrow">YENİ LEAD</p><h2>Fırsat oluştur</h2></div><button className="icon-action" aria-label="Kapat" onClick={() => setCreateOpen(false)} type="button"><X size={20} /></button></div><form className="form-stack" onSubmit={create}><label>Kişi<select value={selectedContactId} onChange={(event) => setContactId(event.target.value)}>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.fullName ?? contact.label}</option>)}</select></label><label>Fırsat türü<select value={type} onChange={(event) => setType(event.target.value as OpportunityType)}>{opportunityTypes.map((item) => <option key={item} value={item}>{opportunityTypeLabels[item]}</option>)}</select></label><div className="form-row"><label>Sonraki aksiyon<select value={actionType} onChange={(event) => setActionType(event.target.value as NextActionType)}>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</select></label><label>Tarih ve saat<input type="datetime-local" value={actionAt} onChange={(event) => setActionAt(event.target.value)} /></label></div>{error ? <p className="form-error">{error}</p> : null}<button className="primary-action auth-submit" disabled={pending} type="submit">{pending ? "Oluşturuluyor…" : "Fırsatı oluştur"}</button></form></section></div> : null}
 

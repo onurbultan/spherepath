@@ -154,6 +154,15 @@ h2 { font-size: 20px; line-height: 1.2; }
   .capture-actions { align-items: stretch; flex-direction: column; }
 }
 .opportunity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.opportunity-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.detail-summary { margin: 22px 0 28px; padding: 18px; border-radius: 14px; background: var(--background); }
+.detail-summary p { margin: 12px 0 0; color: var(--text-secondary); }
+.stage-timeline { list-style: none; margin: 0; padding: 0; }
+.stage-timeline li { position: relative; display: grid; grid-template-columns: 20px 1fr; gap: 12px; padding-bottom: 28px; }
+.stage-timeline li:not(:last-child)::before { content: ""; position: absolute; left: 5px; top: 12px; bottom: 0; width: 1px; background: var(--line); }
+.timeline-dot { z-index: 1; width: 11px; height: 11px; margin-top: 5px; border-radius: 50%; background: var(--deed); box-shadow: 0 0 0 4px var(--card); }
+.stage-timeline time { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: 13px; }
+.stage-timeline p { margin: 8px 0 0; color: var(--text-secondary); }
 .opportunity-card { min-height: 230px; display: flex; flex-direction: column; gap: 14px; }
 .opportunity-card > p { color: var(--text-secondary); }
 .opportunity-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-secondary); font-size: .82rem; }

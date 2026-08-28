@@ -3,9 +3,11 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   createOpportunity as createOpportunityEntity,
   opportunityDraftSchema,
+  type StageEvent,
   type Opportunity,
   type OpportunityDraft,
 } from "../../../packages/shared/src/index";
+import { z } from "zod";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 import { requireSpherepathClaims } from "../auth/claims.js";
 
@@ -13,6 +15,12 @@ export interface OpportunityRecord extends Opportunity {
   id: string;
   subjectContactName: string;
 }
+
+export interface OpportunityStageEventRecord extends StageEvent {
+  id: string;
+}
+
+const opportunityDetailSchema = z.object({ opportunityId: z.string().trim().min(1).max(128) }).strict();
 
 const callableOptions = {
   region: "europe-west8" as const,
@@ -58,6 +66,60 @@ function toOpportunityRecord(id: string, data: DocumentData, subjectContactName:
     updatedAt: millis(data.updatedAt) ?? 0,
   };
 }
+
+function toStageEventRecord(id: string, data: DocumentData): OpportunityStageEventRecord {
+  return {
+    ...(data as StageEvent),
+    id,
+    occurredAt: millis(data.occurredAt) ?? 0,
+    createdAt: millis(data.createdAt) ?? 0,
+  };
+}
+
+export const getOpportunityDetail = onCall(callableOptions, async (request): Promise<{
+  opportunity: OpportunityRecord;
+  stageEvents: OpportunityStageEventRecord[];
+}> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<unknown>(request.data);
+  const parsed = opportunityDetailSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Opportunity identifier is invalid.");
+
+  return observeApiRequest("getOpportunityDetail", envelope.requestId, async () => {
+    const firestore = getFirestore();
+    const opportunitySnapshot = await firestore.collection("opportunities").doc(parsed.data.opportunityId).get();
+    if (!opportunitySnapshot.exists || opportunitySnapshot.data()?.deletedAt !== null) {
+      throw new HttpsError("not-found", "Opportunity was not found.");
+    }
+    const opportunityData = opportunitySnapshot.data()!;
+    const canRead = opportunityData.officeId === claims.officeId &&
+      (opportunityData.ownerUid === claims.uid || claims.role === "broker");
+    if (!canRead) throw new HttpsError("permission-denied", "Opportunity is outside your workspace.");
+
+    const [contactSnapshot, eventsSnapshot] = await Promise.all([
+      firestore.collection("contacts").doc(opportunityData.subjectContactId as string).get(),
+      firestore.collection("stageEvents").where("entityId", "==", opportunitySnapshot.id).limit(100).get(),
+    ]);
+    const contact = contactSnapshot.data();
+    const stageEvents = eventsSnapshot.docs
+      .filter((item) => {
+        const data = item.data();
+        return data.entityType === "opportunity" && data.officeId === claims.officeId &&
+          (data.ownerUid === claims.uid || claims.role === "broker");
+      })
+      .map((item) => toStageEventRecord(item.id, item.data()))
+      .sort((left, right) => right.occurredAt - left.occurredAt);
+
+    return {
+      opportunity: toOpportunityRecord(
+        opportunitySnapshot.id,
+        opportunityData,
+        (contact?.fullName ?? contact?.label ?? "İsimsiz kişi") as string,
+      ),
+      stageEvents,
+    };
+  });
+});
 
 export const listOpportunities = onCall(callableOptions, async (request): Promise<{ opportunities: OpportunityRecord[] }> => {
   const claims = requireSpherepathClaims(request);

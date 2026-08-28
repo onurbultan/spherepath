@@ -4,6 +4,7 @@ import {
   type OpportunityDraft,
   type OpportunityStage,
   type OpportunityTransition,
+  type StageEvent,
 } from "@spherepath/shared";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
 import { apiClient } from "@/shared/api/client";
@@ -13,8 +14,15 @@ export interface OpportunityRecord extends Opportunity {
   subjectContactName: string;
 }
 
+export interface OpportunityStageEventRecord extends StageEvent { id: string }
+export interface OpportunityDetail { opportunity: OpportunityRecord; stageEvents: OpportunityStageEventRecord[] }
+
 export async function listOpportunities(): Promise<OpportunityRecord[]> {
   return (await apiClient.query<undefined, { opportunities: OpportunityRecord[] }>("listOpportunities", undefined)).opportunities;
+}
+
+export async function getOpportunityDetail(opportunityId: string): Promise<OpportunityDetail> {
+  return apiClient.query<{ opportunityId: string }, OpportunityDetail>("getOpportunityDetail", { opportunityId });
 }
 
 export async function saveOpportunity(session: WorkspaceSession, draft: OpportunityDraft): Promise<OpportunityRecord> {

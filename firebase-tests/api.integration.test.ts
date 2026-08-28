@@ -86,6 +86,17 @@ describe("callable API vertical slice", () => {
     const listedOpportunities = (await listOpportunities(envelope(undefined, "request-list-opportunities"))).data as { opportunities: Array<{ id: string; stage: string }> };
     expect(listedOpportunities.opportunities).toEqual([expect.objectContaining({ id: opportunity.opportunity.id, stage: "first_contact" })]);
 
+    const getOpportunityDetail = httpsCallable(functions, "getOpportunityDetail");
+    const detail = (await getOpportunityDetail(envelope(
+      { opportunityId: opportunity.opportunity.id },
+      "request-opportunity-detail",
+    ))).data as { opportunity: { id: string }; stageEvents: Array<{ fromStage: string | null; toStage: string }> };
+    expect(detail.opportunity.id).toBe(opportunity.opportunity.id);
+    expect(detail.stageEvents).toEqual([
+      expect.objectContaining({ fromStage: "new_lead", toStage: "first_contact" }),
+      expect.objectContaining({ fromStage: null, toStage: "new_lead" }),
+    ]);
+
     const getTodayOverview = httpsCallable(functions, "getTodayOverview");
     const today = (await getTodayOverview(envelope(undefined, "request-today"))).data as {
       overview: { stages: { relationship: number; lead: number }; tasks: Array<{ opportunityId?: string }> };
