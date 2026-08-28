@@ -1,0 +1,107 @@
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { HttpsError, onCall } from "firebase-functions/v2/https";
+import {
+  assertOpportunityTransition,
+  opportunityTransitionCommandSchema,
+  type FirsatAsamasi,
+} from "../../../packages/shared/src/index";
+import { requireSpherepathClaims } from "../auth/claims.js";
+
+interface OpportunityDocument {
+  officeId: string;
+  ownerUid: string;
+  stage: FirsatAsamasi;
+}
+
+export const advanceOpportunity = onCall(
+  {
+    region: "europe-west8",
+    cors: true,
+    maxInstances: 10,
+    memory: "256MiB",
+    timeoutSeconds: 60,
+  },
+  async (request) => {
+    const claims = requireSpherepathClaims(request);
+    const parsed = opportunityTransitionCommandSchema.safeParse(request.data);
+    if (!parsed.success) {
+      throw new HttpsError("invalid-argument", "Opportunity transition is invalid.", parsed.error.flatten());
+    }
+
+    const command = parsed.data;
+    const firestore = getFirestore();
+    const opportunityRef = firestore.collection("opportunities").doc(command.opportunityId);
+    const commandRef = firestore.collection("commands").doc(command.commandId);
+    const eventRef = firestore.collection("stageEvents").doc();
+
+    const result = await firestore.runTransaction(async (transaction) => {
+      const [opportunitySnapshot, commandSnapshot] = await Promise.all([
+        transaction.get(opportunityRef),
+        transaction.get(commandRef),
+      ]);
+
+      if (commandSnapshot.exists) {
+        return commandSnapshot.data() as { opportunityId: string; toStage: FirsatAsamasi; eventId: string };
+      }
+      if (!opportunitySnapshot.exists) {
+        throw new HttpsError("not-found", "Opportunity was not found.");
+      }
+
+      const opportunity = opportunitySnapshot.data() as OpportunityDocument;
+      const canManage = opportunity.officeId === claims.officeId &&
+        (opportunity.ownerUid === claims.uid || claims.role === "broker");
+      if (!canManage) throw new HttpsError("permission-denied", "Opportunity is outside your workspace.");
+
+      try {
+        assertOpportunityTransition(opportunity.stage, command.toStage);
+      } catch {
+        throw new HttpsError(
+          "failed-precondition",
+          `Opportunity cannot move from ${opportunity.stage} to ${command.toStage}.`,
+        );
+      }
+
+      const now = Timestamp.now();
+      const closing = command.toStage === "kazanildi" || command.toStage === "kayip";
+      transaction.update(opportunityRef, {
+        stage: command.toStage,
+        stageEnteredAt: now,
+        updatedAt: now,
+        closedAt: closing ? now : null,
+        lostReason: command.toStage === "kayip" ? command.lostReason : null,
+      });
+      transaction.create(eventRef, {
+        officeId: opportunity.officeId,
+        ownerUid: opportunity.ownerUid,
+        entityType: "opportunity",
+        entityId: opportunityRef.id,
+        fromStage: opportunity.stage,
+        toStage: command.toStage,
+        reason: command.reason,
+        commandId: command.commandId,
+        occurredAt: now,
+        createdAt: now,
+      });
+
+      const receipt = {
+        opportunityId: opportunityRef.id,
+        toStage: command.toStage,
+        eventId: eventRef.id,
+        createdAt: now,
+      };
+      transaction.create(commandRef, {
+        ...receipt,
+        officeId: opportunity.officeId,
+        ownerUid: opportunity.ownerUid,
+        type: "advanceOpportunity",
+      });
+      return receipt;
+    });
+
+    return {
+      opportunityId: result.opportunityId,
+      toStage: result.toStage,
+      eventId: result.eventId,
+    };
+  },
+);

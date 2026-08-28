@@ -1,0 +1,26 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /offices/{officeId}/voice/{uid}/{fileName} {
+      function ownsPath() {
+        return request.auth != null
+          && request.auth.token.officeId == officeId
+          && request.auth.uid == uid;
+      }
+
+      allow read: if ownsPath();
+      allow create: if ownsPath()
+        && fileName.matches('.*[.]m4a')
+        && request.resource.size > 0
+        && request.resource.size < 25 * 1024 * 1024
+        && request.resource.contentType.matches('audio/.*');
+      allow update: if false;
+      allow delete: if ownsPath();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

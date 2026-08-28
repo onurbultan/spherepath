@@ -1,0 +1,19 @@
+{
+  "name": "@spherepath/firebase-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --passWithNoTests --exclude firestore.rules.test.ts",
+    "test:rules": "vitest run firestore.rules.test.ts"
+  },
+  "dependencies": {
+    "@firebase/rules-unit-testing": "5.0.2",
+    "firebase": "12.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  }
+}

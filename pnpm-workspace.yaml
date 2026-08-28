@@ -1,0 +1,7 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "functions"
+  - "firebase-tests"
+
+nodeLinker: hoisted

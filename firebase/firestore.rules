@@ -1,0 +1,160 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function officeId() {
+      return request.auth.token.officeId;
+    }
+
+    function isBroker() {
+      return signedIn() && request.auth.token.role == 'broker';
+    }
+
+    function bounded(maximum) {
+      return request.query.limit != null && request.query.limit <= maximum;
+    }
+
+    function sameOffice() {
+      return signedIn() && resource.data.officeId == officeId();
+    }
+
+    function incomingSameOffice() {
+      return signedIn() && request.resource.data.officeId == officeId();
+    }
+
+    function ownsResource() {
+      return signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    function ownsIncoming() {
+      return signedIn() && request.resource.data.ownerUid == request.auth.uid;
+    }
+
+    function canReadPrivate() {
+      return sameOffice() && (ownsResource() || isBroker());
+    }
+
+    function immutableTenant() {
+      return request.resource.data.officeId == resource.data.officeId
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+    }
+
+    function contactBelongsToCaller(contactId) {
+      let contact = get(/databases/$(database)/documents/contacts/$(contactId)).data;
+      return contact.officeId == officeId()
+        && (contact.ownerUid == request.auth.uid || isBroker());
+    }
+
+    match /offices/{documentId} {
+      allow get: if signedIn() && documentId == officeId();
+      allow list, create, update, delete: if false;
+    }
+
+    match /users/{uid} {
+      allow get: if signedIn() && (uid == request.auth.uid || (isBroker() && sameOffice()));
+      allow list: if isBroker() && sameOffice() && bounded(100);
+      allow create, delete: if false;
+      allow update: if signedIn()
+        && uid == request.auth.uid
+        && request.resource.data.officeId == resource.data.officeId
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'phone', 'defaultRegions', 'monthlyPortfolioTarget',
+          'weeklyCapacity', 'updatedAt'
+        ]);
+    }
+
+    match /contacts/{contactId} {
+      allow get: if canReadPrivate();
+      allow list: if canReadPrivate() && bounded(200);
+      allow create: if incomingSameOffice()
+        && ownsIncoming()
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+      allow update: if canReadPrivate()
+        && immutableTenant()
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'phone', 'phoneHash', 'adSoyad', 'takmaEtiket', 'tanismaYeri',
+          'tanismaTarihi', 'kaynak', 'roller', 'relationship', 'updatedAt', 'deletedAt'
+        ])
+        && request.resource.data.relationship.diff(resource.data.relationship).affectedKeys().hasOnly([
+          'nextActionAt', 'nextActionType'
+        ]);
+      allow delete: if false;
+    }
+
+    match /interactions/{interactionId} {
+      allow get: if canReadPrivate();
+      allow list: if canReadPrivate() && bounded(200);
+      allow create: if incomingSameOffice()
+        && ownsIncoming()
+        && request.resource.data.contactId is string
+        && contactBelongsToCaller(request.resource.data.contactId)
+        && request.resource.data.occurredAt is timestamp
+        && request.resource.data.createdAt is timestamp;
+      allow update, delete: if false;
+    }
+
+    match /opportunities/{opportunityId} {
+      allow get: if canReadPrivate();
+      allow list: if canReadPrivate() && bounded(200);
+      allow create: if incomingSameOffice()
+        && ownsIncoming()
+        && contactBelongsToCaller(request.resource.data.subjectContactId)
+        && request.resource.data.stage == 'yeni_lead';
+      allow update: if canReadPrivate()
+        && immutableTenant()
+        && request.resource.data.stage == resource.data.stage
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'nextActionAt', 'estimatedValue', 'updatedAt', 'deletedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    match /dailyTasks/{taskId} {
+      allow get: if canReadPrivate();
+      allow list: if canReadPrivate() && bounded(100);
+      allow create, delete: if false;
+      allow update: if canReadPrivate()
+        && immutableTenant()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'completedAt', 'skippedReason', 'updatedAt'
+        ]);
+    }
+
+    match /stageEvents/{eventId} {
+      allow get: if canReadPrivate();
+      allow list: if canReadPrivate() && bounded(500);
+      allow create, update, delete: if false;
+    }
+
+    match /voiceNotes/{noteId} {
+      allow get: if canReadPrivate();
+      allow list: if canReadPrivate() && bounded(50);
+      allow create: if incomingSameOffice()
+        && ownsIncoming()
+        && request.resource.data.status == 'uploaded'
+        && request.resource.data.createdAt is timestamp;
+      allow update: if canReadPrivate()
+        && immutableTenant()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'contactId', 'interactionId', 'corrections'
+        ]);
+      allow delete: if ownsResource() && sameOffice();
+    }
+
+    match /commands/{commandId} {
+      allow get: if canReadPrivate();
+      allow list, create, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

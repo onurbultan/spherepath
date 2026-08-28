@@ -1,0 +1,32 @@
+node_modules/
+.turbo/
+dist/
+coverage/
+*.log
+*.tsbuildinfo
+
+# Environment and Firebase secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+apps/mobile/google-services.json
+apps/mobile/GoogleService-Info.plist
+
+# Web
+apps/web/.next/
+apps/web/out/
+
+# Mobile
+apps/mobile/.expo/
+apps/mobile/ios/
+apps/mobile/android/
+apps/mobile/.eas/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,41 @@
+{
+  "name": "spherepath",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.4",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "check": "pnpm typecheck && pnpm test && pnpm lint",
+    "design:generate": "node scripts/generate-design-tokens.mjs",
+    "design:check": "node scripts/generate-design-tokens.mjs --check",
+    "web:dev": "pnpm --filter @spherepath/web dev",
+    "web:build": "pnpm --filter @spherepath/web build",
+    "mobile:start": "pnpm --filter @spherepath/mobile start",
+    "mobile:ios": "pnpm --filter @spherepath/mobile ios",
+    "mobile:android": "pnpm --filter @spherepath/mobile android",
+    "emulators": "firebase emulators:start",
+    "test:rules": "firebase emulators:exec --only firestore \"pnpm --dir firebase-tests test:rules\"",
+    "firebase:deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes,storage",
+    "functions:build": "pnpm --filter @spherepath/functions build"
+  },
+  "devDependencies": {
+    "firebase-tools": "15.28.2",
+    "turbo": "2.10.12",
+    "typescript": "6.0.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "react": "19.2.3",
+      "react-dom": "19.2.3",
+      "react-native": "0.86.3",
+      "react-native-worklets": "0.10.1"
+    }
+  }
+}

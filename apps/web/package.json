@@ -1,0 +1,31 @@
+{
+  "name": "@spherepath/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "lint": "eslint .",
+    "start": "next start",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "next typegen && tsc --noEmit"
+  },
+  "dependencies": {
+    "@spherepath/shared": "workspace:*",
+    "@tanstack/react-query": "5.102.8",
+    "firebase": "12.18.0",
+    "lucide-react": "1.35.0",
+    "next": "16.3.3",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.3.3",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  }
+}

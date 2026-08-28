@@ -1,0 +1,48 @@
+/* Generated from @spherepath/shared design tokens. Do not edit by hand. */
+:root {
+  --deed: #1D4E6B;
+  --deed-bg: #DDE5EA;
+  --on-deed: #FFFFFF;
+  --ask: #A8412A;
+  --ask-bg: #F0E2DC;
+  --on-ask: #FFFFFF;
+  --background: #F6F7F3;
+  --card: #FFFFFF;
+  --chrome: #F0F2EC;
+  --sunk: #E7E9E3;
+  --line: #E2E5DD;
+  --text-primary: #16232C;
+  --text-secondary: #66757C;
+  --text-tertiary: #95A1A6;
+  --warm: #A9661F;
+  --warm-bg: #F1E5D4;
+  --cool: #68767C;
+  --cool-bg: #DFE3DD;
+  --good: #2C6349;
+  --good-bg: #DCE8E0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --deed: #83B6D6;
+    --deed-bg: #1B2C36;
+    --on-deed: #0B0F12;
+    --ask: #E08A6D;
+    --ask-bg: #2E211C;
+    --on-ask: #241410;
+    --background: #0E1215;
+    --card: #181F23;
+    --chrome: #131A1D;
+    --sunk: #0A0D0F;
+    --line: #252E33;
+    --text-primary: #DDE3DE;
+    --text-secondary: #93A2A8;
+    --text-tertiary: #6E7C82;
+    --warm: #D9A05C;
+    --warm-bg: #2C2317;
+    --cool: #93A2A8;
+    --cool-bg: #222A2E;
+    --good: #79B497;
+    --good-bg: #18271F;
+  }
+}
