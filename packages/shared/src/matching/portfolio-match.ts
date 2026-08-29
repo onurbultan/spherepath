@@ -37,7 +37,7 @@ export const portfolioItemDraftSchema = z.object({
   livingRoomCount: optionalNumber(20),
   areaM2: optionalNumber(1_000_000),
   landAreaM2: optionalNumber(10_000_000),
-  features: z.array(z.enum(["ground_floor", "no_elevator", "furnished", "sea_view", "parking", "garden", "gated_community", "middle_floor", "top_floor", "new_building"])).max(10),
+  features: z.array(z.enum(["ground_floor", "no_elevator", "furnished", "sea_view", "parking", "garden", "pool", "gated_community", "middle_floor", "top_floor", "new_building"])).max(12),
   attributes: z.array(z.string().trim().min(2).max(120)).max(20),
   authorizationType: z.enum(portfolioAuthorizationTypes),
   titleDeedType: z.enum(titleDeedTypes),
@@ -160,6 +160,7 @@ function itemSearchText(item: PortfolioItemDraft): string {
     sea_view: "deniz manzarali",
     parking: "otopark",
     garden: "bahce",
+    pool: "havuz",
     gated_community: "site icinde",
     middle_floor: "ara kat",
     top_floor: "cati kat",
@@ -184,6 +185,7 @@ function canonicalRequirement(value: string): string | null {
   if (/\b(otopark|park yeri|garaj)\b/u.test(normalized)) return "otopark";
   if (/\basansor\b/u.test(normalized)) return "asansor";
   if (/\b(bahce|genis bahce)\b/u.test(normalized)) return "bahce";
+  if (/\bhavuz\b/u.test(normalized)) return "havuz";
   if (/\bdeniz manzara/u.test(normalized)) return "deniz manzarali";
   if (/\bmustakil tapu\b/u.test(normalized)) return "mustakil tapu";
   if (/\b(hisse tapu|hisseli tapu)\b/u.test(normalized)) return "hisse tapu";
@@ -207,7 +209,7 @@ function hasKnownRequirement(item: PortfolioItemDraft, requirement: string): { k
     return { known: positive, present: positive && !explicitlyNotFronting };
   }
   const canonicalFeature: Partial<Record<string, PropertyFeature>> = {
-    otopark: "parking", asansor: "no_elevator", bahce: "garden", "deniz manzarali": "sea_view",
+    otopark: "parking", asansor: "no_elevator", bahce: "garden", havuz: "pool", "deniz manzarali": "sea_view",
   };
   const feature = canonicalFeature[canonical];
   if (feature === "no_elevator") {

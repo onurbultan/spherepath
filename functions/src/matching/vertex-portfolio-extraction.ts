@@ -26,7 +26,7 @@ const responseJsonSchema = {
     livingRoomCount: nullableNumber,
     areaM2: nullableNumber,
     landAreaM2: nullableNumber,
-    features: { type: "array", maxItems: 10, items: { type: "string", enum: ["ground_floor", "no_elevator", "furnished", "sea_view", "parking", "garden", "gated_community", "middle_floor", "top_floor", "new_building"] } },
+    features: { type: "array", maxItems: 12, items: { type: "string", enum: ["ground_floor", "no_elevator", "furnished", "sea_view", "parking", "garden", "pool", "gated_community", "middle_floor", "top_floor", "new_building"] } },
     attributes: { type: "array", maxItems: 20, items: { type: "string" } },
     authorizationType: { type: "string", enum: ["exclusive", "open", "verbal", "none", "unknown"] },
     titleDeedType: { type: "string", enum: ["full", "shared", "unknown"] },

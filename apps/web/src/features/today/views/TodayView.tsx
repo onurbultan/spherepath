@@ -44,6 +44,7 @@ export function TodayView() {
   const overview = query.data;
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
   const [taskError, setTaskError] = useState<string | null>(null);
+  const [taskSuccess, setTaskSuccess] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<TodayTask | null>(null);
   const [taskResolution, setTaskResolution] = useState<DailyTaskOutcome["status"]>("completed");
   const [resolutionNote, setResolutionNote] = useState("");
@@ -70,6 +71,7 @@ export function TodayView() {
     setRescheduledAt(tomorrowAtTen());
     setRescheduledActionType("call");
     setTaskError(null);
+    setTaskSuccess(null);
   }
 
   async function resolveTask() {
@@ -90,7 +92,8 @@ export function TodayView() {
     setTaskError(null);
     try {
       await finishDailyTask(session, parsed.data);
-      await queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview });
+      await queryClient.refetchQueries({ queryKey: apiQueryKeys.todayOverview, type: "active" });
+      setTaskSuccess(taskResolution === "rescheduled" ? "Görev yeni tarihe ertelendi." : taskResolution === "skipped" ? "Görev atlandı ve nedeni kaydedildi." : "Görev tamamlandı.");
       setActiveTask(null);
     } catch (error) {
       setTaskError(messageFrom(error));
@@ -111,6 +114,7 @@ export function TodayView() {
         </header>
 
         {query.error || taskError ? <p className="form-error notice" role="alert">{taskError ?? messageFrom(query.error)}</p> : null}
+        {taskSuccess ? <p className="form-success notice" role="status">{taskSuccess}</p> : null}
         {query.isPending && !overview ? <div className="content-state"><RefreshCw className="spin" size={22} aria-hidden /> Bugün görünümü hazırlanıyor…</div> : overview ? <>
           <section aria-labelledby="health-title" className="today-health">
             <div className="inline-section-heading"><div><h2 id="health-title">Beş aşamalı sistem sağlığı</h2><span>tanışmadan kapamaya kadar hunideki gerçek hacim</span></div><Link href="/opportunities">Detaylı rapor</Link></div>
@@ -140,7 +144,7 @@ export function TodayView() {
       </div>
       {activeTask ? (
         <div className="sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target && !completingTaskId) setActiveTask(null); }}>
-          <section className="form-sheet task-resolution-sheet" role="dialog" aria-modal="true" aria-labelledby="task-resolution-title">
+          <form className="form-sheet task-resolution-sheet" role="dialog" aria-modal="true" aria-labelledby="task-resolution-title" onSubmit={(event) => { event.preventDefault(); void resolveTask(); }}>
             <div className="sheet-heading">
               <div><p className="eyebrow">GÖREV SONUCU</p><h2 id="task-resolution-title">{activeTask.title}</h2><span className="sheet-subtitle">{activeTask.reason} · {dueLabel(activeTask.dueAt)}</span></div>
               <button className="icon-action" aria-label="Kapat" disabled={Boolean(completingTaskId)} onClick={() => setActiveTask(null)} type="button"><X size={20} /></button>
@@ -158,9 +162,9 @@ export function TodayView() {
             {taskError ? <p className="form-error" role="alert">{taskError}</p> : null}
             <div className="task-resolution-actions">
               <Link className="secondary-action inline-link" href={`/capture?contactId=${encodeURIComponent(activeTask.contactId)}`}>Teması ayrıntılı kaydet</Link>
-              <button className="primary-action inline-action" disabled={Boolean(completingTaskId)} onClick={() => void resolveTask()} type="button">{completingTaskId ? "Kaydediliyor…" : taskResolution === "rescheduled" ? "Yeni tarihe ertele" : "Sonucu kaydet"}</button>
+              <button className="primary-action inline-action" disabled={Boolean(completingTaskId)} type="submit">{completingTaskId ? "Kaydediliyor…" : taskResolution === "rescheduled" ? "Yeni tarihe ertele" : "Sonucu kaydet"}</button>
             </div>
-          </section>
+          </form>
         </div>
       ) : null}
     </AppShell>

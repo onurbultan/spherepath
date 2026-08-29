@@ -97,6 +97,10 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
     if (!snapshot.exists) return null;
     const data = snapshot.data()!;
     if (["needs_review", "confirmed", "discarded", "failed"].includes(data.status as string)) return null;
+    // Written notes are processed synchronously by their callable with a raw
+    // transcript. The Firestore create trigger can race that callable, but it
+    // must never try to download a non-existent audio object.
+    if (data.inputMode !== "audio" && rawOverride === undefined) return null;
     if ((data.emulatorImmediate === true || data.textTestImmediate === true || data.textImmediate === true) && rawOverride === undefined) return null;
     const now = Timestamp.now();
     transaction.update(noteRef, {

@@ -30,13 +30,14 @@ export const getTodayOverview = onCall(
     let listingsQuery: FirebaseFirestore.Query = firestore.collection("listings").where("officeId", "==", claims.officeId);
     let dealsQuery: FirebaseFirestore.Query = firestore.collection("deals").where("officeId", "==", claims.officeId);
     let interactionsQuery: FirebaseFirestore.Query = firestore.collection("interactions").where("officeId", "==", claims.officeId);
-    const completionsQuery: FirebaseFirestore.Query = firestore.collection("dailyTaskCompletions").where("officeId", "==", claims.officeId);
+    let completionsQuery: FirebaseFirestore.Query = firestore.collection("dailyTaskCompletions").where("officeId", "==", claims.officeId);
     if (claims.role !== "broker") {
       contactsQuery = contactsQuery.where("ownerUid", "==", claims.uid);
       opportunitiesQuery = opportunitiesQuery.where("ownerUid", "==", claims.uid);
       listingsQuery = listingsQuery.where("ownerUid", "==", claims.uid);
       dealsQuery = dealsQuery.where("ownerUid", "==", claims.uid);
       interactionsQuery = interactionsQuery.where("ownerUid", "==", claims.uid);
+      completionsQuery = completionsQuery.where("ownerUid", "==", claims.uid);
     }
 
     const [contactsSnapshot, opportunitiesSnapshot, listingsSnapshot, dealsSnapshot, completionsSnapshot, interactionsSnapshot] = await Promise.all([
@@ -133,7 +134,7 @@ export const completeDailyTask = onCall(
         }
         if (!targetRef || !target?.exists) throw new HttpsError("not-found", "Daily task target was not found.");
         const targetData = target.data()!;
-        if (targetData.officeId !== claims.officeId || (targetData.ownerUid !== claims.uid && claims.role !== "broker") || targetData.deletedAt !== null) {
+        if (targetData.officeId !== claims.officeId || (targetData.ownerUid !== claims.uid && claims.role !== "broker") || targetData.deletedAt instanceof Timestamp) {
           throw new HttpsError("permission-denied", "Daily task target is outside your workspace.");
         }
 

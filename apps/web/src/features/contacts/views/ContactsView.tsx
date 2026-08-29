@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, ChevronLeft, ChevronRight, ContactRound, Download, MessageSquarePlus, Pencil, Plus, RefreshCw, Search, ShieldCheck, UserRoundPlus, X } from "lucide-react";
 import {
@@ -78,6 +78,7 @@ function nextActionLabel(contact: ContactRecord): string {
 export function ContactsView() {
   const [referenceTime] = useState(Date.now);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { session } = useSession();
   const queryClient = useQueryClient();
   const [panelOpen, setPanelOpen] = useState(false);
@@ -97,6 +98,7 @@ export function ContactsView() {
   const [segmentFilter, setSegmentFilter] = useState<"all" | "pending" | "buyers" | "stale">("all");
   const [page, setPage] = useState(1);
   const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
+  const [dismissedDeepLink, setDismissedDeepLink] = useState<string | null>(null);
 
   const contactsQuery = useQuery({
     queryKey: apiQueryKeys.contacts,
@@ -104,6 +106,11 @@ export function ContactsView() {
     enabled: Boolean(session),
   });
   const contacts = contactsQuery.data ?? [];
+  const requestedContactId = searchParams.get("contactId");
+  const linkedContact = requestedContactId && dismissedDeepLink !== requestedContactId
+    ? contacts.find((contact) => contact.id === requestedContactId) ?? null
+    : null;
+  const activeSelectedContact = selectedContact ?? linkedContact;
   const normalizedSearch = search.trim().toLocaleLowerCase("tr-TR");
   const thirtyDaysAgo = referenceTime - 30 * 86_400_000;
   const visibleContacts = contacts.filter((contact) => {
@@ -135,7 +142,11 @@ export function ContactsView() {
   useSheetDismiss(panelOpen, () => setPanelOpen(false));
   useSheetDismiss(Boolean(referralSource), () => setReferralSource(null));
   useSheetDismiss(Boolean(privacyEditing), () => setPrivacyEditing(null));
-  useSheetDismiss(Boolean(selectedContact), () => setSelectedContact(null));
+  function closeContactDetail() {
+    setSelectedContact(null);
+    if (requestedContactId) setDismissedDeepLink(requestedContactId);
+  }
+  useSheetDismiss(Boolean(activeSelectedContact), closeContactDetail);
 
   function exportContacts() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(visibleContacts, null, 2)], { type: "application/json" }));
@@ -258,23 +269,23 @@ export function ContactsView() {
         </section>
       )}
 
-      {selectedContact ? (
-        <div className="sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelectedContact(null); }}>
+      {activeSelectedContact ? (
+        <div className="sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeContactDetail(); }}>
           <section className="form-sheet contact-detail-sheet" role="dialog" aria-modal="true">
             <div className="sheet-heading">
-              <div><p className="eyebrow">KİŞİ DETAYI</p><h2>{selectedContact.fullName ?? selectedContact.label}</h2><span className="sheet-subtitle">{contactRoleLabels[selectedContact.roles[0] ?? "unknown"]} · {contactSourceLabels[selectedContact.source]}</span></div>
-              <button className="icon-action" aria-label="Kapat" type="button" onClick={() => setSelectedContact(null)}><X size={20} /></button>
+              <div><p className="eyebrow">KİŞİ DETAYI</p><h2>{activeSelectedContact.fullName ?? activeSelectedContact.label}</h2><span className="sheet-subtitle">{contactRoleLabels[activeSelectedContact.roles[0] ?? "unknown"]} · {contactSourceLabels[activeSelectedContact.source]}</span></div>
+              <button className="icon-action" aria-label="Kapat" type="button" onClick={closeContactDetail}><X size={20} /></button>
             </div>
             <div className="contact-detail-actions">
-              <button className="primary-action inline-action" type="button" onClick={() => router.push(`/capture?contactId=${encodeURIComponent(selectedContact.id)}`)}><MessageSquarePlus size={16} /> Temas kaydet</button>
-              <button className="secondary-action inline-action" type="button" onClick={() => { setSelectedContact(null); setReferralSource(selectedContact); }}><UserRoundPlus size={16} /> Referans</button>
+              <button className="primary-action inline-action" type="button" onClick={() => router.push(`/capture?contactId=${encodeURIComponent(activeSelectedContact.id)}`)}><MessageSquarePlus size={16} /> Temas kaydet</button>
+              <button className="secondary-action inline-action" type="button" onClick={() => { closeContactDetail(); setReferralSource(activeSelectedContact); }}><UserRoundPlus size={16} /> Referans</button>
             </div>
-            <div className="contact-detail-facts"><div><span>Telefon</span><strong>{selectedContact.phone ?? "Eklenmedi"}</strong></div><div><span>Tanışma yeri</span><strong>{selectedContact.metAtPlace || "Belirtilmedi"}</strong></div><div><span>Son temas</span><strong>{relativeDate(selectedContact.relationship.lastTouchAt)}</strong></div><div><span>Sonraki adım</span><strong>{nextActionLabel(selectedContact)}</strong></div></div>
-            {selectedContact.memory.keyThingsToRemember.length ? <div className="contact-detail-section"><p className="eyebrow">HATIRLANACAKLAR</p><ul>{selectedContact.memory.keyThingsToRemember.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}
-            {selectedContact.memory.propertyPreferences.preferredLocations.length || selectedContact.memory.propertyPreferences.mustHaves.length ? <div className="contact-detail-section"><p className="eyebrow">GAYRİMENKUL HAFIZASI</p><div className="opportunity-highlights">{selectedContact.memory.propertyPreferences.preferredLocations.map((item) => <span key={item}>{item}</span>)}{selectedContact.memory.propertyPreferences.mustHaves.map((item) => <span key={item}>Olmazsa olmaz: {item}</span>)}</div></div> : null}
-            <ContactInteractionTimeline contactId={selectedContact.id} />
-            <div className="contact-detail-section"><p className="eyebrow">UYUM</p><div className="privacy-status"><span className={selectedContact.privacy.noticeStatus === "completed" ? "compliant" : "pending"}>{selectedContact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</span><span>{selectedContact.privacy.marketingConsent === "granted" ? "Pazarlama izni var" : "Pazarlama izni yok"}</span></div></div>
-            <div className="contact-detail-footer"><button className="secondary-action inline-action" onClick={() => { setSelectedContact(null); setPrivacyEditing(selectedContact); setPrivacy(privacyDraft(selectedContact)); }} type="button"><ShieldCheck size={16} /> Uyumu düzenle</button><button className="secondary-action inline-action" onClick={() => { setSelectedContact(null); openEdit(selectedContact); }} type="button"><Pencil size={16} /> Düzenle</button><button className="secondary-action danger-secondary inline-action" onClick={() => void remove(selectedContact)} type="button"><Archive size={16} /> Arşivle</button></div>
+            <div className="contact-detail-facts"><div><span>Telefon</span><strong>{activeSelectedContact.phone ?? "Eklenmedi"}</strong></div><div><span>Tanışma yeri</span><strong>{activeSelectedContact.metAtPlace || "Belirtilmedi"}</strong></div><div><span>Son temas</span><strong>{relativeDate(activeSelectedContact.relationship.lastTouchAt)}</strong></div><div><span>Sonraki adım</span><strong>{nextActionLabel(activeSelectedContact)}</strong></div></div>
+            {activeSelectedContact.memory.keyThingsToRemember.length ? <div className="contact-detail-section"><p className="eyebrow">HATIRLANACAKLAR</p><ul>{activeSelectedContact.memory.keyThingsToRemember.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}
+            {activeSelectedContact.memory.propertyPreferences.preferredLocations.length || activeSelectedContact.memory.propertyPreferences.mustHaves.length ? <div className="contact-detail-section"><p className="eyebrow">GAYRİMENKUL HAFIZASI</p><div className="opportunity-highlights">{activeSelectedContact.memory.propertyPreferences.preferredLocations.map((item) => <span key={item}>{item}</span>)}{activeSelectedContact.memory.propertyPreferences.mustHaves.map((item) => <span key={item}>Olmazsa olmaz: {item}</span>)}</div></div> : null}
+            <ContactInteractionTimeline contactId={activeSelectedContact.id} />
+            <div className="contact-detail-section"><p className="eyebrow">UYUM</p><div className="privacy-status"><span className={activeSelectedContact.privacy.noticeStatus === "completed" ? "compliant" : "pending"}>{activeSelectedContact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</span><span>{activeSelectedContact.privacy.marketingConsent === "granted" ? "Pazarlama izni var" : "Pazarlama izni yok"}</span></div></div>
+            <div className="contact-detail-footer"><button className="secondary-action inline-action" onClick={() => { closeContactDetail(); setPrivacyEditing(activeSelectedContact); setPrivacy(privacyDraft(activeSelectedContact)); }} type="button"><ShieldCheck size={16} /> Uyumu düzenle</button><button className="secondary-action inline-action" onClick={() => { closeContactDetail(); openEdit(activeSelectedContact); }} type="button"><Pencil size={16} /> Düzenle</button><button className="secondary-action danger-secondary inline-action" onClick={() => void remove(activeSelectedContact)} type="button"><Archive size={16} /> Arşivle</button></div>
           </section>
         </div>
       ) : null}

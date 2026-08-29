@@ -65,6 +65,7 @@ export type PropertyFeature =
   | "sea_view"
   | "parking"
   | "garden"
+  | "pool"
   | "gated_community"
   | "middle_floor"
   | "top_floor"

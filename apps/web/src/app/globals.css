@@ -294,6 +294,8 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .review-banner { display: flex; align-items: flex-start; gap: var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--space-lg); background: var(--background); }
 .review-banner p { color: var(--text-secondary); font-size: 12.5px; margin-top: 3px; }
 .privacy-hint { padding: 12px 13px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--background); color: var(--text-secondary); font-size: 12.5px; line-height: 1.5; }
+.privacy-hint.compliance-warning { border-color: color-mix(in srgb, var(--warm) 34%, var(--line)); background: var(--warm-bg); color: var(--text-primary); }
+.privacy-hint.compliance-warning a { color: var(--deed); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
 .privacy-copy { color: var(--text-secondary); font-size: 12.5px; }
 
 /* --- status badges ------------------------------------------------------- */
@@ -661,6 +663,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .stage-timeline strong { font-size: 13.5px; font-weight: 600; }
 .stage-timeline time { display: block; margin-top: 3px; color: var(--text-tertiary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 12px; }
 .stage-timeline p { margin: 6px 0 0; color: var(--text-secondary); font-size: 13px; }
+.opportunity-detail-actions { position: sticky; bottom: calc(var(--space-4xl) * -1); margin: 0 calc(var(--space-3xl) * -1) calc(var(--space-4xl) * -1); padding: var(--space-lg) var(--space-3xl) var(--space-2xl); border-top: 1px solid var(--line); background: var(--card); display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 
 /* --- listings and office pool -------------------------------------------- */
 

@@ -11,7 +11,7 @@ import type {
 } from "../domain/entities.js";
 
 export const propertyTypes = ["apartment", "villa", "detached_house", "land", "commercial"] as const satisfies readonly PropertyType[];
-export const propertyFeatures = ["ground_floor", "no_elevator", "furnished", "sea_view", "parking", "garden", "gated_community", "middle_floor", "top_floor", "new_building"] as const satisfies readonly PropertyFeature[];
+export const propertyFeatures = ["ground_floor", "no_elevator", "furnished", "sea_view", "parking", "garden", "pool", "gated_community", "middle_floor", "top_floor", "new_building"] as const satisfies readonly PropertyFeature[];
 export const authorizationTypes = ["exclusive", "open", "verbal", "unknown"] as const satisfies readonly AuthorizationType[];
 export const listingStatuses = ["preparing", "active", "reserved", "sold", "rented", "removed"] as const satisfies readonly ListingStatus[];
 export const currencyCodes = ["TRY", "GBP", "USD", "EUR"] as const satisfies readonly CurrencyCode[];
@@ -21,7 +21,7 @@ export const propertyTypeLabels: Record<PropertyType, string> = {
 };
 export const propertyFeatureLabels: Record<PropertyFeature, string> = {
   ground_floor: "Zemin kat", no_elevator: "Asansörsüz", furnished: "Eşyalı", sea_view: "Deniz manzaralı",
-  parking: "Otoparklı", garden: "Bahçeli", gated_community: "Site içinde", middle_floor: "Ara kat",
+  parking: "Otoparklı", garden: "Bahçeli", pool: "Havuzlu", gated_community: "Site içinde", middle_floor: "Ara kat",
   top_floor: "Çatı katı", new_building: "Yeni bina",
 };
 export const authorizationTypeLabels: Record<AuthorizationType, string> = {
@@ -38,7 +38,7 @@ export const listingDraftSchema = z.object({
   propertyType: z.enum(propertyTypes),
   roomCount: z.number().nonnegative().max(100).nullable(),
   areaM2: z.number().positive().max(1_000_000).nullable(),
-  features: z.array(z.enum(propertyFeatures)).max(10),
+  features: z.array(z.enum(propertyFeatures)).max(12),
   authorizationType: z.enum(authorizationTypes),
   askingPrice: z.number().positive().max(1_000_000_000_000),
   currency: z.enum(currencyCodes),
