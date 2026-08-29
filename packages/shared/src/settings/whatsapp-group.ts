@@ -12,6 +12,15 @@ export const whatsappGroupConfigurationSchema = z.object({
 
 export type WhatsAppGroupConfiguration = z.infer<typeof whatsappGroupConfigurationSchema>;
 
+export function parseWhatsAppGroupConfigurationRecord(record: Record<string, unknown>) {
+  return whatsappGroupConfigurationSchema.safeParse({
+    businessPhoneNumberId: record.businessPhoneNumberId,
+    subject: record.subject,
+    description: record.description,
+    joinApprovalMode: record.joinApprovalMode,
+  });
+}
+
 export interface WhatsAppGroupIntegrationView extends WhatsAppGroupConfiguration {
   officeId: string;
   webhookUrl: string;

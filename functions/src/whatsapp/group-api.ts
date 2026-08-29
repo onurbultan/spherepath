@@ -5,6 +5,7 @@ import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 import {
   classifyInboxText,
   emptyWhatsAppGroupIntegration,
+  parseWhatsAppGroupConfigurationRecord,
   whatsappGroupConfigurationSchema,
   type WhatsAppGroupConfiguration,
   type WhatsAppGroupIntegrationView,
@@ -103,14 +104,19 @@ export const createWhatsAppOfficeGroup = onCall({ ...callableOptions, secrets: [
     const db = getFirestore(); const ref = db.collection(integrationCollection).doc(claims.officeId); const commandRef = db.collection("commands").doc(envelope.commandId!);
     const configuration = await db.runTransaction(async (transaction): Promise<WhatsAppGroupConfiguration | null> => {
       const [snapshot, receipt] = await Promise.all([transaction.get(ref), transaction.get(commandRef)]);
-      if (receipt.exists) return null;
+      if (receipt.exists) {
+        if (receipt.data()?.status === "failed") {
+          throw new HttpsError("failed-precondition", "The previous WhatsApp group creation attempt failed.");
+        }
+        return null;
+      }
       if (!snapshot.exists) throw new HttpsError("failed-precondition", "Save the WhatsApp group configuration first.");
       const data = snapshot.data()!;
       if (data.groupId && data.status === "active") {
         transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "createWhatsAppOfficeGroup", status: "completed", createdAt: Timestamp.now() });
         return null;
       }
-      const parsed = whatsappGroupConfigurationSchema.safeParse(data);
+      const parsed = parseWhatsAppGroupConfigurationRecord(data);
       if (!parsed.success) throw new HttpsError("failed-precondition", "WhatsApp group configuration is incomplete.");
       const now = Timestamp.now();
       transaction.update(ref, { status: "creating", lastError: null, updatedAt: now });

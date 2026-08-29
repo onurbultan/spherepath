@@ -25,6 +25,13 @@ const statusLabels = {
 } as const;
 
 const messageFrom = (error: unknown) => error instanceof Error ? error.message : "WhatsApp grup işlemi tamamlanamadı.";
+const readableMetaError = (message: string | null) => {
+  if (!message) return null;
+  if (message.includes("#131215") || message.includes("not eligible to access Groups APIs")) {
+    return "Bu WhatsApp telefon numarası Groups API kullanımına uygun değil. Meta tarafından Groups API erişimi verilen bir üretim numarası bağlayın.";
+  }
+  return message;
+};
 
 export function WhatsAppGroupSettingsCard() {
   const { session } = useSession(); const queryClient = useQueryClient();
@@ -47,8 +54,22 @@ export function WhatsAppGroupSettingsCard() {
 
   async function createGroup() {
     if (!session || !isBroker) return; setPending(true); setError(null); setMessage(null);
-    try { await createWhatsAppOfficeGroup(session); await queryClient.invalidateQueries({ queryKey: apiQueryKeys.whatsappGroupIntegration }); setMessage("Meta uyumlu ofis grubu oluşturuldu."); }
-    catch (nextError) { setError(messageFrom(nextError)); } finally { setPending(false); }
+    try {
+      const next = await createWhatsAppOfficeGroup(session);
+      await queryClient.invalidateQueries({ queryKey: apiQueryKeys.whatsappGroupIntegration });
+      if (next.status === "error") {
+        setError(readableMetaError(next.lastError) ?? "Meta grup oluşturma isteğini reddetti.");
+        return;
+      }
+      if (next.status === "active") setMessage("Meta uyumlu ofis grubu oluşturuldu.");
+      else if (next.status === "creating") setMessage("Grup oluşturma isteği Meta'ya iletildi. Sonuç webhook ile güncellenecek.");
+      else setError("Grup oluşturma işlemi tamamlanmadı. Meta bağlantısını kontrol edin.");
+    }
+    catch (nextError) {
+      const latest = await loadWhatsAppGroupIntegration().catch(() => null);
+      if (latest) queryClient.setQueryData(apiQueryKeys.whatsappGroupIntegration, latest);
+      setError(readableMetaError(latest?.lastError ?? null) ?? messageFrom(nextError));
+    } finally { setPending(false); }
   }
 
   async function copy(value: string, type: "webhook" | "invite") {
@@ -78,7 +99,7 @@ export function WhatsAppGroupSettingsCard() {
         {integration.groupId ? <div className="privacy-hint"><strong>Grup ID</strong><br /><span className="code-value">{integration.groupId}</span></div> : <p className="privacy-hint">Grup oluşturulduğunda kimlik ve davet bağlantısı burada görünecek.</p>}
         {integration.inviteLink ? <div className="inline-actions"><a className="secondary-action inline-link" href={integration.inviteLink} rel="noreferrer" target="_blank"><ExternalLink size={16} /> Davet bağlantısını aç</a><button className="secondary-action inline-action" onClick={() => void copy(integration.inviteLink!, "invite")} type="button">{copied === "invite" ? <Check size={15} /> : <Copy size={15} />} Kopyala</button></div> : null}
         {integration.lastMessageAt ? <p className="privacy-hint">Son grup mesajı: {new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(integration.lastMessageAt)}</p> : null}
-        {integration.lastError ? <p className="form-error">{integration.lastError}</p> : null}
+        {integration.lastError ? <p className="form-error">{readableMetaError(integration.lastError)}</p> : null}
       </SpCard>
     </div>
   </section>;
