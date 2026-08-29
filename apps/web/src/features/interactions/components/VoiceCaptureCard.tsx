@@ -25,7 +25,7 @@ import {
 import type { WorkspaceSession } from "@/features/auth/resources/session";
 import type { ContactRecord } from "@/features/contacts/resources/contacts";
 import { SpCard } from "@/shared/ui/SpCard";
-import { confirmVoiceNote, discardVoiceNote, getLatestReviewableVoiceNote, getVoiceNote, submitVoiceTextTest, uploadAndRegisterVoiceNote } from "../resources/interactions";
+import { confirmVoiceNote, discardVoiceNote, getLatestReviewableVoiceNote, getVoiceNote, submitInteractionText, uploadAndRegisterVoiceNote } from "../resources/interactions";
 
 type VoiceStep = "idle" | "recording" | "uploading" | "processing" | "review" | "saved";
 
@@ -104,6 +104,7 @@ export function VoiceCaptureCard({ session, contacts, initialContactId, onSaved 
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [voiceNote, setVoiceNote] = useState<VoiceNoteView | null>(null);
+  const [inputMode, setInputMode] = useState<VoiceNoteView["inputMode"] | null>(null);
   const [channel, setChannel] = useState<ManualInteractionDraft["channel"]>("in_person");
   const [objective, setObjective] = useState<ManualInteractionDraft["objective"]>("get_acquainted");
   const [direction, setDirection] = useState<ManualInteractionDraft["direction"]>("mutual");
@@ -117,7 +118,7 @@ export function VoiceCaptureCard({ session, contacts, initialContactId, onSaved 
   const [includePropertyPreferences, setIncludePropertyPreferences] = useState(true);
   const [createOpportunity, setCreateOpportunity] = useState(false);
   const [opportunityType, setOpportunityType] = useState<OpportunityType | null>(null);
-  const [testTranscript, setTestTranscript] = useState("");
+  const [textTranscript, setTextTranscript] = useState("");
   const [createdOpportunityId, setCreatedOpportunityId] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -166,6 +167,7 @@ export function VoiceCaptureCard({ session, contacts, initialContactId, onSaved 
     void getLatestReviewableVoiceNote().then((note) => {
       if (cancelled || !note) return;
       setContactId(note.contactId);
+      setInputMode((current) => current ?? note.inputMode);
       if (note.status === "needs_review") {
         applyReview(note);
         return;
@@ -187,6 +189,7 @@ export function VoiceCaptureCard({ session, contacts, initialContactId, onSaved 
   }, [applyReview, pollVoiceNote]);
 
   async function uploadRecording(blob: Blob, durationMs: number) {
+    setInputMode("audio");
     setStep("uploading");
     try {
       const voiceNoteId = await uploadAndRegisterVoiceNote(session, contactId, blob, durationMs);
@@ -198,17 +201,18 @@ export function VoiceCaptureCard({ session, contacts, initialContactId, onSaved 
     }
   }
 
-  async function runTextTest() {
-    const transcript = testTranscript.trim();
+  async function runInteractionText() {
+    const transcript = textTranscript.trim();
     if (transcript.length < 2) {
-      setError("Test için kısa bir görüşme özeti yazın veya yapıştırın.");
+      setError("Kısa bir görüşme özeti yazın veya yapıştırın.");
       return;
     }
     if (!contactId) return;
     setError(null);
+    setInputMode("manual_text");
     setStep("processing");
     try {
-      const voiceNoteId = await submitVoiceTextTest(session, contactId, transcript);
+      const voiceNoteId = await submitInteractionText(session, contactId, transcript);
       await pollVoiceNote(voiceNoteId);
     } catch (nextError) {
       setError(messageFrom(nextError));
@@ -341,13 +345,14 @@ export function VoiceCaptureCard({ session, contacts, initialContactId, onSaved 
     setStep("idle");
     setConfirmedAlone(false);
     setVoiceNote(null);
+    setInputMode(null);
     setSeconds(0);
     setApprovedKeyThings([]);
     setIncludePropertyPreferences(true);
     setCreateOpportunity(false);
     setOpportunityType(null);
     setNextActionTime(null);
-    setTestTranscript("");
+    setTextTranscript("");
     setCreatedOpportunityId(null);
     setError(null);
   }
@@ -369,8 +374,8 @@ export function VoiceCaptureCard({ session, contacts, initialContactId, onSaved 
   return (
     <SpCard className="voice-card">
       <div className="voice-heading"><div className="voice-icon"><Mic size={20} aria-hidden /></div><div><p className="eyebrow">GÖRÜŞME SONRASI</p><h2>10–45 saniyelik sesli not</h2></div></div>
-      {step === "saved" ? <div className="voice-success"><Check size={20} aria-hidden /><div><strong>{createdOpportunityId ? "Temas, takip ve fırsat oluşturuldu" : "Temas kaydedildi"}</strong><span>{voiceNote?.inputMode === "text_test" ? "Test metninden yalnız maskelenmiş ve onaylanmış kayıt tutuluyor." : "Ses dosyası silindi; yalnız maskelenmiş ve onaylanmış kayıt tutuluyor."}</span></div>{createdOpportunityId ? <Link className="secondary-action inline-link" href={`/opportunities?opportunityId=${encodeURIComponent(createdOpportunityId)}`}>Fırsatı görüntüle</Link> : null}<button className="secondary-action" type="button" onClick={reset}>Yeni not</button></div> : null}
-      {step === "idle" ? <><div className="voice-setup"><label>Kişi<select value={contactId} onChange={(event) => setContactId(event.target.value)}>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.fullName ?? contact.label}</option>)}</select></label><label className="voice-confirm"><input type="checkbox" checked={confirmedAlone} onChange={(event) => setConfirmedAlone(event.target.checked)} /><span><strong>Görüşme bitti; karşı tarafı kaydetmiyorum.</strong><small>Bu özellik yalnızca kendi özetiniz içindir. Aktif görüşme sırasında kullanmayın.</small></span></label><button className="primary-action inline-action voice-start" type="button" disabled={!confirmedAlone} onClick={() => void startRecording()}><Mic size={18} aria-hidden /> Kaydı başlat</button></div>{process.env.NODE_ENV === "development" ? <section className="voice-text-test"><div><p className="eyebrow">GEÇİCİ TEST ARACI</p><h3>Metinle çıkarım akışını çalıştır</h3><span>Speech-to-Text atlanır; maskeleme, Gemini çıkarımı ve onay süreci aynen çalışır.</span></div><textarea maxLength={4_000} value={testTranscript} onChange={(event) => setTestTranscript(event.target.value)} placeholder="Örnek: Ayşe Hanım Kadıköy'de 3+1 bir daire arıyor. Bütçesi 12–15 milyon TL. Önümüzdeki hafta tekrar aramamı istedi." /><div className="voice-text-test-footer"><small>{testTranscript.length}/4000</small><button className="secondary-action inline-action" type="button" disabled={!contactId || testTranscript.trim().length < 2} onClick={() => void runTextTest()}><FileText size={17} aria-hidden /> Metni işle</button></div></section> : null}</> : null}
+      {step === "saved" ? <div className="voice-success"><Check size={20} aria-hidden /><div><strong>{createdOpportunityId ? "Temas, takip ve fırsat oluşturuldu" : "Temas kaydedildi"}</strong><span>{inputMode === "audio" ? "Ses dosyası silindi; yalnız maskelenmiş ve onaylanmış kayıt tutuluyor." : "Yazılı nottan yalnız maskelenmiş ve onaylanmış kayıt tutuluyor."}</span></div>{createdOpportunityId ? <Link className="secondary-action inline-link" href={`/opportunities?opportunityId=${encodeURIComponent(createdOpportunityId)}`}>Fırsatı görüntüle</Link> : null}<button className="secondary-action" type="button" onClick={reset}>Yeni not</button></div> : null}
+      {step === "idle" ? <><div className="voice-setup"><label>Kişi<select value={contactId} onChange={(event) => setContactId(event.target.value)}>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.fullName ?? contact.label}</option>)}</select></label><label className="voice-confirm"><input type="checkbox" checked={confirmedAlone} onChange={(event) => setConfirmedAlone(event.target.checked)} /><span><strong>Görüşme bitti; karşı tarafı kaydetmiyorum.</strong><small>Bu özellik yalnızca kendi özetiniz içindir. Aktif görüşme sırasında kullanmayın.</small></span></label><button className="primary-action inline-action voice-start" type="button" disabled={!confirmedAlone} onClick={() => void startRecording()}><Mic size={18} aria-hidden /> Kaydı başlat</button></div><section className="voice-text-test"><div><p className="eyebrow">YAZILI GÖRÜŞME NOTU</p><h3>Notu yapılandır</h3><span>Not maskelenir, yapay zekâ ile yapılandırılır ve kaydetmeden önce incelemenize sunulur.</span></div><textarea maxLength={4_000} value={textTranscript} onChange={(event) => setTextTranscript(event.target.value)} placeholder="Örnek: Ayşe Hanım Kadıköy'de 3+1 bir daire arıyor. Bütçesi 12–15 milyon TL. Önümüzdeki hafta tekrar aramamı istedi." /><div className="voice-text-test-footer"><small>{textTranscript.length}/4000</small><button className="secondary-action inline-action" type="button" disabled={!contactId || textTranscript.trim().length < 2} onClick={() => void runInteractionText()}><FileText size={17} aria-hidden /> Yapılandır ve incele</button></div></section></> : null}
       {step === "recording" ? <div className="voice-recording" role="status"><span className="recording-dot" /><strong>00:{String(seconds).padStart(2, "0")}</strong><span>{seconds < 10 ? `Kaydetmek için ${10 - seconds} sn daha` : "Kaydetmeye hazır"}</span><button className="secondary-action inline-action" type="button" onClick={stopRecording}><Square size={16} fill="currentColor" aria-hidden /> Durdur</button></div> : null}
       {step === "uploading" || step === "processing" ? <div className="voice-processing" role="status">{step === "uploading" ? <Upload size={20} aria-hidden /> : <LoaderCircle className="spin" size={20} aria-hidden />}<div><strong>{step === "uploading" ? "Ses yükleniyor" : "Not arka planda hazırlanıyor"}</strong><span>Başka bir sayfaya geçebilirsiniz; taslak hazır olduğunda buraya döndüğünüzde inceleme açılır.</span></div></div> : null}
       {step === "review" && voiceNote ? <div className="voice-review"><div className="review-heading"><div><p className="eyebrow">İNCELE VE ONAYLA</p><h2>Çıkarılan temas taslağı</h2></div><span className="review-badge">{voiceNote.inputMode === "text_test" ? "Test metni · " : ""}Kullanıcı onayı gerekli</span></div>{voiceNote.maskedCategories.length > 0 ? <div className="masked-warning"><AlertTriangle size={18} aria-hidden /><span>{voiceNote.maskedCategories.map((category) => sensitiveDataCategoryLabels[category]).join(", ")} maskelendi ve yeniden gösterilmeyecek.</span></div> : null}<div className="voice-review-grid"><label>Kanal<select value={channel} onChange={(event) => setChannel(event.target.value as ManualInteractionDraft["channel"])}>{interactionChannels.map((item) => <option key={item} value={item}>{interactionChannelLabels[item]}</option>)}</select></label><label>Amaç<select value={objective} onChange={(event) => setObjective(event.target.value as ManualInteractionDraft["objective"])}>{interactionObjectives.map((item) => <option key={item} value={item}>{interactionObjectiveLabels[item]}</option>)}</select></label><label>Yön<select value={direction} onChange={(event) => setDirection(event.target.value as ManualInteractionDraft["direction"])}><option value="mutual">Karşılıklı</option><option value="outbound">Giden</option><option value="inbound">Gelen</option></select></label><label>Görüşme sonucu<select value={askOutcome} onChange={(event) => setAskOutcome(event.target.value as ManualInteractionDraft["askOutcome"])}>{askOutcomes.map((item) => <option key={item} value={item}>{askOutcomeLabels[item]}</option>)}</select></label><label className="wide">Kısa sonuç<textarea value={outcome} onChange={(event) => setOutcome(event.target.value)} /></label><label className="wide">Güvenli özet<textarea value={noteSummary} onChange={(event) => setNoteSummary(event.target.value)} /></label><label>Sonraki aksiyon<select value={nextActionType ?? ""} onChange={(event) => { const value = (event.target.value || null) as ManualInteractionDraft["nextActionType"]; setNextActionType(value); if (!value) { setNextActionDays(null); setNextActionTime(null); setCreateOpportunity(false); } }}><option value="">Henüz yok</option>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</select></label><label>Kaç gün sonra<input type="number" min="0" max="3650" disabled={!nextActionType} value={nextActionDays ?? ""} onChange={(event) => setNextActionDays(event.target.value ? Number(event.target.value) : null)} /></label><label>Saat (opsiyonel)<input type="time" disabled={!nextActionType} value={nextActionTime ?? ""} onChange={(event) => setNextActionTime(event.target.value || null)} /></label></div>{reviewInsights?.keyThingsToRemember.length ? <section className="voice-insight-panel"><div><p className="eyebrow">HATIRLANACAKLAR</p><h3>Önemli bilgiler</h3></div><div className="voice-memory-list">{reviewInsights.keyThingsToRemember.map((item) => <label className="voice-memory-item" key={item}><input type="checkbox" checked={approvedKeyThings.includes(item)} onChange={(event) => setApprovedKeyThings((current) => event.target.checked ? [...current, item] : current.filter((value) => value !== item))} /><span>{item}</span></label>)}</div></section> : null}{preferenceLabels.length ? <section className="voice-insight-panel">{isSubjectProperty ? <div className="voice-insight-toggle"><span><strong>Görüşülen gayrimenkul</strong><small>Bu bilgiler kişinin arama tercihlerine eklenmez.</small></span></div> : <label className="voice-insight-toggle"><input type="checkbox" checked={includePropertyPreferences} onChange={(event) => setIncludePropertyPreferences(event.target.checked)} /><span><strong>Gayrimenkul tercihlerini kişi hafızasına ekle</strong><small>Yanlış bir çıkarım varsa bu seçimi kaldırabilirsiniz.</small></span></label>}<div className="voice-insight-chips">{preferenceLabels.map((item) => <span key={item}>{item}</span>)}</div></section> : null}{opportunityType ? <section className="voice-insight-panel"><label className="voice-insight-toggle"><input type="checkbox" disabled={!nextActionType || nextActionDays === null} checked={createOpportunity} onChange={(event) => setCreateOpportunity(event.target.checked)} /><span><strong>Bu görüşmeden fırsat oluştur</strong><small>Temas, kişi hafızası, görev ve fırsat tek onayla kaydedilir.</small></span></label>{createOpportunity ? <label>Fırsat türü<select value={opportunityType} onChange={(event) => setOpportunityType(event.target.value as OpportunityType)}>{Object.entries(opportunityTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label> : null}</section> : null}{reviewInsights?.suggestedActionReason ? <div className="voice-action-reason"><strong>Önerilen aksiyon</strong><span>{reviewInsights.suggestedActionReason}</span></div> : null}<div className="voice-review-actions"><button className="secondary-action danger-secondary inline-action" type="button" onClick={() => void discardReview()}><Trash2 size={17} aria-hidden /> Vazgeç ve taslağı sil</button><button className="primary-action inline-action" type="button" onClick={() => void submitReview()}><Check size={18} aria-hidden /> Onayla ve işi oluştur</button></div></div> : null}

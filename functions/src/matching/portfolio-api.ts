@@ -3,6 +3,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   contactMemorySchema,
   createPortfolioItem,
+  matchNotificationCommandSchema,
   portfolioItemDraftSchema,
   portfolioItemCommandSchema,
   portfolioTextInputSchema,
@@ -10,10 +11,11 @@ import {
   type PortfolioItem,
   type PortfolioItemDraft,
   type PortfolioItemRecord,
+  type PortfolioMatchNotificationRecord,
   type PortfolioMatchRecord,
 } from "../../../packages/shared/src/index.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
-import { requireSpherepathClaims } from "../auth/claims.js";
+import { requireSpherepathClaims, type SpherepathClaims } from "../auth/claims.js";
 import { extractPortfolioDraftWithVertex } from "./vertex-portfolio-extraction.js";
 
 const callableOptions = { region: "europe-west8" as const, cors: true, maxInstances: 10, memory: "256MiB" as const, timeoutSeconds: 60 };
@@ -38,6 +40,41 @@ async function loadOfficePortfolio(officeId: string): Promise<PortfolioItemRecor
   return documents
     .map((document) => toRecord(document.id, document.data(), names.get(document.data().ownerUid as string) ?? "Ofis danışmanı"))
     .sort((left, right) => right.updatedAt - left.updatedAt);
+}
+
+interface OwnedPortfolioMatch {
+  match: PortfolioMatchRecord;
+  ownerUid: string;
+}
+
+async function loadPortfolioMatches(claims: SpherepathClaims): Promise<OwnedPortfolioMatch[]> {
+  const firestore = getFirestore();
+  let query: FirebaseFirestore.Query = firestore.collection("contacts").where("officeId", "==", claims.officeId);
+  if (claims.role !== "broker") query = query.where("ownerUid", "==", claims.uid);
+  const [contactsSnapshot, portfolioItems] = await Promise.all([query.limit(200).get(), loadOfficePortfolio(claims.officeId)]);
+  const matches: OwnedPortfolioMatch[] = [];
+  for (const document of contactsSnapshot.docs) {
+    const data = document.data();
+    if (data.deletedAt !== null || data.privacy?.profilingObjection === true) continue;
+    const rawMemory = (data.memory ?? {}) as DocumentData;
+    const memory = contactMemorySchema.safeParse({ ...rawMemory, updatedAt: rawMemory.updatedAt instanceof Timestamp ? rawMemory.updatedAt.toMillis() : null });
+    if (!memory.success || !memory.data.propertyPreferences.transactionType) continue;
+    for (const portfolioItem of portfolioItems) {
+      const result = scorePortfolioItem(memory.data.propertyPreferences, portfolioItem);
+      if (!result.eligible || result.score < 60 || result.coverage < 40) continue;
+      matches.push({
+        ownerUid: data.ownerUid as string,
+        match: {
+          ...result,
+          contactId: document.id,
+          contactName: (data.fullName ?? data.label ?? "İsimsiz kişi") as string,
+          portfolioItem,
+        },
+      });
+    }
+  }
+  matches.sort((left, right) => right.match.score - left.match.score || right.match.coverage - left.match.coverage || right.match.portfolioItem.updatedAt - left.match.portfolioItem.updatedAt);
+  return matches.slice(0, 100);
 }
 
 export const extractPortfolioText = onCall(callableOptions, async (request): Promise<{ draft: PortfolioItemDraft }> => {
@@ -87,31 +124,75 @@ export const listPortfolioItems = onCall(callableOptions, async (request): Promi
 export const listPortfolioMatches = onCall(callableOptions, async (request): Promise<{ matches: PortfolioMatchRecord[] }> => {
   const claims = requireSpherepathClaims(request);
   const envelope = readApiEnvelope<undefined>(request.data);
-  return observeApiRequest("listPortfolioMatches", envelope.requestId, async () => {
+  return observeApiRequest("listPortfolioMatches", envelope.requestId, async () => ({ matches: (await loadPortfolioMatches(claims)).map((item) => item.match) }));
+});
+
+export const listMatchNotifications = onCall(callableOptions, async (request): Promise<{ notifications: PortfolioMatchNotificationRecord[] }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<undefined>(request.data);
+  return observeApiRequest("listMatchNotifications", envelope.requestId, async () => {
     const firestore = getFirestore();
-    let query: FirebaseFirestore.Query = firestore.collection("contacts").where("officeId", "==", claims.officeId);
-    if (claims.role !== "broker") query = query.where("ownerUid", "==", claims.uid);
-    const [contactsSnapshot, portfolioItems] = await Promise.all([query.limit(200).get(), loadOfficePortfolio(claims.officeId)]);
-    const matches: PortfolioMatchRecord[] = [];
-    for (const document of contactsSnapshot.docs) {
-      const data = document.data();
-      if (data.deletedAt !== null || data.privacy?.profilingObjection === true) continue;
-      const rawMemory = (data.memory ?? {}) as DocumentData;
-      const memory = contactMemorySchema.safeParse({ ...rawMemory, updatedAt: rawMemory.updatedAt instanceof Timestamp ? rawMemory.updatedAt.toMillis() : null });
-      if (!memory.success || !memory.data.propertyPreferences.transactionType) continue;
-      for (const portfolioItem of portfolioItems) {
-        const result = scorePortfolioItem(memory.data.propertyPreferences, portfolioItem);
-        if (!result.eligible || result.score < 60 || result.coverage < 40) continue;
-        matches.push({
-          ...result,
-          contactId: document.id,
-          contactName: (data.fullName ?? data.label ?? "İsimsiz kişi") as string,
-          portfolioItem,
+    const personalMatches = (await loadPortfolioMatches(claims)).filter((item) => item.ownerUid === claims.uid);
+    const existingSnapshot = await firestore.collection("matchNotifications").where("recipientUid", "==", claims.uid).limit(200).get();
+    const existing = new Map(existingSnapshot.docs.map((document) => [document.id, document.data()]));
+    const now = Timestamp.now();
+    const batch = firestore.batch();
+    let hasWrites = false;
+    const notifications = personalMatches.map<PortfolioMatchNotificationRecord>(({ match }) => {
+      const id = `${match.contactId}_${match.portfolioItem.id}`.replace(/[^a-zA-Z0-9_-]/gu, "_");
+      const stored = existing.get(id);
+      if (!stored) {
+        batch.set(firestore.collection("matchNotifications").doc(id), {
+          officeId: claims.officeId,
+          recipientUid: claims.uid,
+          contactId: match.contactId,
+          portfolioItemId: match.portfolioItem.id,
+          score: match.score,
+          coverage: match.coverage,
+          readAt: null,
+          createdAt: now,
+          updatedAt: now,
         });
+        hasWrites = true;
       }
-    }
-    matches.sort((left, right) => right.score - left.score || right.coverage - left.coverage || right.portfolioItem.updatedAt - left.portfolioItem.updatedAt);
-    return { matches: matches.slice(0, 100) };
+      return {
+        id,
+        match,
+        createdAt: stored ? millis(stored.createdAt) : now.toMillis(),
+        readAt: stored?.readAt instanceof Timestamp ? stored.readAt.toMillis() : null,
+      };
+    });
+    if (hasWrites) await batch.commit();
+    return { notifications };
+  });
+});
+
+export const markMatchNotificationsRead = onCall(callableOptions, async (request): Promise<{ markedCount: number }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<unknown>(request.data, { command: true });
+  const parsed = matchNotificationCommandSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Match notification command is invalid.", parsed.error.flatten());
+  return observeApiRequest("markMatchNotificationsRead", envelope.requestId, async () => {
+    const firestore = getFirestore();
+    const commandRef = firestore.collection("commands").doc(envelope.commandId!);
+    const refs = parsed.data.notificationIds.map((id) => firestore.collection("matchNotifications").doc(id));
+    await firestore.runTransaction(async (transaction) => {
+      const [receipt, ...snapshots] = await Promise.all([transaction.get(commandRef), ...refs.map((ref) => transaction.get(ref))]);
+      if (receipt.exists) {
+        const data = receipt.data()!;
+        if (data.officeId !== claims.officeId || data.ownerUid !== claims.uid || data.type !== "markMatchNotificationsRead") throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+        return;
+      }
+      const now = Timestamp.now();
+      snapshots.forEach((snapshot, index) => {
+        if (!snapshot.exists) return;
+        const data = snapshot.data()!;
+        if (data.officeId !== claims.officeId || data.recipientUid !== claims.uid) throw new HttpsError("permission-denied", "Match notification is outside your workspace.");
+        transaction.update(refs[index]!, { readAt: now, updatedAt: now });
+      });
+      transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "markMatchNotificationsRead", markedCount: snapshots.filter((snapshot) => snapshot.exists).length, createdAt: now });
+    });
+    return { markedCount: parsed.data.notificationIds.length };
   });
 });
 

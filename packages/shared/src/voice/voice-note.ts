@@ -11,7 +11,7 @@ import { opportunityDraftSchema } from "../opportunities/opportunity-draft.js";
 
 export const voiceNoteStatuses = ["queued", "processing", "needs_review", "confirmed", "discarded", "failed"] as const;
 export type VoiceNoteStatus = (typeof voiceNoteStatuses)[number];
-export type VoiceNoteInputMode = "audio" | "text_test";
+export type VoiceNoteInputMode = "audio" | "manual_text" | "text_test";
 
 export const sensitiveDataCategories = [
   "health",
@@ -105,6 +105,8 @@ export const registerVoiceTextTestSchema = z.object({
   transcript: z.string().trim().min(2).max(4_000),
 }).strict();
 
+export const registerInteractionTextSchema = registerVoiceTextTestSchema;
+
 export const voiceInteractionDraftSchema = z.object({
   channel: z.enum(interactionChannels).nullable(),
   objective: z.enum(interactionObjectives).nullable(),
@@ -149,6 +151,7 @@ export const discardVoiceNoteSchema = getVoiceNoteSchema;
 
 export type RegisterVoiceNoteInput = z.infer<typeof registerVoiceNoteSchema>;
 export type RegisterVoiceTextTestInput = z.infer<typeof registerVoiceTextTestSchema>;
+export type RegisterInteractionTextInput = z.infer<typeof registerInteractionTextSchema>;
 export type VoiceExtraction = z.infer<typeof voiceExtractionSchema>;
 export type VoiceInsights = z.infer<typeof voiceInsightsSchema>;
 export type VoicePropertyPreferences = z.infer<typeof voicePropertyPreferencesSchema>;

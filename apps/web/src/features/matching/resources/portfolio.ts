@@ -2,6 +2,7 @@ import {
   createCommandId,
   type PortfolioItemDraft,
   type PortfolioItemRecord,
+  type PortfolioMatchNotificationRecord,
   type PortfolioMatchRecord,
   type PortfolioSource,
 } from "@spherepath/shared";
@@ -14,6 +15,16 @@ export async function listPortfolioItems(): Promise<PortfolioItemRecord[]> {
 
 export async function listPortfolioMatches(): Promise<PortfolioMatchRecord[]> {
   return (await apiClient.query<undefined, { matches: PortfolioMatchRecord[] }>("listPortfolioMatches", undefined)).matches;
+}
+
+export async function listMatchNotifications(): Promise<PortfolioMatchNotificationRecord[]> {
+  return (await apiClient.query<undefined, { notifications: PortfolioMatchNotificationRecord[] }>("listMatchNotifications", undefined)).notifications;
+}
+
+export async function markMatchNotificationsRead(session: WorkspaceSession, notificationIds: string[]): Promise<void> {
+  await apiClient.command<{ notificationIds: string[] }, { markedCount: number }>(
+    "markMatchNotificationsRead", { notificationIds }, createCommandId(session.uid),
+  );
 }
 
 export async function analyzePortfolioText(text: string, source: PortfolioSource): Promise<PortfolioItemDraft> {

@@ -8,11 +8,16 @@ import {
   type Contact,
   type ContactDraft,
   type ContactPrivacyDraft,
+  type Interaction,
 } from "../../../packages/shared/src/index";
 import { requireSpherepathClaims, type SpherepathClaims } from "../auth/claims.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 
 interface ContactRecord extends Contact {
+  id: string;
+}
+
+interface ContactInteractionRecord extends Interaction {
   id: string;
 }
 
@@ -109,6 +114,16 @@ function toStoredContact(contact: Contact) {
   };
 }
 
+function toInteractionRecord(id: string, data: DocumentData): ContactInteractionRecord {
+  return {
+    ...(data as Interaction),
+    id,
+    occurredAt: millis(data.occurredAt) ?? 0,
+    nextActionAt: millis(data.nextActionAt),
+    createdAt: millis(data.createdAt) ?? 0,
+  };
+}
+
 function parseDraft(value: unknown): ContactDraft {
   const parsed = contactDraftSchema.safeParse(value);
   if (!parsed.success) {
@@ -150,6 +165,25 @@ export const listContacts = onCall(callableOptions(), async (request): Promise<{
       .filter((contact) => contact.deletedAt === null)
       .sort((left, right) => right.createdAt - left.createdAt);
     return { contacts };
+  });
+});
+
+export const listContactInteractions = onCall(callableOptions(), async (request): Promise<{ interactions: ContactInteractionRecord[] }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<{ contactId?: unknown }>(request.data);
+  const contactId = parseContactId(envelope.data?.contactId);
+  return observeApiRequest("listContactInteractions", envelope.requestId, async () => {
+    const firestore = getFirestore();
+    const contactSnapshot = await firestore.collection("contacts").doc(contactId).get();
+    if (!contactSnapshot.exists || !canManage(contactSnapshot.data()!, claims) || contactSnapshot.data()!.deletedAt !== null) {
+      throw new HttpsError("not-found", "Contact was not found.");
+    }
+    const snapshot = await firestore.collection("interactions").where("contactId", "==", contactId).limit(100).get();
+    const interactions = snapshot.docs
+      .filter((item) => canManage(item.data(), claims))
+      .map((item) => toInteractionRecord(item.id, item.data()))
+      .sort((left, right) => right.occurredAt - left.occurredAt);
+    return { interactions };
   });
 });
 

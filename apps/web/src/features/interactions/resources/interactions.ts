@@ -4,6 +4,7 @@ import {
   type DiscardVoiceNoteInput,
   type ManualInteractionDraft,
   type OpportunityDraft,
+  type RegisterInteractionTextInput,
   type RegisterVoiceNoteInput,
   type RegisterVoiceTextTestInput,
   type VoiceInsights,
@@ -68,6 +69,18 @@ export async function submitVoiceTextTest(
   const input: RegisterVoiceTextTestInput = { contactId, transcript };
   const response = await apiClient.command<RegisterVoiceTextTestInput, { voiceNoteId: string }>(
     "registerVoiceTextTest", input, createCommandId(session.uid),
+  );
+  return response.voiceNoteId;
+}
+
+export async function submitInteractionText(
+  session: WorkspaceSession,
+  contactId: string,
+  transcript: string,
+): Promise<string> {
+  const input: RegisterInteractionTextInput = { contactId, transcript };
+  const response = await apiClient.command<RegisterInteractionTextInput, { voiceNoteId: string }>(
+    "registerInteractionText", input, createCommandId(session.uid),
   );
   return response.voiceNoteId;
 }

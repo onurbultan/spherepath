@@ -1,7 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, ChevronRight, Moon, Plus, Search, Sun } from "lucide-react";
+import { apiQueryKeys, type PortfolioMatchNotificationRecord } from "@spherepath/shared";
+import { useSession } from "@/features/auth/resources/session";
+import { listMatchNotifications, markMatchNotificationsRead } from "@/features/matching/resources/portfolio";
 import { useThemePreference } from "./theme";
 
 const pageTitles: Record<string, string> = {
@@ -15,8 +20,27 @@ const pageTitles: Record<string, string> = {
 
 export function TopBar({ pathname, onOpenSearch }: { pathname: string; onOpenSearch(): void }) {
   const title = pageTitles[pathname] ?? "Çalışma alanı";
+  const { session } = useSession();
+  const queryClient = useQueryClient();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [preference, setPreference] = useThemePreference();
   const dark = preference === "dark" || (preference === "system" && typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const notificationsQuery = useQuery({ queryKey: apiQueryKeys.matchNotifications, queryFn: listMatchNotifications, enabled: Boolean(session), staleTime: 60_000 });
+  const notifications = notificationsQuery.data ?? [];
+  const unread = notifications.filter((item) => item.readAt === null);
+
+  async function toggleNotifications() {
+    const opening = !notificationsOpen;
+    setNotificationsOpen(opening);
+    if (!opening || !session || !unread.length) return;
+    try {
+      await markMatchNotificationsRead(session, unread.map((item) => item.id));
+      const now = Date.now();
+      queryClient.setQueryData<PortfolioMatchNotificationRecord[]>(apiQueryKeys.matchNotifications, (current) => current?.map((item) => item.readAt === null ? { ...item, readAt: now } : item));
+    } catch {
+      // The list remains usable if the read receipt cannot be persisted.
+    }
+  }
 
   return (
     <header className="app-topbar">
@@ -40,9 +64,12 @@ export function TopBar({ pathname, onOpenSearch }: { pathname: string; onOpenSea
         <button className="topbar-icon-button" aria-label={dark ? "Açık temaya geç" : "Koyu temaya geç"} onClick={() => setPreference(dark ? "light" : "dark")} type="button">
           {dark ? <Sun size={16} aria-hidden /> : <Moon size={16} aria-hidden />}
         </button>
-        <button className="topbar-icon-button notification-button" aria-label="Bildirimler henüz etkin değil" disabled title="Bildirim merkezi sonraki sürümde etkinleşecek" type="button">
-          <Bell size={16} aria-hidden /><span aria-hidden />
-        </button>
+        <div className="notification-wrap">
+          <button className="topbar-icon-button notification-button" aria-expanded={notificationsOpen} aria-label={unread.length ? `${unread.length} yeni eşleşme bildirimi` : "Eşleşme bildirimleri"} onClick={() => void toggleNotifications()} title="Eşleşme bildirimleri" type="button">
+            <Bell size={16} aria-hidden />{unread.length ? <span aria-hidden /> : null}
+          </button>
+          {notificationsOpen ? <div className="notification-popover" role="dialog" aria-label="Eşleşme bildirimleri"><div className="notification-heading"><div><strong>Eşleşmeler</strong><span>{notifications.length ? `${notifications.length} güncel eşleşme` : "Yeni bildirim yok"}</span></div><Link href="/listings#office-pool" onClick={() => setNotificationsOpen(false)}>Tümünü gör</Link></div>{notificationsQuery.isPending ? <div className="notification-empty">Eşleşmeler taranıyor…</div> : notifications.length ? <div className="notification-list">{notifications.slice(0, 5).map((item) => <Link href="/listings#office-pool" key={item.id} onClick={() => setNotificationsOpen(false)}><span className="notification-score">%{item.match.score}</span><span><strong>{item.match.contactName}</strong><small>{item.match.portfolioItem.headline}</small></span></Link>)}</div> : <div className="notification-empty">Yeni bir alıcı–portföy eşleşmesi oluştuğunda burada görünecek.</div>}</div> : null}
+        </div>
         <Link className="primary-action inline-action compact-action" href="/capture">
           <Plus size={15} aria-hidden /> Temas kaydet
         </Link>

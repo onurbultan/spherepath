@@ -1,4 +1,4 @@
-import { createCommandId, type Contact, type ContactDraft, type ContactPrivacyDraft } from "@spherepath/shared";
+import { createCommandId, type Contact, type ContactDraft, type ContactPrivacyDraft, type Interaction } from "@spherepath/shared";
 import { apiClient } from "@/shared/api/client";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
 
@@ -6,8 +6,18 @@ export interface ContactRecord extends Contact {
   id: string;
 }
 
+export interface ContactInteractionRecord extends Interaction {
+  id: string;
+}
+
 export async function listContacts(): Promise<ContactRecord[]> {
   return (await apiClient.query<undefined, { contacts: ContactRecord[] }>("listContacts", undefined)).contacts;
+}
+
+export async function listContactInteractions(contactId: string): Promise<ContactInteractionRecord[]> {
+  return (await apiClient.query<{ contactId: string }, { interactions: ContactInteractionRecord[] }>(
+    "listContactInteractions", { contactId },
+  )).interactions;
 }
 
 export async function saveContact(

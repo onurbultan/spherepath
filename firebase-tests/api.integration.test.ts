@@ -116,7 +116,7 @@ describe("callable API vertical slice", () => {
     expect(today.overview.tasks).toHaveLength(1);
     expect(today.overview.tasks[0]?.opportunityId).toBe(opportunity.opportunity.id);
     const completeDailyTask = httpsCallable(functions, "completeDailyTask");
-    await completeDailyTask(envelope({ taskId: `opportunity-action-${opportunity.opportunity.id}`, status: "completed", skippedReason: null }, "request-task-complete", "command-task-complete"));
+    await completeDailyTask(envelope({ taskId: `opportunity-action-${opportunity.opportunity.id}`, status: "completed", outcomeNote: null, skippedReason: null, rescheduledAt: null, rescheduledActionType: null }, "request-task-complete", "command-task-complete"));
     const todayAfterCompletion = (await getTodayOverview(envelope(undefined, "request-today-completed"))).data as { overview: { completedTaskCount: number; tasks: Array<{ id: string }> } };
     expect(todayAfterCompletion.overview.completedTaskCount).toBe(1);
     expect(todayAfterCompletion.overview.tasks).toHaveLength(0);

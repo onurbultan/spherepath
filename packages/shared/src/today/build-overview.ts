@@ -1,6 +1,6 @@
 import type { Contact, Opportunity } from "../domain/entities.js";
 import { z } from "zod";
-import { nextActionTypeLabels } from "../interactions/manual-interaction.js";
+import { nextActionTypeLabels, nextActionTypes } from "../interactions/manual-interaction.js";
 
 export interface TodayContact {
   id: string;
@@ -55,7 +55,24 @@ export interface TodayOverview {
   completedTaskCount: number;
 }
 
-export const dailyTaskOutcomeSchema = z.object({ taskId: z.string().trim().min(3).max(240), status: z.enum(["completed", "skipped"]), skippedReason: z.string().trim().max(300).nullable() }).strict().superRefine((value, context) => { if (value.status === "skipped" && !value.skippedReason) context.addIssue({ code: "custom", message: "Atlanan görev için neden gerekli." }); });
+export const dailyTaskOutcomeSchema = z.object({
+  taskId: z.string().trim().min(3).max(240),
+  status: z.enum(["completed", "skipped", "rescheduled"]),
+  outcomeNote: z.string().trim().max(500).nullable(),
+  skippedReason: z.string().trim().max(300).nullable(),
+  rescheduledAt: z.number().int().positive().nullable(),
+  rescheduledActionType: z.enum(nextActionTypes).nullable(),
+}).strict().superRefine((value, context) => {
+  if (value.status === "skipped" && !value.skippedReason) {
+    context.addIssue({ code: "custom", message: "Atlanan görev için neden gerekli.", path: ["skippedReason"] });
+  }
+  if (value.status === "rescheduled" && (value.rescheduledAt === null || value.rescheduledActionType === null)) {
+    context.addIssue({ code: "custom", message: "Yeni tarih ve aksiyon türü gerekli.", path: [value.rescheduledAt === null ? "rescheduledAt" : "rescheduledActionType"] });
+  }
+  if (value.status !== "rescheduled" && (value.rescheduledAt !== null || value.rescheduledActionType !== null)) {
+    context.addIssue({ code: "custom", message: "Yeni tarih yalnız ertelenen görevde kullanılabilir.", path: ["rescheduledAt"] });
+  }
+});
 export type DailyTaskOutcome = z.infer<typeof dailyTaskOutcomeSchema>;
 
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1_000;

@@ -90,7 +90,7 @@ export const getTodayOverview = onCall(
       };
     });
     const dayKey = istanbulDayKey();
-    const completedTaskIds = new Set(completionsSnapshot.docs.filter((item) => { const data = item.data(); return data.dayKey === dayKey && data.status === "completed" && (claims.role === "broker" || data.ownerUid === claims.uid); }).map((item) => item.data().taskId as string));
+    const completedTaskIds = new Set(completionsSnapshot.docs.filter((item) => { const data = item.data(); return data.dayKey === dayKey && ["completed", "skipped", "rescheduled"].includes(data.status as string) && (claims.role === "broker" || data.ownerUid === claims.uid); }).map((item) => item.data().taskId as string));
     return { overview: buildTodayOverview(contacts, opportunities, Date.now(), listings, deals, completedTaskIds, interactions) };
     });
   },
@@ -98,15 +98,83 @@ export const getTodayOverview = onCall(
 
 export const completeDailyTask = onCall(
   { region: "europe-west8", cors: true, maxInstances: 10, memory: "256MiB", timeoutSeconds: 60 },
-  async (request): Promise<{ taskId: string; status: "completed" | "skipped" }> => {
+  async (request): Promise<{ taskId: string; status: "completed" | "skipped" | "rescheduled" }> => {
     const claims = requireSpherepathClaims(request);
     const envelope = readApiEnvelope<DailyTaskOutcome>(request.data, { command: true });
     const parsed = dailyTaskOutcomeSchema.safeParse(envelope.data);
     if (!parsed.success) throw new HttpsError("invalid-argument", "Daily task outcome is invalid.", parsed.error.flatten());
     if (!/^(next-action|first-interaction|opportunity-action)-/.test(parsed.data.taskId)) throw new HttpsError("invalid-argument", "Daily task identifier is invalid.");
     return observeApiRequest("completeDailyTask", envelope.requestId, async () => {
-      const db = getFirestore(); const commandRef = db.collection("commands").doc(envelope.commandId!); const completionRef = db.collection("dailyTaskCompletions").doc(`${claims.uid}-${istanbulDayKey()}-${parsed.data.taskId}`.replace(/[^a-zA-Z0-9_-]/g, "_"));
-      await db.runTransaction(async (transaction) => { const receipt = await transaction.get(commandRef); if (receipt.exists) { const data = receipt.data()!; if (data.officeId !== claims.officeId || data.ownerUid !== claims.uid || data.type !== "completeDailyTask") throw new HttpsError("permission-denied", "Command receipt is outside your workspace."); return; } const now = Timestamp.now(); transaction.set(completionRef, { officeId: claims.officeId, ownerUid: claims.uid, taskId: parsed.data.taskId, dayKey: istanbulDayKey(), status: parsed.data.status, skippedReason: parsed.data.skippedReason, completedAt: parsed.data.status === "completed" ? now : null, createdAt: now, updatedAt: now }, { merge: true }); transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "completeDailyTask", taskId: parsed.data.taskId, status: parsed.data.status, createdAt: now }); });
+      const db = getFirestore();
+      const commandRef = db.collection("commands").doc(envelope.commandId!);
+      const completionRef = db.collection("dailyTaskCompletions").doc(`${claims.uid}-${istanbulDayKey()}-${parsed.data.taskId}`.replace(/[^a-zA-Z0-9_-]/g, "_"));
+      const opportunityPrefix = "opportunity-action-";
+      const contactPrefixes = ["next-action-", "first-interaction-"] as const;
+      const opportunityId = parsed.data.taskId.startsWith(opportunityPrefix) ? parsed.data.taskId.slice(opportunityPrefix.length) : null;
+      const contactPrefix = contactPrefixes.find((prefix) => parsed.data.taskId.startsWith(prefix));
+      const contactId = contactPrefix ? parsed.data.taskId.slice(contactPrefix.length) : null;
+      const targetRef = opportunityId
+        ? db.collection("opportunities").doc(opportunityId)
+        : contactId
+          ? db.collection("contacts").doc(contactId)
+          : null;
+
+      await db.runTransaction(async (transaction) => {
+        const [receipt, target] = await Promise.all([
+          transaction.get(commandRef),
+          targetRef ? transaction.get(targetRef) : Promise.resolve(null),
+        ]);
+        if (receipt.exists) {
+          const data = receipt.data()!;
+          if (data.officeId !== claims.officeId || data.ownerUid !== claims.uid || data.type !== "completeDailyTask") {
+            throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+          }
+          return;
+        }
+        if (!targetRef || !target?.exists) throw new HttpsError("not-found", "Daily task target was not found.");
+        const targetData = target.data()!;
+        if (targetData.officeId !== claims.officeId || (targetData.ownerUid !== claims.uid && claims.role !== "broker") || targetData.deletedAt !== null) {
+          throw new HttpsError("permission-denied", "Daily task target is outside your workspace.");
+        }
+
+        const now = Timestamp.now();
+        if (opportunityId) {
+          transaction.update(targetRef, {
+            nextActionAt: parsed.data.status === "rescheduled" ? Timestamp.fromMillis(parsed.data.rescheduledAt!) : null,
+            nextActionType: parsed.data.status === "rescheduled" ? parsed.data.rescheduledActionType : null,
+            updatedAt: now,
+          });
+        } else if (contactId && (contactPrefix === "next-action-" || parsed.data.status === "rescheduled")) {
+          transaction.update(targetRef, {
+            "relationship.nextActionAt": parsed.data.status === "rescheduled" ? Timestamp.fromMillis(parsed.data.rescheduledAt!) : null,
+            "relationship.nextActionType": parsed.data.status === "rescheduled" ? parsed.data.rescheduledActionType : null,
+            updatedAt: now,
+          });
+        }
+        transaction.set(completionRef, {
+          officeId: claims.officeId,
+          ownerUid: claims.uid,
+          taskId: parsed.data.taskId,
+          dayKey: istanbulDayKey(),
+          status: parsed.data.status,
+          outcomeNote: parsed.data.outcomeNote,
+          skippedReason: parsed.data.skippedReason,
+          rescheduledAt: parsed.data.rescheduledAt === null ? null : Timestamp.fromMillis(parsed.data.rescheduledAt),
+          rescheduledActionType: parsed.data.rescheduledActionType,
+          completedAt: parsed.data.status === "completed" ? now : null,
+          resolvedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        }, { merge: true });
+        transaction.create(commandRef, {
+          officeId: claims.officeId,
+          ownerUid: claims.uid,
+          type: "completeDailyTask",
+          taskId: parsed.data.taskId,
+          status: parsed.data.status,
+          createdAt: now,
+        });
+      });
       return { taskId: parsed.data.taskId, status: parsed.data.status };
     });
   },

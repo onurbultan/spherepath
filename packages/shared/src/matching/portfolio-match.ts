@@ -54,6 +54,10 @@ export const portfolioItemCommandSchema = z.object({
   portfolioItemId: z.string().min(1).max(160),
 }).strict();
 
+export const matchNotificationCommandSchema = z.object({
+  notificationIds: z.array(z.string().min(1).max(360)).min(1).max(100),
+}).strict();
+
 export type PortfolioItemDraft = z.infer<typeof portfolioItemDraftSchema>;
 
 export interface PortfolioItem extends TenantOwned, Audited, PortfolioItemDraft {
@@ -86,6 +90,13 @@ export interface PortfolioMatchRecord extends PortfolioMatchScore {
   contactId: string;
   contactName: string;
   portfolioItem: PortfolioItemRecord;
+}
+
+export interface PortfolioMatchNotificationRecord {
+  id: string;
+  match: PortfolioMatchRecord;
+  createdAt: number;
+  readAt: number | null;
 }
 
 export const portfolioSourceLabels: Record<PortfolioSource, string> = {

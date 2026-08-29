@@ -151,11 +151,13 @@ export function createCommandId(ownerUid: string): string {
 
 export const apiQueryKeys = {
   contacts: ["contacts"] as const,
+  contactInteractions: (contactId: string) => ["contacts", contactId, "interactions"] as const,
   opportunities: ["opportunities"] as const,
   opportunityDetail: (opportunityId: string) => ["opportunities", opportunityId] as const,
   listings: ["listings"] as const,
   portfolioItems: ["portfolio-items"] as const,
   portfolioMatches: ["portfolio-matches"] as const,
+  matchNotifications: ["portfolio-match-notifications"] as const,
   referrals: ["referrals"] as const,
   closing: ["closing"] as const,
   todayOverview: ["today", "overview"] as const,

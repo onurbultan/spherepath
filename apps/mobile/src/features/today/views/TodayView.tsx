@@ -34,7 +34,7 @@ export default function TodayView() {
     { label: "Portföy", value: query.data.stages.listing, detail: "Kazanılan" },
     { label: "Kapama", value: query.data.stages.closing, detail: "Tamamlanan" },
   ] : [];
-  async function complete(taskId: string) { if (!session) return; await finishDailyTask(session, { taskId, status: "completed", skippedReason: null }); await queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }); }
+  async function complete(taskId: string) { if (!session) return; await finishDailyTask(session, { taskId, status: "completed", outcomeNote: null, skippedReason: null, rescheduledAt: null, rescheduledActionType: null }); await queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }); }
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={[styles.safe, { backgroundColor: theme.background }]}>

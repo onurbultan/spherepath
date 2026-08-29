@@ -13,6 +13,7 @@ import {
   discardVoiceNoteSchema,
   mergeVoiceInsightsIntoContactMemory,
   getVoiceNoteSchema,
+  registerInteractionTextSchema,
   registerVoiceTextTestSchema,
   registerVoiceNoteSchema,
   type Contact,
@@ -42,7 +43,7 @@ function voiceView(id: string, data: FirebaseFirestore.DocumentData): VoiceNoteV
   return {
     id,
     contactId: data.contactId as string,
-    inputMode: data.inputMode === "text_test" ? "text_test" : "audio",
+    inputMode: data.inputMode === "manual_text" ? "manual_text" : data.inputMode === "text_test" ? "text_test" : "audio",
     status: data.status as VoiceNoteStatus,
     durationMs: data.durationMs as number,
     maskedTranscript: typeof data.maskedTranscript === "string" ? data.maskedTranscript : null,
@@ -57,6 +58,14 @@ function voiceView(id: string, data: FirebaseFirestore.DocumentData): VoiceNoteV
 
 function canManage(data: FirebaseFirestore.DocumentData, claims: { officeId: string; uid: string; role: "agent" | "broker" }) {
   return data.officeId === claims.officeId && (data.ownerUid === claims.uid || claims.role === "broker");
+}
+
+function inferredContactRole(opportunityType: "seller_listing" | "landlord_listing" | "buyer_requirement" | "tenant_requirement" | undefined) {
+  if (opportunityType === "seller_listing") return "seller" as const;
+  if (opportunityType === "landlord_listing") return "landlord" as const;
+  if (opportunityType === "buyer_requirement") return "buyer" as const;
+  if (opportunityType === "tenant_requirement") return "tenant" as const;
+  return null;
 }
 
 async function transcribe(storagePath: string): Promise<string> {
@@ -88,7 +97,7 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
     if (!snapshot.exists) return null;
     const data = snapshot.data()!;
     if (["needs_review", "confirmed", "discarded", "failed"].includes(data.status as string)) return null;
-    if ((data.emulatorImmediate === true || data.textTestImmediate === true) && rawOverride === undefined) return null;
+    if ((data.emulatorImmediate === true || data.textTestImmediate === true || data.textImmediate === true) && rawOverride === undefined) return null;
     const now = Timestamp.now();
     transaction.update(noteRef, {
       status: "processing",
@@ -313,6 +322,68 @@ export const registerVoiceTextTest = onCall(
   },
 );
 
+export const registerInteractionText = onCall(
+  { region: "europe-west8", cors: true, maxInstances: 10, memory: "256MiB", timeoutSeconds: 60 },
+  async (request): Promise<{ voiceNoteId: string }> => {
+    const claims = requireSpherepathClaims(request);
+    const envelope = readApiEnvelope<unknown>(request.data, { command: true });
+    const parsed = registerInteractionTextSchema.safeParse(envelope.data);
+    if (!parsed.success) throw new HttpsError("invalid-argument", "Interaction text input is invalid.", parsed.error.flatten());
+    const input = parsed.data;
+    const firestore = getFirestore();
+    const commandRef = firestore.collection("commands").doc(envelope.commandId!);
+    const contactRef = firestore.collection("contacts").doc(input.contactId);
+    const noteRef = firestore.collection("voiceNotes").doc();
+    const result = await observeApiRequest("registerInteractionText", envelope.requestId, () => firestore.runTransaction(async (transaction) => {
+      const [commandSnapshot, contactSnapshot] = await Promise.all([transaction.get(commandRef), transaction.get(contactRef)]);
+      if (commandSnapshot.exists) {
+        const receipt = commandSnapshot.data()!;
+        if (!canManage(receipt, claims) || receipt.type !== "registerInteractionText") throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+        return { voiceNoteId: receipt.voiceNoteId as string, created: false };
+      }
+      if (!contactSnapshot.exists || !canManage(contactSnapshot.data()!, claims) || contactSnapshot.data()!.deletedAt !== null) {
+        throw new HttpsError("not-found", "Contact was not found.");
+      }
+      const now = Timestamp.now();
+      transaction.create(noteRef, {
+        officeId: claims.officeId,
+        ownerUid: claims.uid,
+        contactId: input.contactId,
+        storagePath: null,
+        durationMs: Math.max(10_000, Math.min(45_000, input.transcript.length * 50)),
+        mimeType: "text/plain",
+        conversationEndedConfirmed: true,
+        inputMode: "manual_text",
+        status: "queued",
+        attempts: 0,
+        processingEventId: null,
+        maskedTranscript: null,
+        maskedCategories: [],
+        maskedRanges: [],
+        extraction: null,
+        corrections: [],
+        interactionId: null,
+        sourceAudioDeletedAt: null,
+        errorCode: null,
+        emulatorImmediate: false,
+        textImmediate: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      transaction.create(commandRef, {
+        officeId: claims.officeId,
+        ownerUid: claims.uid,
+        type: "registerInteractionText",
+        voiceNoteId: noteRef.id,
+        createdAt: now,
+      });
+      return { voiceNoteId: noteRef.id, created: true };
+    }));
+    if (result.created) await processVoiceNoteDocument(result.voiceNoteId, `manual-text-${envelope.requestId}`, input.transcript);
+    return { voiceNoteId: result.voiceNoteId };
+  },
+);
+
 export const processVoiceNote = onDocumentCreated(
   { document: "voiceNotes/{voiceNoteId}", region: "europe-west8", retry: true, memory: "512MiB", timeoutSeconds: 120 },
   async (event) => processVoiceNoteDocument(event.params.voiceNoteId, event.id),
@@ -473,9 +544,13 @@ export const confirmVoiceNote = onCall(
         updatedAt: milliseconds(storedMemory.updatedAt) || null,
       });
       const memory = mergeVoiceInsightsIntoContactMemory(currentMemory, parsed.data.approvedInsights, now);
+      const inferredRole = inferredContactRole(parsed.data.opportunity?.type);
+      const existingRoles = Array.isArray(contact.roles) ? contact.roles as string[] : [];
+      const roles = inferredRole ? [inferredRole, ...existingRoles.filter((role) => role !== inferredRole && role !== "unknown")].slice(0, 8) : existingRoles;
       transaction.update(contactRef, {
         relationship: { ...relationship, lastTouchAt: timestamp(relationship.lastTouchAt), nextActionAt: timestamp(relationship.nextActionAt) },
         memory: { ...memory, updatedAt: timestamp(memory.updatedAt) },
+        roles,
         updatedAt: nowTimestamp,
       });
       if (parsed.data.opportunity && opportunityRef && stageEventRef) {
