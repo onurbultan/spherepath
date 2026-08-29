@@ -8,9 +8,11 @@
   --on-ask: #FFFFFF;
   --background: #F6F7F3;
   --card: #FFFFFF;
+  --elevated: #FFFFFF;
   --chrome: #F0F2EC;
   --sunk: #E7E9E3;
   --line: #E2E5DD;
+  --line-strong: #C9D0CB;
   --text-primary: #16232C;
   --text-secondary: #66757C;
   --text-tertiary: #95A1A6;
@@ -20,10 +22,42 @@
   --cool-bg: #DFE3DD;
   --good: #2C6349;
   --good-bg: #DCE8E0;
+  --focus: #1D4E6B;
+  --focus-halo: #DDE5EA;
+  --overlay: rgba(22, 35, 44, 0.38);
+  --shadow-sm: 0 1px 2px rgba(22, 35, 44, 0.06);
+  --shadow-md: 0 4px 14px rgba(22, 35, 44, 0.10);
+  --shadow-lg: 0 18px 44px rgba(22, 35, 44, 0.18);
+
+  --space-xs: 4px;
+  --space-sm: 6px;
+  --space-md: 8px;
+  --space-lg: 12px;
+  --space-xl: 16px;
+  --space-2xl: 20px;
+  --space-3xl: 24px;
+  --space-4xl: 32px;
+  --space-5xl: 40px;
+  --radius-hair: 2px;
+  --radius-sm: 4px;
+  --radius-md: 7px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-pill: 999px;
+  --hit-min: 44px;
+  --hit-comfortable: 52px;
+  --hit-record: 64px;
+  --control-xs: 28px;
+  --control-sm: 32px;
+  --control-md: 36px;
+  --control-lg: 44px;
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 320ms;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --deed: #83B6D6;
     --deed-bg: #1B2C36;
     --on-deed: #0B0F12;
@@ -32,9 +66,11 @@
     --on-ask: #241410;
     --background: #0E1215;
     --card: #181F23;
+    --elevated: #1E272C;
     --chrome: #131A1D;
     --sunk: #0A0D0F;
     --line: #252E33;
+    --line-strong: #3A464C;
     --text-primary: #DDE3DE;
     --text-secondary: #93A2A8;
     --text-tertiary: #6E7C82;
@@ -44,5 +80,42 @@
     --cool-bg: #222A2E;
     --good: #79B497;
     --good-bg: #18271F;
+    --focus: #83B6D6;
+    --focus-halo: #1B2C36;
+    --overlay: rgba(0, 0, 0, 0.62);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.55);
+    --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.68);
   }
+}
+
+:root[data-theme="dark"] {
+  --deed: #83B6D6;
+  --deed-bg: #1B2C36;
+  --on-deed: #0B0F12;
+  --ask: #E08A6D;
+  --ask-bg: #2E211C;
+  --on-ask: #241410;
+  --background: #0E1215;
+  --card: #181F23;
+  --elevated: #1E272C;
+  --chrome: #131A1D;
+  --sunk: #0A0D0F;
+  --line: #252E33;
+  --line-strong: #3A464C;
+  --text-primary: #DDE3DE;
+  --text-secondary: #93A2A8;
+  --text-tertiary: #6E7C82;
+  --warm: #D9A05C;
+  --warm-bg: #2C2317;
+  --cool: #93A2A8;
+  --cool-bg: #222A2E;
+  --good: #79B497;
+  --good-bg: #18271F;
+  --focus: #83B6D6;
+  --focus-halo: #1B2C36;
+  --overlay: rgba(0, 0, 0, 0.62);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.68);
 }

@@ -8,3 +8,5 @@ export function nativeTokens(scheme: ColorScheme) {
 export const space = designTokens.space;
 export const radius = designTokens.radius;
 export const hit = designTokens.hit;
+export const control = designTokens.control;
+export const motion = designTokens.motion;

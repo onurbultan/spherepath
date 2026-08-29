@@ -10,9 +10,11 @@ export const designTokens = {
       "onAsk": "#FFFFFF",
       "background": "#F6F7F3",
       "card": "#FFFFFF",
+      "elevated": "#FFFFFF",
       "chrome": "#F0F2EC",
       "sunk": "#E7E9E3",
       "line": "#E2E5DD",
+      "lineStrong": "#C9D0CB",
       "textPrimary": "#16232C",
       "textSecondary": "#66757C",
       "textTertiary": "#95A1A6",
@@ -21,7 +23,10 @@ export const designTokens = {
       "cool": "#68767C",
       "coolBg": "#DFE3DD",
       "good": "#2C6349",
-      "goodBg": "#DCE8E0"
+      "goodBg": "#DCE8E0",
+      "focus": "#1D4E6B",
+      "focusHalo": "#DDE5EA",
+      "overlay": "rgba(22, 35, 44, 0.38)"
     },
     "dark": {
       "deed": "#83B6D6",
@@ -32,9 +37,11 @@ export const designTokens = {
       "onAsk": "#241410",
       "background": "#0E1215",
       "card": "#181F23",
+      "elevated": "#1E272C",
       "chrome": "#131A1D",
       "sunk": "#0A0D0F",
       "line": "#252E33",
+      "lineStrong": "#3A464C",
       "textPrimary": "#DDE3DE",
       "textSecondary": "#93A2A8",
       "textTertiary": "#6E7C82",
@@ -43,7 +50,22 @@ export const designTokens = {
       "cool": "#93A2A8",
       "coolBg": "#222A2E",
       "good": "#79B497",
-      "goodBg": "#18271F"
+      "goodBg": "#18271F",
+      "focus": "#83B6D6",
+      "focusHalo": "#1B2C36",
+      "overlay": "rgba(0, 0, 0, 0.62)"
+    }
+  },
+  "shadow": {
+    "light": {
+      "sm": "0 1px 2px rgba(22, 35, 44, 0.06)",
+      "md": "0 4px 14px rgba(22, 35, 44, 0.10)",
+      "lg": "0 18px 44px rgba(22, 35, 44, 0.18)"
+    },
+    "dark": {
+      "sm": "0 1px 2px rgba(0, 0, 0, 0.5)",
+      "md": "0 4px 16px rgba(0, 0, 0, 0.55)",
+      "lg": "0 20px 48px rgba(0, 0, 0, 0.68)"
     }
   },
   "space": {
@@ -69,6 +91,12 @@ export const designTokens = {
     "min": 44,
     "comfortable": 52,
     "record": 64
+  },
+  "control": {
+    "xs": 28,
+    "sm": 32,
+    "md": 36,
+    "lg": 44
   },
   "motion": {
     "fast": 120,

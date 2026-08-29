@@ -27,6 +27,7 @@ import { useSession } from "@/features/auth/resources/session";
 import { listContacts, saveContact } from "@/features/contacts/resources/contacts";
 import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
+import { useSheetDismiss } from "@/shared/ui/useSheetDismiss";
 import { saveManualInteraction } from "../resources/interactions";
 import { VoiceCaptureCard } from "../components/VoiceCaptureCard";
 
@@ -65,6 +66,8 @@ export function CaptureView() {
   const contacts = contactsQuery.data ?? [];
   const requestedContactId = searchParams.get("contactId") ?? "";
   const selectedContactId = contactId || (contacts.some((contact) => contact.id === requestedContactId) ? requestedContactId : "") || contacts[0]?.id || "";
+
+  useSheetDismiss(quickContactOpen, () => { if (!contactPending) setQuickContactOpen(false); });
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

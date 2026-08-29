@@ -11,6 +11,7 @@ import {
 import { useSession } from "@/features/auth/resources/session";
 import { listContacts } from "@/features/contacts/resources/contacts";
 import { SpCard } from "@/shared/ui/SpCard";
+import { useSheetDismiss } from "@/shared/ui/useSheetDismiss";
 import type { ListingRecord } from "@/features/listings/resources/listings";
 import { getClosingOverview, moveDeal, movePresentation, saveDeal, savePresentation, type DealRecord } from "../resources/closing";
 
@@ -24,6 +25,10 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
   const [presentationOpen, setPresentationOpen] = useState(false); const [dealOpen, setDealOpen] = useState(false); const [movingDeal, setMovingDeal] = useState<DealRecord | null>(null); const [pending, setPending] = useState(false); const [error, setError] = useState<string | null>(null);
   const [listingId, setListingId] = useState(""); const [contactId, setContactId] = useState(""); const [channel, setChannel] = useState<MarketingChannel>("whatsapp"); const [message, setMessage] = useState(""); const [dealStage, setDealStage] = useState<DealStage>("viewing"); const [offerAmount, setOfferAmount] = useState(""); const [currency, setCurrency] = useState<CurrencyCode>("TRY"); const [lostReason, setLostReason] = useState("");
   const selectedListingId = listingId || marketableListings[0]?.id || ""; const selectedContactId = contactId || contacts[0]?.id || "";
+  useSheetDismiss(presentationOpen, () => setPresentationOpen(false));
+  useSheetDismiss(dealOpen, () => setDealOpen(false));
+  useSheetDismiss(Boolean(movingDeal), () => setMovingDeal(null));
+
   async function refresh() { await Promise.all([queryClient.invalidateQueries({ queryKey: apiQueryKeys.closing }), queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview })]); }
 
   async function createPresentation(event: FormEvent) { event.preventDefault(); if (!session) return; const parsed = presentationDraftSchema.safeParse({ listingId: selectedListingId, contactId: selectedContactId, channel, message }); if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Sunum bilgilerini kontrol et."); setPending(true); setError(null); try { await savePresentation(session, parsed.data); setPresentationOpen(false); setMessage(""); await refresh(); } catch (nextError) { setError(messageFrom(nextError)); } finally { setPending(false); } }

@@ -8,10 +8,45 @@ const checkOnly = process.argv.includes("--check");
 
 const kebab = (value) => value.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 
-const cssBlock = (palette, indent = "  ") =>
-  Object.entries(palette)
-    .map(([name, value]) => `${indent}--${kebab(name)}: ${value};`)
-    .join("\n");
+const declarations = (entries, indent) =>
+  entries.map(([name, value]) => `${indent}${name}: ${value};`).join("\n");
+
+const schemeEntries = (scheme) => [
+  ...Object.entries(source.color[scheme]).map(([name, value]) => [`--${kebab(name)}`, value]),
+  ...Object.entries(source.shadow[scheme]).map(([name, value]) => [`--shadow-${kebab(name)}`, value]),
+];
+
+const scaleEntries = () =>
+  [
+    ["space", "px"],
+    ["radius", "px"],
+    ["hit", "px"],
+    ["control", "px"],
+    ["motion", "ms"],
+  ].flatMap(([group, unit]) =>
+    Object.entries(source[group]).map(([name, value]) => [`--${group}-${kebab(name)}`, `${value}${unit}`]),
+  );
+
+// Three blocks so the viewer's system preference and an explicit `data-theme`
+// choice both resolve: light is the unconditional base, the media query applies
+// dark unless light was pinned, and the attribute selector wins either way.
+const themeCss = `/* Generated from @spherepath/shared design tokens. Do not edit by hand. */
+:root {
+${declarations(schemeEntries("light"), "  ")}
+
+${declarations(scaleEntries(), "  ")}
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+${declarations(schemeEntries("dark"), "    ")}
+  }
+}
+
+:root[data-theme="dark"] {
+${declarations(schemeEntries("dark"), "  ")}
+}
+`;
 
 const outputs = new Map([
   [
@@ -20,12 +55,9 @@ const outputs = new Map([
   ],
   [
     resolve(projectRoot, "apps/mobile/src/shared/ui/tokens.generated.ts"),
-    `// Generated from @spherepath/shared design tokens. Do not edit by hand.\nimport { designTokens, type ColorScheme } from "@spherepath/shared/design";\n\nexport function nativeTokens(scheme: ColorScheme) {\n  return designTokens.color[scheme];\n}\n\nexport const space = designTokens.space;\nexport const radius = designTokens.radius;\nexport const hit = designTokens.hit;\n`,
+    `// Generated from @spherepath/shared design tokens. Do not edit by hand.\nimport { designTokens, type ColorScheme } from "@spherepath/shared/design";\n\nexport function nativeTokens(scheme: ColorScheme) {\n  return designTokens.color[scheme];\n}\n\nexport const space = designTokens.space;\nexport const radius = designTokens.radius;\nexport const hit = designTokens.hit;\nexport const control = designTokens.control;\nexport const motion = designTokens.motion;\n`,
   ],
-  [
-    resolve(projectRoot, "apps/web/src/app/theme.generated.css"),
-    `/* Generated from @spherepath/shared design tokens. Do not edit by hand. */\n:root {\n${cssBlock(source.color.light)}\n}\n\n@media (prefers-color-scheme: dark) {\n  :root {\n${cssBlock(source.color.dark, "    ")}\n  }\n}\n`,
-  ],
+  [resolve(projectRoot, "apps/web/src/app/theme.generated.css"), themeCss],
 ]);
 
 let stale = false;

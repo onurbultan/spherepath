@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import "./theme.generated.css";
 import "./globals.css";
 import { AppProviders } from "./providers";
+import { themeBootstrapScript } from "@/shared/ui/theme-bootstrap";
 
 const karla = Karla({
   subsets: ["latin", "latin-ext"],
@@ -35,7 +36,10 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="tr">
+    <html lang="tr" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
+      </head>
       <body className={`${karla.variable} ${zillaSlab.variable} ${ibmPlexMono.variable}`}>
         <AppProviders>{children}</AppProviders>
       </body>
