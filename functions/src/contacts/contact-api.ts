@@ -159,7 +159,7 @@ export const listContacts = onCall(callableOptions(), async (request): Promise<{
       .where("officeId", "==", claims.officeId);
     if (claims.role !== "broker") contactsQuery = contactsQuery.where("ownerUid", "==", claims.uid);
 
-    const snapshot = await contactsQuery.limit(100).get();
+    const snapshot = await contactsQuery.limit(1_000).get();
     const contacts = snapshot.docs
       .map((item) => toContactRecord(item.id, item.data()))
       .filter((contact) => contact.deletedAt === null)

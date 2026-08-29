@@ -17,7 +17,9 @@ const kindLabels: Record<InboxItemKind, string> = { note: "Not", person: "Kişi"
 const messageFrom = (error: unknown) => error instanceof Error ? error.message : "İşlem tamamlanamadı.";
 
 export default function FeedView() {
-  const theme = useSpTheme(); const { session } = useSession(); const client = useQueryClient(); const params = useLocalSearchParams<{ sharedText?: string }>(); const sharedText = typeof params.sharedText === "string" ? params.sharedText.trim() : ""; const [text, setText] = useState(sharedText); const [source, setSource] = useState<"typed" | "whatsapp">(sharedText ? "whatsapp" : "typed"); const [saving, setSaving] = useState(false); const [error, setError] = useState<string | null>(null);
+  const theme = useSpTheme(); const { session } = useSession(); const client = useQueryClient(); const params = useLocalSearchParams<{ sharedText?: string }>(); const sharedText = typeof params.sharedText === "string" ? params.sharedText.trim() : ""; const [draft, setDraft] = useState({ routeText: sharedText, text: sharedText, source: sharedText ? "whatsapp" as const : "typed" as const }); const [saving, setSaving] = useState(false); const [error, setError] = useState<string | null>(null);
+  const text = draft.routeText === sharedText ? draft.text : sharedText;
+  const source = draft.routeText === sharedText ? draft.source : sharedText ? "whatsapp" : "typed";
   const today = useQuery({ queryKey: apiQueryKeys.todayOverviewPeriod("30d"), queryFn: () => loadTodayOverview("30d") });
   const inbox = useQuery({ queryKey: apiQueryKeys.inboxItems, enabled: Boolean(session), queryFn: () => listInboxItems(session ?? undefined) });
   const refetchToday = today.refetch; const refetchInbox = inbox.refetch;
@@ -28,7 +30,7 @@ export default function FeedView() {
     try {
       const item = await createInboxNote(session, text.trim(), source);
       client.setQueryData<InboxItemRecord[]>(apiQueryKeys.inboxItems, (current = []) => [item, ...current.filter((entry) => entry.id !== item.id)]);
-      setText(""); setSource("typed"); setTimeout(() => void client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }), 2_000);
+      setDraft({ routeText: sharedText, text: "", source: "typed" }); setTimeout(() => void client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }), 2_000);
     } catch (nextError) { setError(messageFrom(nextError)); } finally { setSaving(false); }
   }
   async function complete(taskId: string) {
@@ -67,7 +69,7 @@ export default function FeedView() {
       <SpCard style={styles.composer}>
         <View style={styles.sectionTitle}><View><SpText variant="eyebrow" color="deed">HIZLI KAYIT</SpText><SpText variant="title">Aklındakini bırak</SpText></View><Sparkles size={20} color={theme.deed} /></View>
         {source === "whatsapp" ? <View style={[styles.sharedSource, { backgroundColor: theme.goodBg }]}><SpText variant="bodySmall" style={{ color: theme.good }}>{"WhatsApp'tan paylaşılan not · Kaydetmeden önce kontrol et"}</SpText></View> : null}
-        <TextInput accessibilityLabel="Hızlı not" multiline value={text} onChangeText={setText} placeholder="Örn. Urla'da bahçeli bir ev duydum…" placeholderTextColor={theme.textTertiary} style={[styles.input, { color: theme.textPrimary, borderColor: theme.line, backgroundColor: theme.background }]} />
+        <TextInput accessibilityLabel="Hızlı not" multiline value={text} onChangeText={(nextText) => setDraft({ routeText: sharedText, text: nextText, source })} placeholder="Örn. Urla'da bahçeli bir ev duydum…" placeholderTextColor={theme.textTertiary} style={[styles.input, { color: theme.textPrimary, borderColor: theme.line, backgroundColor: theme.background }]} />
         <View style={styles.composerActions}><Pressable onPress={() => router.push("/(tabs)/capture")} style={[styles.secondary, { borderColor: theme.line }]}><Mic size={19} color={theme.deed} /><SpText variant="bodySmall" color="deed">Sesli anlat</SpText></Pressable><Pressable disabled={!text.trim() || saving} onPress={() => void save()} style={[styles.primary, { backgroundColor: theme.deed, opacity: !text.trim() || saving ? .5 : 1 }]}>{saving ? <ActivityIndicator color={theme.onDeed} /> : <><Send size={18} color={theme.onDeed} /><SpText variant="bodySmall" style={{ color: theme.onDeed }}>Kaydet</SpText></>}</Pressable></View>
       </SpCard>
       {error ? <View accessibilityRole="alert" style={[styles.alert, { backgroundColor: theme.askBg }]}><SpText variant="bodySmall" color="ask">{error}</SpText></View> : null}

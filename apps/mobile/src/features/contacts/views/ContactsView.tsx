@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Contact, ContactField } from "expo-contacts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Archive, BookUser, ContactRound, LogOut, Pencil, Plus, ShieldCheck, UserRoundPlus, X } from "lucide-react-native";
+import { Archive, BookUser, ContactRound, LogOut, Pencil, Plus, Search, ShieldCheck, UserRoundPlus, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   apiQueryKeys,
@@ -77,13 +77,22 @@ export default function ContactsView() {
   const [referredLabel, setReferredLabel] = useState("");
   const [privacyEditing, setPrivacyEditing] = useState<ContactRecord | null>(null);
   const [privacy, setPrivacy] = useState<ContactPrivacyDraft | null>(null);
+  const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(40);
 
   const contactsQuery = useQuery({
     queryKey: apiQueryKeys.contacts,
     queryFn: listContacts,
     enabled: Boolean(session),
   });
-  const contacts = contactsQuery.data ?? [];
+  const contacts = useMemo(() => contactsQuery.data ?? [], [contactsQuery.data]);
+  const filteredContacts = useMemo(() => {
+    const needle = search.trim().toLocaleLowerCase("tr-TR");
+    if (!needle) return contacts;
+    return contacts.filter((contact) => [contact.fullName, contact.label, contact.phone, contact.metAtPlace]
+      .some((value) => value?.toLocaleLowerCase("tr-TR").includes(needle)));
+  }, [contacts, search]);
+  const visibleContacts = filteredContacts.slice(0, visibleCount);
   const referralsQuery = useQuery({ queryKey: apiQueryKeys.referrals, queryFn: listReferrals, enabled: Boolean(session) });
 
   function openCreate() {
@@ -167,12 +176,13 @@ export default function ContactsView() {
         </View>
 
         <Pressable onPress={openCreate} style={({ pressed }) => [styles.primary, { backgroundColor: theme.ask, opacity: pressed ? .72 : 1 }]}><Plus color={theme.onAsk} size={19} /><SpText style={{ color: theme.onAsk }}>Yeni kişi</SpText></Pressable>
+        {contacts.length > 0 ? <View style={[styles.searchBox, { backgroundColor: theme.card, borderColor: theme.line }]}><Search color={theme.textSecondary} size={19} /><TextInput accessibilityLabel="Kişilerde ara" value={search} onChangeText={(value) => { setSearch(value); setVisibleCount(40); }} placeholder="Ad, telefon veya tanışma yeri ara" placeholderTextColor={theme.textTertiary} style={[styles.searchInput, { color: theme.textPrimary }]} /><SpText variant="caption" color="secondary">{filteredContacts.length}</SpText></View> : null}
         {(referralsQuery.data?.length ?? 0) > 0 ? <View style={styles.referrals}><SpText variant="eyebrow" color="deed">İLK TEMAS BEKLEYEN REFERANSLAR</SpText>{referralsQuery.data?.slice(0, 3).map((referral) => <SpCard key={referral.id} style={styles.referralCard}><SpText variant="title">{referral.referredContactName}</SpText><SpText variant="bodySmall" color="secondary">{referral.sourceContactName} aracılığıyla · Aydınlatma bekliyor</SpText></SpCard>)}</View> : null}
         {(error ?? (contactsQuery.error ? messageFrom(contactsQuery.error) : null)) && !panelOpen ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText variant="bodySmall" color="ask">{error ?? messageFrom(contactsQuery.error)}</SpText></View> : null}
 
         {contactsQuery.isPending ? <View style={styles.state}><ActivityIndicator color={theme.deed} /><SpText color="secondary">Kişiler yükleniyor…</SpText></View> : contacts.length === 0 ? (
           <SpCard style={styles.empty}><View style={[styles.largeIcon, { backgroundColor: theme.deedBg }]}><ContactRound color={theme.deed} size={24} /></View><SpText variant="title">İlk kişini ekle</SpText><SpText color="secondary">Ad veya tanımlayıcı, kaynak ve rol başlangıç için yeterli.</SpText></SpCard>
-        ) : contacts.map((contact) => (
+        ) : visibleContacts.length === 0 ? <SpCard><SpText color="secondary">Aramana uyan kişi bulunamadı.</SpText></SpCard> : visibleContacts.map((contact) => (
           <SpCard key={contact.id} style={styles.card}>
             <View style={styles.contactTop}><View style={[styles.avatar, { backgroundColor: theme.deedBg }]}><SpText variant="title" color="deed">{(contact.fullName ?? contact.label ?? "?").slice(0, 1).toLocaleUpperCase("tr-TR")}</SpText></View><View style={styles.contactCopy}><SpText variant="title">{contact.fullName ?? contact.label}</SpText><SpText variant="bodySmall" color="secondary">{contact.phone ?? "Telefon eklenmedi"}</SpText></View></View>
             <View style={styles.chips}><View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="bodySmall" color="secondary">{contactRoleLabels[contact.roles[0] ?? "unknown"]}</SpText></View><View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="bodySmall" color="secondary">{contactSourceLabels[contact.source]}</SpText></View></View>
@@ -181,6 +191,7 @@ export default function ContactsView() {
             <View style={styles.compliance}><View style={[styles.complianceChip, { backgroundColor: contact.privacy.noticeStatus === "completed" ? theme.deedBg : theme.askBg }]}><SpText variant="bodySmall" color={contact.privacy.noticeStatus === "completed" ? "deed" : "ask"}>{contact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</SpText></View></View><View style={[styles.actions, { borderTopColor: theme.line }]}><Pressable onPress={() => { setReferralSource(contact); setError(null); }} style={styles.action}><UserRoundPlus color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Referans</SpText></Pressable><Pressable onPress={() => { setPrivacyEditing(contact); setPrivacy(privacyDraft(contact)); setError(null); }} style={styles.action}><ShieldCheck color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Uyum</SpText></Pressable><Pressable onPress={() => openEdit(contact)} style={styles.action}><Pencil color={theme.textSecondary} size={16} /></Pressable><Pressable onPress={() => remove(contact)} style={styles.action}><Archive color={theme.textSecondary} size={16} /></Pressable></View>
           </SpCard>
         ))}
+        {visibleContacts.length < filteredContacts.length ? <Pressable accessibilityRole="button" onPress={() => setVisibleCount((count) => count + 40)} style={[styles.loadMore, { borderColor: theme.line }]}><SpText color="deed">40 kişi daha göster</SpText><SpText variant="caption" color="secondary">{visibleContacts.length}/{filteredContacts.length}</SpText></Pressable> : null}
       </ScrollView>
 
       <Modal animationType="slide" onRequestClose={() => setPanelOpen(false)} presentationStyle="pageSheet" visible={panelOpen}>
@@ -213,6 +224,9 @@ const styles = StyleSheet.create({
   safe: { flex: 1 }, content: { padding: space.xl, paddingBottom: space["5xl"], gap: space.lg },
   headerRow: { flexDirection: "row", alignItems: "flex-start", gap: space.md }, headerCopy: { flex: 1, gap: space.sm },
   iconButton: { width: 44, height: 44, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" },
+  searchBox: { minHeight: 50, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: space.md, flexDirection: "row", alignItems: "center", gap: space.sm },
+  searchInput: { minHeight: 48, flex: 1, fontFamily: "Karla_400Regular", fontSize: 16 },
+  loadMore: { minHeight: 50, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: space.lg, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   primary: { minHeight: 50, borderRadius: radius.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm },
   state: { minHeight: 220, alignItems: "center", justifyContent: "center", gap: space.md },
   empty: { minHeight: 240, gap: space.md, justifyContent: "center" }, largeIcon: { width: 48, height: 48, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },

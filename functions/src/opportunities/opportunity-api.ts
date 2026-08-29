@@ -155,7 +155,7 @@ export const listOpportunities = onCall(callableOptions, async (request): Promis
     const firestore = getFirestore();
     let opportunitiesQuery: FirebaseFirestore.Query = firestore.collection("opportunities").where("officeId", "==", claims.officeId);
     if (claims.role !== "broker") opportunitiesQuery = opportunitiesQuery.where("ownerUid", "==", claims.uid);
-    const snapshot = await opportunitiesQuery.limit(200).get();
+    const snapshot = await opportunitiesQuery.limit(1_000).get();
     const activeDocuments = snapshot.docs.filter((item) => item.data().deletedAt === null);
     const contactIds = [...new Set(activeDocuments.map((item) => item.data().subjectContactId as string))];
     const contactSnapshots = contactIds.length

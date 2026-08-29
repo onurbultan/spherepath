@@ -22,7 +22,7 @@ export const getFunnelOverview = onCall(
         return query;
       };
       const [contacts, opportunities, listings, deals, events] = await Promise.all([
-        scoped("contacts").limit(500).get(), scoped("opportunities").limit(500).get(), scoped("listings").limit(500).get(), scoped("deals").limit(500).get(), scoped("stageEvents").limit(1_000).get(),
+        scoped("contacts").limit(1_000).get(), scoped("opportunities").limit(1_000).get(), scoped("listings").limit(1_000).get(), scoped("deals").limit(1_000).get(), scoped("stageEvents").limit(5_000).get(),
       ]);
       const active = (data: FirebaseFirestore.DocumentData) => data.deletedAt === null || data.deletedAt === undefined;
       const eventDocs = events.docs.filter((doc) => (millis(doc.data().occurredAt) ?? 0) >= windowStart);

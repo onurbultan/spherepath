@@ -36,6 +36,13 @@ const config: ExpoConfig = {
     "expo-font",
     "expo-contacts",
     "expo-notifications",
+    ["expo-sharing", {
+      ios: {
+        enabled: true,
+        activationRule: { supportsText: true, supportsWebUrlWithMaxCount: 1, supportsWebPageWithMaxCount: 1 },
+      },
+      android: { enabled: true, singleShareMimeTypes: ["text/plain"] },
+    }],
     ["expo-audio", { microphonePermission: "Görüşme sonrası kendi kısa sesli notunuzu kaydetmek için mikrofon erişimi gerekir." }],
     ["expo-build-properties", { ios: { useFrameworks: "static" } }],
     ["@react-native-firebase/app", { ios: { disableSPM: true } }],

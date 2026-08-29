@@ -142,10 +142,10 @@ export const listInboxItems = onCall(callableOptions, async (request): Promise<{
   return observeApiRequest("listInboxItems", envelope.requestId, async () => {
     let query: FirebaseFirestore.Query = getFirestore().collection("inboxItems").where("officeId", "==", claims.officeId);
     if (claims.role !== "broker") query = query.where("ownerUid", "==", claims.uid);
-    let snapshot = await query.limit(200).get();
+    let snapshot = await query.limit(1_000).get();
     if (snapshot.empty && parsed.data.cursor === null) {
       await backfillHistoricalInboxItems(claims);
-      snapshot = await query.limit(200).get();
+      snapshot = await query.limit(1_000).get();
     }
     const ordered = snapshot.docs.map((doc) => toRecord(doc.id, doc.data())).sort((left, right) => Number(right.pinned) - Number(left.pinned) || right.createdAt - left.createdAt);
     const start = parsed.data.cursor ? Math.max(0, ordered.findIndex((item) => item.id === parsed.data.cursor) + 1) : 0;

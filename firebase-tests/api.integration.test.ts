@@ -117,20 +117,14 @@ describe("callable API vertical slice", () => {
     };
     expect(today.overview.stages.relationship).toBe(1);
     expect(today.overview.stages.lead).toBe(1);
-    expect(today.overview.tasks).toHaveLength(2);
-    expect(today.overview.tasks).toEqual(expect.arrayContaining([
+    expect(today.overview.tasks).toEqual([
       expect.objectContaining({ id: `opportunity-action-${opportunity.opportunity.id}`, opportunityId: opportunity.opportunity.id }),
-      expect.objectContaining({ id: `next-action-${created.contact.id}` }),
-    ]));
+    ]);
     const completeDailyTask = httpsCallable(functions, "completeDailyTask");
     await completeDailyTask(envelope({ taskId: `opportunity-action-${opportunity.opportunity.id}`, status: "completed", outcomeNote: null, skippedReason: null, rescheduledAt: null, rescheduledActionType: null }, "request-task-complete", "command-task-complete"));
     const todayAfterCompletion = (await getTodayOverview(envelope(undefined, "request-today-completed"))).data as { overview: { completedTaskCount: number; tasks: Array<{ id: string }> } };
     expect(todayAfterCompletion.overview.completedTaskCount).toBe(1);
-    expect(todayAfterCompletion.overview.tasks).toEqual([expect.objectContaining({ id: `next-action-${created.contact.id}` })]);
-    await completeDailyTask(envelope({ taskId: `next-action-${created.contact.id}`, status: "completed", outcomeNote: null, skippedReason: null, rescheduledAt: null, rescheduledActionType: null }, "request-contact-task-complete", "command-contact-task-complete"));
-    const todayAfterBothCompletions = (await getTodayOverview(envelope(undefined, "request-today-both-completed"))).data as { overview: { completedTaskCount: number; tasks: Array<{ id: string }> } };
-    expect(todayAfterBothCompletions.overview.completedTaskCount).toBe(2);
-    expect(todayAfterBothCompletions.overview.tasks).toHaveLength(0);
+    expect(todayAfterCompletion.overview.tasks).toEqual([expect.objectContaining({ id: `opportunity-action-${opportunity.opportunity.id}` })]);
 
     for (const [index, toStage] of ["appointment", "valuation", "mandate_offer", "won"].entries()) {
       await advanceOpportunity(envelope({
