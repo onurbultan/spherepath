@@ -1,8 +1,12 @@
 import {
   createCommandId,
   type ConfirmVoiceNoteInput,
+  type DiscardVoiceNoteInput,
   type ManualInteractionDraft,
+  type OpportunityDraft,
   type RegisterVoiceNoteInput,
+  type RegisterVoiceTextTestInput,
+  type VoiceInsights,
   type VoiceNoteView,
 } from "@spherepath/shared";
 import { ref, uploadBytes } from "firebase/storage";
@@ -51,14 +55,39 @@ export async function getVoiceNote(voiceNoteId: string): Promise<VoiceNoteView> 
   return response.voiceNote;
 }
 
+export async function getLatestReviewableVoiceNote(): Promise<VoiceNoteView | null> {
+  const response = await apiClient.query<undefined, { voiceNote: VoiceNoteView | null }>("getLatestReviewableVoiceNote", undefined);
+  return response.voiceNote;
+}
+
+export async function submitVoiceTextTest(
+  session: WorkspaceSession,
+  contactId: string,
+  transcript: string,
+): Promise<string> {
+  const input: RegisterVoiceTextTestInput = { contactId, transcript };
+  const response = await apiClient.command<RegisterVoiceTextTestInput, { voiceNoteId: string }>(
+    "registerVoiceTextTest", input, createCommandId(session.uid),
+  );
+  return response.voiceNoteId;
+}
+
 export async function confirmVoiceNote(
   session: WorkspaceSession,
   voiceNoteId: string,
   interaction: ManualInteractionDraft,
-): Promise<string> {
-  const input: ConfirmVoiceNoteInput = { voiceNoteId, interaction };
-  const response = await apiClient.command<ConfirmVoiceNoteInput, { interactionId: string }>(
+  approvedInsights: VoiceInsights,
+  opportunity: Omit<OpportunityDraft, "subjectContactId"> | null,
+): Promise<{ interactionId: string; opportunityId: string | null }> {
+  const input: ConfirmVoiceNoteInput = { voiceNoteId, interaction, approvedInsights, opportunity };
+  return apiClient.command<ConfirmVoiceNoteInput, { interactionId: string; opportunityId: string | null }>(
     "confirmVoiceNote", input, createCommandId(session.uid),
   );
-  return response.interactionId;
+}
+
+export async function discardVoiceNote(session: WorkspaceSession, voiceNoteId: string): Promise<void> {
+  const input: DiscardVoiceNoteInput = { voiceNoteId };
+  await apiClient.command<DiscardVoiceNoteInput, { voiceNoteId: string }>(
+    "discardVoiceNote", input, createCommandId(session.uid),
+  );
 }

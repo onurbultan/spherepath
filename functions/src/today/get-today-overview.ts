@@ -29,20 +29,23 @@ export const getTodayOverview = onCall(
     let opportunitiesQuery: FirebaseFirestore.Query = firestore.collection("opportunities").where("officeId", "==", claims.officeId);
     let listingsQuery: FirebaseFirestore.Query = firestore.collection("listings").where("officeId", "==", claims.officeId);
     let dealsQuery: FirebaseFirestore.Query = firestore.collection("deals").where("officeId", "==", claims.officeId);
+    let interactionsQuery: FirebaseFirestore.Query = firestore.collection("interactions").where("officeId", "==", claims.officeId);
     const completionsQuery: FirebaseFirestore.Query = firestore.collection("dailyTaskCompletions").where("officeId", "==", claims.officeId);
     if (claims.role !== "broker") {
       contactsQuery = contactsQuery.where("ownerUid", "==", claims.uid);
       opportunitiesQuery = opportunitiesQuery.where("ownerUid", "==", claims.uid);
       listingsQuery = listingsQuery.where("ownerUid", "==", claims.uid);
       dealsQuery = dealsQuery.where("ownerUid", "==", claims.uid);
+      interactionsQuery = interactionsQuery.where("ownerUid", "==", claims.uid);
     }
 
-    const [contactsSnapshot, opportunitiesSnapshot, listingsSnapshot, dealsSnapshot, completionsSnapshot] = await Promise.all([
+    const [contactsSnapshot, opportunitiesSnapshot, listingsSnapshot, dealsSnapshot, completionsSnapshot, interactionsSnapshot] = await Promise.all([
       contactsQuery.limit(200).get(),
       opportunitiesQuery.limit(200).get(),
       listingsQuery.limit(200).get(),
       dealsQuery.limit(200).get(),
       completionsQuery.limit(200).get(),
+      interactionsQuery.limit(200).get(),
     ]);
     const contacts = contactsSnapshot.docs
       .map((item) => {
@@ -76,9 +79,19 @@ export const getTodayOverview = onCall(
 
     const listings = listingsSnapshot.docs.map((item) => ({ id: item.id, status: item.data().status, deletedAt: millis(item.data().deletedAt) })).filter((item) => item.deletedAt === null);
     const deals = dealsSnapshot.docs.map((item) => ({ id: item.id, stage: item.data().stage, deletedAt: millis(item.data().deletedAt) })).filter((item) => item.deletedAt === null);
+    const interactions = interactionsSnapshot.docs.map((item) => {
+      const data = item.data();
+      return {
+        id: item.id,
+        contactId: data.contactId as string,
+        contactName: contactNames.get(data.contactId as string) ?? "İsimsiz kişi",
+        outcome: typeof data.outcome === "string" && data.outcome.trim() ? data.outcome : "Temas kaydedildi.",
+        occurredAt: millis(data.occurredAt) ?? 0,
+      };
+    });
     const dayKey = istanbulDayKey();
     const completedTaskIds = new Set(completionsSnapshot.docs.filter((item) => { const data = item.data(); return data.dayKey === dayKey && data.status === "completed" && (claims.role === "broker" || data.ownerUid === claims.uid); }).map((item) => item.data().taskId as string));
-    return { overview: buildTodayOverview(contacts, opportunities, Date.now(), listings, deals, completedTaskIds) };
+    return { overview: buildTodayOverview(contacts, opportunities, Date.now(), listings, deals, completedTaskIds, interactions) };
     });
   },
 );

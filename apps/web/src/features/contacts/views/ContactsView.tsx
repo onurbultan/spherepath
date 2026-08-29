@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ContactRound, Pencil, Plus, RefreshCw, ShieldCheck, UserRoundPlus, X } from "lucide-react";
+import { Archive, ContactRound, MessageSquarePlus, Pencil, Plus, RefreshCw, Search, ShieldCheck, UserRoundPlus, X } from "lucide-react";
 import {
   apiQueryKeys,
   contactDraftSchema,
@@ -54,6 +55,7 @@ function messageFrom(error: unknown): string {
 }
 
 export function ContactsView() {
+  const router = useRouter();
   const { session } = useSession();
   const queryClient = useQueryClient();
   const [panelOpen, setPanelOpen] = useState(false);
@@ -66,6 +68,8 @@ export function ContactsView() {
   const [referredLabel, setReferredLabel] = useState("");
   const [privacyEditing, setPrivacyEditing] = useState<ContactRecord | null>(null);
   const [privacy, setPrivacy] = useState<ContactPrivacyDraft | null>(null);
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<ContactDraft["role"] | "all">("all");
 
   const contactsQuery = useQuery({
     queryKey: apiQueryKeys.contacts,
@@ -73,6 +77,19 @@ export function ContactsView() {
     enabled: Boolean(session),
   });
   const contacts = contactsQuery.data ?? [];
+  const normalizedSearch = search.trim().toLocaleLowerCase("tr-TR");
+  const visibleContacts = contacts.filter((contact) => {
+    if (roleFilter !== "all" && !contact.roles.includes(roleFilter)) return false;
+    if (!normalizedSearch) return true;
+    return [
+      contact.fullName,
+      contact.label,
+      contact.phone,
+      contact.metAtPlace,
+      ...contact.memory.keyThingsToRemember,
+      ...contact.memory.propertyPreferences.preferredLocations,
+    ].filter(Boolean).some((value) => String(value).toLocaleLowerCase("tr-TR").includes(normalizedSearch));
+  });
   const referralsQuery = useQuery({ queryKey: apiQueryKeys.referrals, queryFn: listReferrals, enabled: Boolean(session) });
 
   function openCreate() {
@@ -157,19 +174,23 @@ export function ContactsView() {
 
       {(error ?? (contactsQuery.error ? messageFrom(contactsQuery.error) : null)) && !panelOpen ? <p className="form-error notice" role="alert">{error ?? messageFrom(contactsQuery.error)}</p> : null}
       {(referralsQuery.data?.length ?? 0) > 0 ? <section className="referral-strip" aria-label="Son referanslar"><div><p className="eyebrow">REFERANSLAR</p><h2>İlk temas bekleyenler</h2></div>{referralsQuery.data?.slice(0, 4).map((referral) => <SpCard key={referral.id} className="referral-mini"><strong>{referral.referredContactName}</strong><span>{referral.sourceContactName} aracılığıyla</span><small>İlk temas ve aydınlatma bekliyor</small></SpCard>)}</section> : null}
+      {contacts.length ? <div className="contact-toolbar"><label className="contact-search"><Search size={17} aria-hidden /><span className="sr-only">Kişilerde ara</span><input aria-label="Kişilerde ara" placeholder="Ad, telefon, bölge veya hatırlanacak bilgi ara" type="search" value={search} onChange={(event) => setSearch(event.target.value)} /></label><label><span className="sr-only">Role göre filtrele</span><select aria-label="Role göre filtrele" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as ContactDraft["role"] | "all")}><option value="all">Tüm roller</option>{contactRoles.map((role) => <option key={role} value={role}>{contactRoleLabels[role]}</option>)}</select></label><span>{visibleContacts.length} kişi</span></div> : null}
       {contactsQuery.isPending ? (
         <div className="content-state"><RefreshCw className="spin" size={22} aria-hidden /> Kişiler yükleniyor…</div>
       ) : contacts.length === 0 ? (
         <SpCard className="empty-state"><div className="card-icon secondary"><ContactRound size={20} aria-hidden /></div><h2>İlk kişini ekle</h2><p>Ad veya tanımlayıcı, tanışma kaynağı ve rol başlangıç için yeterli.</p><button className="secondary-action" type="button" onClick={openCreate}>Kişi oluştur</button></SpCard>
+      ) : visibleContacts.length === 0 ? (
+        <SpCard className="empty-state"><Search size={20} aria-hidden /><h2>Eşleşen kişi bulunamadı</h2><p>Arama metnini veya rol filtresini değiştirin.</p></SpCard>
       ) : (
         <section className="contact-grid" aria-label="Kişiler">
-          {contacts.map((contact) => (
+          {visibleContacts.map((contact) => (
             <SpCard key={contact.id} className="contact-card">
               <div className="contact-avatar">{(contact.fullName ?? contact.label ?? "?").slice(0, 1).toLocaleUpperCase("tr-TR")}</div>
               <div className="contact-summary"><h2>{contact.fullName ?? contact.label}</h2><p>{contact.phone ?? "Telefon eklenmedi"}</p></div>
               <div className="contact-meta"><span>{contactRoleLabels[contact.roles[0] ?? "unknown"]}</span><span>{contactSourceLabels[contact.source]}</span></div>
               <p className="contact-place">{contact.metAtPlace || "Tanışma yeri belirtilmedi"}</p>
-              <div className="privacy-status"><span className={contact.privacy.noticeStatus === "completed" ? "compliant" : "pending"}>{contact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</span><span>{contact.privacy.marketingConsent === "granted" ? "Pazarlama izni var" : "Pazarlama izni yok"}</span></div><div className="card-actions"><button type="button" onClick={() => { setReferralSource(contact); setError(null); }}><UserRoundPlus size={16} aria-hidden /> Referans</button><button type="button" onClick={() => { setPrivacyEditing(contact); setPrivacy(privacyDraft(contact)); setError(null); }}><ShieldCheck size={16} aria-hidden /> Uyum</button><button type="button" onClick={() => openEdit(contact)}><Pencil size={16} aria-hidden /> Düzenle</button><button type="button" onClick={() => void remove(contact)}><Archive size={16} aria-hidden /> Arşivle</button></div>
+              {(contact.memory?.keyThingsToRemember?.length ?? 0) > 0 ? <div className="contact-memory"><strong>Hatırlanacaklar</strong>{contact.memory.keyThingsToRemember.slice(0, 3).map((item) => <span key={item}>{item}</span>)}</div> : null}
+              <div className="privacy-status"><span className={contact.privacy.noticeStatus === "completed" ? "compliant" : "pending"}>{contact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</span><span>{contact.privacy.marketingConsent === "granted" ? "Pazarlama izni var" : "Pazarlama izni yok"}</span></div><div className="card-actions"><button type="button" onClick={() => router.push(`/capture?contactId=${encodeURIComponent(contact.id)}`)}><MessageSquarePlus size={16} aria-hidden /> Temas</button><button type="button" onClick={() => { setReferralSource(contact); setError(null); }}><UserRoundPlus size={16} aria-hidden /> Referans</button><button type="button" onClick={() => { setPrivacyEditing(contact); setPrivacy(privacyDraft(contact)); setError(null); }}><ShieldCheck size={16} aria-hidden /> Uyum</button><button type="button" onClick={() => openEdit(contact)}><Pencil size={16} aria-hidden /> Düzenle</button><button type="button" onClick={() => void remove(contact)}><Archive size={16} aria-hidden /> Arşivle</button></div>
             </SpCard>
           ))}
         </section>

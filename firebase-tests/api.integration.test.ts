@@ -195,6 +195,23 @@ describe("callable API vertical slice", () => {
     expect(voice.voiceNote.maskedTranscript).not.toContain("Sağlık durumu");
     expect(voice.voiceNote.maskedCategories).toContain("health");
     expect(voice.voiceNote.extraction.interaction).toMatchObject({ nextActionType: "call", daysFromNow: 1 });
+    const registerVoiceTextTest = httpsCallable(functions, "registerVoiceTextTest");
+    const textVoice = (await registerVoiceTextTest(envelope({
+      contactId: created.contact.id,
+      transcript: "Kadıköy'de üç odalı daire arıyor. Yarın tekrar arayacağım.",
+    }, "request-voice-text-test", "command-voice-text-test"))).data as { voiceNoteId: string };
+    const textVoiceView = (await getVoiceNote(envelope({ voiceNoteId: textVoice.voiceNoteId }, "request-voice-text-get"))).data as {
+      voiceNote: { status: string; maskedTranscript: string; extraction: { interaction: { nextActionType: string } } };
+    };
+    expect(textVoiceView.voiceNote.status).toBe("needs_review");
+    expect(textVoiceView.voiceNote.maskedTranscript).toContain("Kadıköy");
+    expect(textVoiceView.voiceNote.extraction.interaction.nextActionType).toBe("call");
+    const discardVoiceNote = httpsCallable(functions, "discardVoiceNote");
+    await discardVoiceNote(envelope({ voiceNoteId: textVoice.voiceNoteId }, "request-voice-discard", "command-voice-discard"));
+    const discardedVoiceView = (await getVoiceNote(envelope({ voiceNoteId: textVoice.voiceNoteId }, "request-voice-discarded-get"))).data as {
+      voiceNote: { status: string; maskedTranscript: string | null; extraction: unknown };
+    };
+    expect(discardedVoiceView.voiceNote).toMatchObject({ status: "discarded", maskedTranscript: null, extraction: null });
     const confirmVoiceNote = httpsCallable(functions, "confirmVoiceNote");
     const confirmedVoice = (await confirmVoiceNote(envelope({
       voiceNoteId: registeredVoice.voiceNoteId,
@@ -209,8 +226,70 @@ describe("callable API vertical slice", () => {
         nextActionAt: Date.now() + 86_400_000,
         noteSummary: "Yarın yeniden arayacağım. [HASSAS İÇERİK MASKELENDİ]",
       },
-    }, "request-voice-confirm", "command-voice-confirm"))).data as { interactionId: string };
+      approvedInsights: {
+        keyThingsToRemember: ["Yarın yeniden aranacak."],
+        propertyContext: "search_preference",
+        propertyPreferences: {
+          transactionType: "buy",
+          propertyTypes: ["apartment"],
+          preferredLocations: ["Integration Region"],
+          budgetRange: { min: null, max: 12_000_000, currency: "TRY" },
+          bedroomCountMin: 3,
+          livingRoomCountMin: 1,
+          roomCountMin: null,
+          areaMinM2: 100,
+          areaMaxM2: null,
+          mustHaves: ["Otopark"],
+          dealBreakers: [],
+          timeline: null,
+        },
+        suggestedActionReason: "Yarın yeniden arama sözü verildi.",
+      },
+      opportunity: {
+        type: "buyer_requirement",
+        nextActionType: "call",
+        nextActionAt: Date.now() + 86_400_000,
+      },
+    }, "request-voice-confirm", "command-voice-confirm"))).data as { interactionId: string; opportunityId: string | null };
     expect(confirmedVoice.interactionId).toBeTruthy();
+    expect(confirmedVoice.opportunityId).toBeTruthy();
+    const contactsAfterVoice = (await listContacts(envelope(undefined, "request-list-after-voice"))).data as { contacts: Array<{ id: string; memory: { keyThingsToRemember: string[] } }> };
+    expect(contactsAfterVoice.contacts[0]?.memory.keyThingsToRemember).toContain("Yarın yeniden aranacak.");
+
+    const createPortfolioItemFromDraft = httpsCallable(functions, "createPortfolioItemFromDraft");
+    const portfolioRequest = envelope({
+      source: "whatsapp_group",
+      sourceAuthorName: "Integration Advisor",
+      headline: "Integration Region 3+1 apartment",
+      summary: "Integration Region içinde 120 m², otoparklı 3+1 daire.",
+      transactionType: "sell",
+      propertyType: "apartment",
+      location: "Integration Region",
+      askingPrice: { amount: 10_000_000, currency: "TRY" },
+      bedroomCount: 3,
+      livingRoomCount: 1,
+      areaM2: 120,
+      landAreaM2: null,
+      features: ["parking"],
+      attributes: [],
+      authorizationType: "none",
+      titleDeedType: "unknown",
+      constructionAllowed: null,
+      listingUrl: "https://example.com/integration-listing",
+    }, "request-portfolio-create", "command-portfolio-create");
+    const portfolio = (await createPortfolioItemFromDraft(portfolioRequest)).data as { portfolioItem: { id: string } };
+    const portfolioReplay = (await createPortfolioItemFromDraft({ ...portfolioRequest, requestId: "request-portfolio-replay" })).data as { portfolioItem: { id: string } };
+    expect(portfolioReplay.portfolioItem.id).toBe(portfolio.portfolioItem.id);
+    const listPortfolioItems = httpsCallable(functions, "listPortfolioItems");
+    const listedPortfolio = (await listPortfolioItems(envelope(undefined, "request-portfolio-list"))).data as { portfolioItems: Array<{ id: string }> };
+    expect(listedPortfolio.portfolioItems).toEqual([expect.objectContaining({ id: portfolio.portfolioItem.id })]);
+    const listPortfolioMatches = httpsCallable(functions, "listPortfolioMatches");
+    const portfolioMatches = (await listPortfolioMatches(envelope(undefined, "request-portfolio-matches"))).data as { matches: Array<{ contactId: string; portfolioItem: { id: string }; eligible: boolean; score: number }> };
+    expect(portfolioMatches.matches).toEqual([expect.objectContaining({ contactId: created.contact.id, eligible: true, score: 100, portfolioItem: expect.objectContaining({ id: portfolio.portfolioItem.id }) })]);
+    const withdrawPortfolioItem = httpsCallable(functions, "withdrawPortfolioItem");
+    await withdrawPortfolioItem(envelope({ portfolioItemId: portfolio.portfolioItem.id }, "request-portfolio-withdraw", "command-portfolio-withdraw"));
+    const portfolioAfterWithdrawal = (await listPortfolioItems(envelope(undefined, "request-portfolio-list-after-withdrawal"))).data as { portfolioItems: unknown[] };
+    expect(portfolioAfterWithdrawal.portfolioItems).toEqual([]);
 
     const getWorkspaceSettings = httpsCallable(functions, "getWorkspaceSettings");
     const initialSettings = (await getWorkspaceSettings(envelope(undefined, "request-settings-get"))).data as { settings: { country: string; displayName: string } };
@@ -277,5 +356,5 @@ describe("callable API vertical slice", () => {
     expect(deletionStatus).toBe("completed");
     const contactsAfterDeletion = (await listContacts(envelope(undefined, "request-list-after-deletion"))).data as { contacts: Array<{ id: string }> };
     expect(contactsAfterDeletion.contacts.some((item) => item.id === deletionContact.contact.id)).toBe(false);
-  }, 35_000);
+  }, 60_000);
 });

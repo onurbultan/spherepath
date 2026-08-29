@@ -69,6 +69,28 @@ export type PropertyFeature =
   | "middle_floor"
   | "top_floor"
   | "new_building";
+export type PropertyTransactionType = "buy" | "sell" | "rent" | "let" | "invest";
+
+export interface PropertyPreferences {
+  transactionType: PropertyTransactionType | null;
+  propertyTypes: PropertyType[];
+  preferredLocations: string[];
+  budgetRange: { min: number | null; max: number | null; currency: CurrencyCode } | null;
+  bedroomCountMin: number | null;
+  livingRoomCountMin: number | null;
+  roomCountMin: number | null;
+  areaMinM2: number | null;
+  areaMaxM2: number | null;
+  mustHaves: string[];
+  dealBreakers: string[];
+  timeline: string | null;
+}
+
+export interface ContactMemory {
+  keyThingsToRemember: string[];
+  propertyPreferences: PropertyPreferences;
+  updatedAt: Instant | null;
+}
 export type AuthorizationType = "exclusive" | "open" | "verbal" | "unknown";
 export type ListingStatus = "preparing" | "active" | "reserved" | "sold" | "rented" | "removed";
 export type LegalBasis = "legitimate_interest" | "contract" | "legal_obligation" | "explicit_consent";
@@ -122,6 +144,7 @@ export interface Contact extends TenantOwned, Audited {
     lastAskOutcome: AskOutcome | null;
     referralCount: number;
   };
+  memory: ContactMemory;
   privacy: {
     purposes: Record<string, { legalBasis: LegalBasis; startedAt: Instant }>;
     noticeStatus: "pending" | "completed";

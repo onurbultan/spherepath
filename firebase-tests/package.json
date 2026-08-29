@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "vitest run --passWithNoTests --exclude firestore.rules.test.ts --exclude api.integration.test.ts",
-    "test:api": "vitest run api.integration.test.ts",
+    "test": "vitest run --passWithNoTests --exclude firestore.rules.test.ts --exclude api.integration.test.ts --exclude office-team.integration.test.ts",
+    "test:api": "vitest run api.integration.test.ts office-team.integration.test.ts",
     "test:rules": "vitest run firestore.rules.test.ts"
   },
   "dependencies": {

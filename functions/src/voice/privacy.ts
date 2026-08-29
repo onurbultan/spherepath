@@ -1,4 +1,5 @@
 import {
+  emptyVoicePropertyPreferences,
   voiceExtractionSchema,
   type SensitiveDataCategory,
   type VoiceExtraction,
@@ -50,6 +51,43 @@ export function maskSensitiveTranscript(rawTranscript: string): MaskedTranscript
   return { text, categories: [...categories], maskedRanges: ranges };
 }
 
+function safeExtractedText(value: string | null): string | null {
+  if (value === null) return null;
+  const masked = maskSensitiveTranscript(value);
+  const text = masked.text.trim();
+  return text && text !== "[HASSAS İÇERİK MASKELENDİ]" ? text : null;
+}
+
+function safeExtractedList(values: string[]): string[] {
+  return values.flatMap((value) => {
+    const safe = safeExtractedText(value);
+    return safe ? [safe] : [];
+  });
+}
+
+export function sanitizeVoiceExtraction(extraction: VoiceExtraction): VoiceExtraction {
+  const preferences = extraction.insights.propertyPreferences;
+  return voiceExtractionSchema.parse({
+    ...extraction,
+    interaction: {
+      ...extraction.interaction,
+      outcome: safeExtractedText(extraction.interaction.outcome),
+      noteSummary: safeExtractedText(extraction.interaction.noteSummary),
+    },
+    insights: {
+      keyThingsToRemember: safeExtractedList(extraction.insights.keyThingsToRemember),
+      propertyPreferences: {
+        ...preferences,
+        preferredLocations: safeExtractedList(preferences.preferredLocations),
+        mustHaves: safeExtractedList(preferences.mustHaves),
+        dealBreakers: safeExtractedList(preferences.dealBreakers),
+        timeline: safeExtractedText(preferences.timeline),
+      },
+      suggestedActionReason: safeExtractedText(extraction.insights.suggestedActionReason),
+    },
+  });
+}
+
 function inferNextAction(text: string): VoiceExtraction["interaction"]["nextActionType"] {
   if (/\b(ara|arayacağım|arayacağiz|arayacağız|telefon edeceğim)\b/iu.test(text)) return "call";
   if (/\b(mesaj|whatsapp|yazacağım|yazacağız)\b/iu.test(text)) return "message";
@@ -93,7 +131,18 @@ export function extractVoiceDraft(maskedTranscript: string): VoiceExtraction {
       noteSummary,
       nextActionType,
       daysFromNow,
+      actionTime: null,
+    },
+    insights: {
+      keyThingsToRemember: [],
+      propertyPreferences: emptyVoicePropertyPreferences,
+      suggestedActionReason: null,
     },
     confidence,
+    provenance: {
+      engine: "rules",
+      model: null,
+      promptVersion: "rules-v1",
+    },
   });
 }

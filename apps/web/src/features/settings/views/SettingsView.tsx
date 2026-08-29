@@ -1,7 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { Download, LogOut, Save, ShieldCheck, UserRoundCog } from "lucide-react";
+import { Building2, Check, Copy, Download, LogOut, Save, ShieldCheck, UserPlus, UserRoundCog, Users } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   apiQueryKeys,
@@ -14,6 +15,7 @@ import {
   workspaceSettingsSchema,
   type ContactDraft,
   type DataSubjectRequestType,
+  type OfficeInviteView,
   type WorkspaceSettingsDraft,
   type WorkspaceSettingsView,
 } from "@spherepath/shared";
@@ -22,11 +24,15 @@ import { listContacts, type ContactRecord } from "@/features/contacts/resources/
 import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
 import {
+  createOfficeInvite,
   createDataSubjectRequest,
   getContactDataExport,
+  joinOffice,
   listDataSubjectRequests,
+  loadOfficeTeam,
   loadWorkspaceSettings,
   resolveDataSubjectRequest,
+  revokeOfficeInvite,
   saveWorkspaceSettings,
 } from "../resources/settings";
 
@@ -72,9 +78,11 @@ function downloadJson(value: unknown, filename: string) {
 }
 
 export function SettingsView() {
-  const { session, signOut } = useSession();
+  const { session, refreshSession, signOut } = useSession();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const settingsQuery = useQuery({ queryKey: apiQueryKeys.workspaceSettings, queryFn: loadWorkspaceSettings });
+  const teamQuery = useQuery({ queryKey: apiQueryKeys.officeTeam, queryFn: loadOfficeTeam });
   const requestsQuery = useQuery({ queryKey: apiQueryKeys.dataSubjectRequests, queryFn: listDataSubjectRequests });
   const contactsQuery = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts });
   const [editedDraft, setDraft] = useState<WorkspaceSettingsDraft | null>(null);
@@ -85,6 +93,9 @@ export function SettingsView() {
   const [requestType, setRequestType] = useState<DataSubjectRequestType>("access");
   const [requesterReference, setRequesterReference] = useState("");
   const [details, setDetails] = useState("");
+  const [invite, setInvite] = useState<OfficeInviteView | null>(null);
+  const [joinCode, setJoinCode] = useState("");
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   const contacts = contactsQuery.data ?? [];
   const selectedContactId = contactId || contacts[0]?.id || "";
@@ -150,6 +161,52 @@ export function SettingsView() {
     finally { setPending(false); }
   }
 
+  async function createInvite() {
+    if (!session) return;
+    setPending(true); setError(null); setMessage(null);
+    try {
+      const nextInvite = await createOfficeInvite(session);
+      setInvite(nextInvite);
+      await refreshSession();
+      await queryClient.invalidateQueries({ queryKey: apiQueryKeys.officeTeam });
+      setMessage("Tek kullanımlık ofis daveti hazırlandı.");
+    } catch (nextError) { setError(messageFrom(nextError)); }
+    finally { setPending(false); }
+  }
+
+  async function copyInvite() {
+    if (!invite) return;
+    try {
+      await navigator.clipboard.writeText(invite.code);
+      setInviteCopied(true);
+      window.setTimeout(() => setInviteCopied(false), 2500);
+    } catch { setError("Davet kodu panoya kopyalanamadı."); }
+  }
+
+  async function revokeInvite(code: string) {
+    if (!session) return;
+    setPending(true); setError(null); setMessage(null);
+    try {
+      await revokeOfficeInvite(session, code);
+      if (invite?.code === code) setInvite(null);
+      await queryClient.invalidateQueries({ queryKey: apiQueryKeys.officeTeam });
+      setMessage("Ofis daveti iptal edildi.");
+    } catch (nextError) { setError(messageFrom(nextError)); }
+    finally { setPending(false); }
+  }
+
+  async function joinTeam(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session) return;
+    setPending(true); setError(null); setMessage(null);
+    try {
+      await joinOffice(session, { code: joinCode });
+      await refreshSession();
+      queryClient.clear();
+      router.push("/");
+    } catch (nextError) { setError(messageFrom(nextError)); setPending(false); }
+  }
+
   if (settingsQuery.isPending || !draft) return <AppShell><div className="content-state">Ayarlar yükleniyor…</div></AppShell>;
   if (settingsQuery.error) return <AppShell><p className="form-error notice">{messageFrom(settingsQuery.error)}</p></AppShell>;
 
@@ -161,6 +218,10 @@ export function SettingsView() {
       <SpCard className="settings-card"><div className="settings-title"><ShieldCheck size={20} /><div><p className="eyebrow">VERİ SORUMLUSU</p><h2>Ofis uyum bilgileri</h2></div></div><label>Ülke<select value={draft.country} onChange={(event) => setDraft({ ...draft, country: event.target.value as WorkspaceSettingsDraft["country"] })}>{Object.entries(countryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Veri sorumlusu adı<input value={draft.dataControllerName} onChange={(event) => setDraft({ ...draft, dataControllerName: event.target.value })} /></label><label>VERBİS durumu<select value={draft.verbisStatus} onChange={(event) => setDraft({ ...draft, verbisStatus: event.target.value as WorkspaceSettingsDraft["verbisStatus"] })}>{verbisStatuses.map((item) => <option key={item} value={item}>{verbisStatusLabels[item]}</option>)}</select></label>{draft.country === "TRNC" ? <div className="trnc-gate"><strong>KKTC zorunlu doğrulama kapısı</strong><p>Firebase verisi KKTC dışına çıktığı için çalışma başlamadan önce hem dosyalama bildirimi hem aktarım ruhsatı gerekir.</p><label className="check-label"><input type="checkbox" checked={draft.trncFilingConfirmed} onChange={(event) => setDraft({ ...draft, trncFilingConfirmed: event.target.checked })} /> m.8 dosyalama bildirimi tamamlandı</label><label className="check-label"><input type="checkbox" checked={draft.trncTransferLicenseConfirmed} onChange={(event) => setDraft({ ...draft, trncTransferLicenseConfirmed: event.target.checked })} /> Yurt dışı aktarım ruhsatı alındı</label></div> : null}<p className="privacy-hint">Bu ekran hukuki danışmanlık yerine geçmez. Üretim öncesi yerel hukukçu doğrulaması gerekir.</p></SpCard>
       <button className="primary-action inline-action settings-save" disabled={pending} type="submit"><Save size={18} /> {pending ? "Kaydediliyor…" : "Ayarları kaydet"}</button>
     </form>
+    <section className="office-team-section"><div className="section-heading"><div><p className="eyebrow">OFİS EKİBİ</p><h2>Ortak çalışma alanı</h2><p>Kişiler danışmana ait kalır; broker ofis genelini, danışman kendi kayıtlarını görür. Ortak portföy havuzu bütün ekibe açıktır.</p></div></div><div className="settings-grid">
+      <SpCard className="settings-card office-team-card"><div className="settings-title"><Users size={20} /><div><p className="eyebrow">{teamQuery.data?.officeName ?? "OFİS"}</p><h2>Ekip üyeleri</h2></div></div>{teamQuery.isPending ? <p>Ofis ekibi yükleniyor…</p> : teamQuery.error ? <p className="form-error">{messageFrom(teamQuery.error)}</p> : <div className="office-member-list">{teamQuery.data?.members.map((member) => <div className="office-member" key={member.uid}><span className="contact-avatar">{member.displayName.slice(0, 1).toLocaleUpperCase("tr-TR")}</span><div><strong>{member.displayName}</strong><small>{member.role === "broker" ? "Broker / ofis yöneticisi" : "Gayrimenkul danışmanı"}</small></div></div>)}</div>}{teamQuery.data?.canInvite ? <button className="secondary-action inline-action" disabled={pending} onClick={() => void createInvite()} type="button"><UserPlus size={17} /> Davet kodu oluştur</button> : null}{invite ? <div className="office-invite-result"><span>7 gün geçerli · tek kullanımlık</span><strong>{invite.code}</strong><div className="office-invite-actions"><button className="secondary-action compact-action" onClick={() => void copyInvite()} type="button">{inviteCopied ? <Check size={16} /> : <Copy size={16} />}{inviteCopied ? "Kopyalandı" : "Kodu kopyala"}</button><button className="text-button danger" disabled={pending} onClick={() => void revokeInvite(invite.code)} type="button">İptal et</button></div></div> : null}{teamQuery.data?.activeInvites.filter((item) => item.code !== invite?.code).map((item) => <div className="office-invite-result" key={item.code}><span>{new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(item.expiresAt)} tarihine kadar geçerli</span><strong>{item.code}</strong><button className="text-button danger" disabled={pending} onClick={() => void revokeInvite(item.code)} type="button">İptal et</button></div>)}</SpCard>
+      {teamQuery.data?.canJoinOffice ? <SpCard className="settings-card"><div className="settings-title"><Building2 size={20} /><div><p className="eyebrow">DAVETLE KATIL</p><h2>Başka bir ofise katıl</h2></div></div><p className="privacy-copy">Bu boş kişisel çalışma alanını, size verilen tek kullanımlık kodla ofis ekibine bağlayabilirsiniz.</p><form className="form-stack" onSubmit={joinTeam}><label>Ofis davet kodu<input autoCapitalize="characters" maxLength={8} value={joinCode} onChange={(event) => setJoinCode(event.target.value.toLocaleUpperCase("tr-TR").replace(/[^A-Z2-9]/gu, ""))} placeholder="ABCD2345" /></label><button className="secondary-action inline-action" disabled={pending || joinCode.length !== 8} type="submit"><Building2 size={17} /> Ofise katıl</button></form></SpCard> : <SpCard className="settings-card"><div className="settings-title"><Building2 size={20} /><div><p className="eyebrow">AKTİF ÇALIŞMA ALANI</p><h2>Ofis bağlantısı korunuyor</h2></div></div><p className="privacy-copy">Bu hesapta aktif kayıtlar bulunduğu için başka bir ofise doğrudan geçiş kapalıdır. Böylece kişi, fırsat ve görevler yanlışlıkla geride bırakılmaz.</p></SpCard>}
+    </div></section>
     <section className="privacy-requests"><div className="section-heading"><div><p className="eyebrow">VERİ SAHİBİ HAKLARI</p><h2>Talep ve yanıt takibi</h2></div></div><div className="settings-grid"><SpCard className="settings-card"><h2>Yeni talep</h2><form className="form-stack" onSubmit={createRequest}><label>Kişi<select value={selectedContactId} onChange={(event) => setContactId(event.target.value)}>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.fullName ?? contact.label}</option>)}</select></label><label>Talep türü<select value={requestType} onChange={(event) => setRequestType(event.target.value as DataSubjectRequestType)}>{dataSubjectRequestTypes.map((item) => <option key={item} value={item}>{dataSubjectRequestTypeLabels[item]}</option>)}</select></label><label>Kimlik / başvuru referansı <span className="optional">isteğe bağlı</span><input value={requesterReference} onChange={(event) => setRequesterReference(event.target.value)} /></label><label>Açıklama<textarea value={details} onChange={(event) => setDetails(event.target.value)} /></label><button className="secondary-action" disabled={pending || !selectedContactId} type="submit">Talebi kaydet</button></form></SpCard><div className="request-list">{(requestsQuery.data ?? []).map((item) => <SpCard className="request-card" key={item.id}><div><strong>{item.contactName}</strong><span>{dataSubjectRequestTypeLabels[item.type]} · {item.status}</span><small>Son yanıt: {new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium" }).format(item.dueAt)}</small></div><div className="request-actions">{item.type === "access" ? <button type="button" onClick={() => void exportContact(item.contactId)}><Download size={15} /> JSON indir</button> : null}{item.status === "pending_verification" ? <><button type="button" onClick={() => void resolve(item.id, "approved", item.type, item.contactId)}>Onayla</button><button type="button" onClick={() => void resolve(item.id, "rejected", item.type, item.contactId)}>Reddet</button></> : null}</div></SpCard>)}{requestsQuery.data?.length === 0 ? <SpCard><p>Henüz veri sahibi talebi yok.</p></SpCard> : null}</div></div></section>
   </AppShell>;
 }

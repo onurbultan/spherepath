@@ -3,6 +3,9 @@ import {
   type ContactDataExport,
   type CreateDataSubjectRequestInput,
   type DataSubjectRequestView,
+  type JoinOfficeInput,
+  type OfficeInviteView,
+  type OfficeTeamView,
   type ResolveDataSubjectRequestInput,
   type WorkspaceSettingsDraft,
   type WorkspaceSettingsView,
@@ -18,6 +21,28 @@ export async function saveWorkspaceSettings(session: WorkspaceSession, input: Wo
   return (await apiClient.command<WorkspaceSettingsDraft, { settings: WorkspaceSettingsView }>(
     "updateWorkspaceSettings", input, createCommandId(session.uid),
   )).settings;
+}
+
+export async function loadOfficeTeam(): Promise<OfficeTeamView> {
+  return (await apiClient.query<undefined, { team: OfficeTeamView }>("getOfficeTeam", undefined)).team;
+}
+
+export async function createOfficeInvite(session: WorkspaceSession): Promise<OfficeInviteView> {
+  return (await apiClient.command<undefined, { invite: OfficeInviteView }>(
+    "createOfficeInvite", undefined, createCommandId(session.uid),
+  )).invite;
+}
+
+export async function revokeOfficeInvite(session: WorkspaceSession, code: string): Promise<void> {
+  await apiClient.command<JoinOfficeInput, { code: string }>(
+    "revokeOfficeInvite", { code }, createCommandId(session.uid),
+  );
+}
+
+export async function joinOffice(session: WorkspaceSession, input: JoinOfficeInput): Promise<{ officeId: string; role: "agent" }> {
+  return apiClient.command<JoinOfficeInput, { officeId: string; role: "agent" }>(
+    "joinOffice", input, createCommandId(session.uid),
+  );
 }
 
 export async function listDataSubjectRequests(): Promise<DataSubjectRequestView[]> {

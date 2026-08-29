@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Contact, ContactRole, ContactSource, TenantOwned } from "../domain/entities.js";
+import { emptyVoicePropertyPreferences } from "../voice/voice-note.js";
 
 export const contactSources = [
   "in_person",
@@ -80,6 +81,11 @@ export function createContact(draft: ContactDraft, tenant: TenantOwned, now: num
       lastObjective: null,
       lastAskOutcome: null,
       referralCount: 0,
+    },
+    memory: {
+      keyThingsToRemember: [],
+      propertyPreferences: emptyVoicePropertyPreferences,
+      updatedAt: null,
     },
     privacy: {
       purposes: { core_crm: { legalBasis: "legitimate_interest", startedAt: now } },

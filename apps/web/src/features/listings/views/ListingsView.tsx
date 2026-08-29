@@ -14,6 +14,7 @@ import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
 import { listListings, moveListing, saveListing, type ListingRecord } from "../resources/listings";
 import { ClosingSection } from "@/features/closing/views/ClosingSection";
+import { OfficePortfolioSection } from "@/features/matching/views/OfficePortfolioSection";
 
 const messageFrom = (error: unknown) => error instanceof Error ? error.message : "Portföy işlemi tamamlanamadı.";
 const money = (amount: number, currency: CurrencyCode) => new Intl.NumberFormat("tr-TR", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
@@ -68,6 +69,7 @@ export function ListingsView() {
   }
 
   return <AppShell><header className="page-header contacts-header"><div><p className="eyebrow">AKTİF ENVANTER</p><h1>Portföy</h1><p className="context-sentence">Kazanılan fırsatı mülk ve yetki kaydına dönüştür, yaşam döngüsünü takip et.</p></div><button className="primary-action inline-action" disabled={!candidates.length} onClick={() => { setCreateOpen(true); setError(null); }} type="button"><Plus size={18} /> Portföy ekle</button></header>
+  <OfficePortfolioSection />
   {error && !createOpen && !moving ? <p className="form-error notice">{error}</p> : null}
   {listingsQuery.isPending ? <div className="content-state"><RefreshCw className="spin" size={22} /> Portföyler yükleniyor…</div> : listingsQuery.error ? <p className="form-error notice">{messageFrom(listingsQuery.error)}</p> : listings.length === 0 ? <SpCard className="empty-state"><div className="card-icon secondary"><Building2 size={20} /></div><h2>Henüz portföy yok</h2><p>Bir satıcı veya kiraya veren fırsatını “Kazanıldı” aşamasına getirerek portföye dönüştür.</p></SpCard> : <section className="opportunity-grid" aria-label="Portföyler">{listings.map((listing) => <SpCard className="opportunity-card" key={listing.id}><div className="opportunity-top"><span className={`stage-badge stage-${listing.status}`}>{listingStatusLabels[listing.status]}</span><span>{authorizationTypeLabels[listing.authorizationType]}</span></div><h2>{listing.propertySummary.address}</h2><p>{listing.ownerContactName} · {propertyTypeLabels[listing.propertySummary.type]}{listing.propertySummary.roomCount !== null ? ` · ${listing.propertySummary.roomCount} oda` : ""}</p><strong>{money(listing.askingPrice, listing.currency)}</strong>{nextListingStatuses(listing.status).length ? <button className="secondary-action" onClick={() => openMove(listing)} type="button">Durumu güncelle</button> : null}</SpCard>)}</section>}
   {listings.length ? <ClosingSection listings={listings} /> : null}

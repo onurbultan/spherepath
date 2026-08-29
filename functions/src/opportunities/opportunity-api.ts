@@ -1,8 +1,10 @@
 import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
+  contactMemorySchema,
   createOpportunity as createOpportunityEntity,
   opportunityDraftSchema,
+  type Contact,
   type StageEvent,
   type Opportunity,
   type OpportunityDraft,
@@ -14,6 +16,7 @@ import { requireSpherepathClaims } from "../auth/claims.js";
 export interface OpportunityRecord extends Opportunity {
   id: string;
   subjectContactName: string;
+  subjectContactMemory: Contact["memory"];
 }
 
 export interface OpportunityStageEventRecord extends StageEvent {
@@ -51,11 +54,34 @@ function toStoredOpportunity(opportunity: Opportunity) {
   };
 }
 
-function toOpportunityRecord(id: string, data: DocumentData, subjectContactName: string): OpportunityRecord {
+function contactMemory(data?: DocumentData): Contact["memory"] {
+  const memory = (data?.memory ?? {}) as DocumentData;
+  return contactMemorySchema.parse({
+    keyThingsToRemember: memory.keyThingsToRemember ?? [],
+    propertyPreferences: memory.propertyPreferences ?? {
+      transactionType: null,
+      propertyTypes: [],
+      preferredLocations: [],
+      budgetRange: null,
+      bedroomCountMin: null,
+      livingRoomCountMin: null,
+      roomCountMin: null,
+      areaMinM2: null,
+      areaMaxM2: null,
+      mustHaves: [],
+      dealBreakers: [],
+      timeline: null,
+    },
+    updatedAt: millis(memory.updatedAt),
+  });
+}
+
+function toOpportunityRecord(id: string, data: DocumentData, subjectContactName: string, subjectContactMemory: Contact["memory"]): OpportunityRecord {
   return {
     ...(data as Opportunity),
     id,
     subjectContactName,
+    subjectContactMemory,
     qualifiedAt: millis(data.qualifiedAt),
     stageEnteredAt: millis(data.stageEnteredAt) ?? 0,
     nextActionAt: millis(data.nextActionAt),
@@ -115,6 +141,7 @@ export const getOpportunityDetail = onCall(callableOptions, async (request): Pro
         opportunitySnapshot.id,
         opportunityData,
         (contact?.fullName ?? contact?.label ?? "İsimsiz kişi") as string,
+        contactMemory(contact),
       ),
       stageEvents,
     };
@@ -134,12 +161,17 @@ export const listOpportunities = onCall(callableOptions, async (request): Promis
     const contactSnapshots = contactIds.length
       ? await firestore.getAll(...contactIds.map((id) => firestore.collection("contacts").doc(id)))
       : [];
-    const contactNames = new Map(contactSnapshots.map((item) => [
-      item.id,
-      (item.data()?.fullName ?? item.data()?.label ?? "İsimsiz kişi") as string,
-    ]));
+    const contacts = new Map(contactSnapshots.map((item) => [item.id, item.data()]));
     const opportunities = activeDocuments
-      .map((item) => toOpportunityRecord(item.id, item.data(), contactNames.get(item.data().subjectContactId) ?? "İsimsiz kişi"))
+      .map((item) => {
+        const contact = contacts.get(item.data().subjectContactId as string);
+        return toOpportunityRecord(
+          item.id,
+          item.data(),
+          (contact?.fullName ?? contact?.label ?? "İsimsiz kişi") as string,
+          contactMemory(contact),
+        );
+      })
       .sort((left, right) => right.updatedAt - left.updatedAt);
     return { opportunities };
   });
@@ -182,7 +214,7 @@ export const createOpportunity = onCall(callableOptions, async (request): Promis
         entityId: opportunityRef.id,
         fromStage: null,
         toStage: "new_lead",
-        reason: "Opportunity created",
+        reason: "Fırsat oluşturuldu",
         commandId: envelope.commandId,
         occurredAt: nowTimestamp,
         createdAt: nowTimestamp,
@@ -203,6 +235,11 @@ export const createOpportunity = onCall(callableOptions, async (request): Promis
       contactRef.get(),
     ]);
     const contact = contactSnapshot.data();
-    return { opportunity: toOpportunityRecord(opportunitySnapshot.id, opportunitySnapshot.data()!, (contact?.fullName ?? contact?.label ?? "İsimsiz kişi") as string) };
+    return { opportunity: toOpportunityRecord(
+      opportunitySnapshot.id,
+      opportunitySnapshot.data()!,
+      (contact?.fullName ?? contact?.label ?? "İsimsiz kişi") as string,
+      contactMemory(contact),
+    ) };
   });
 });

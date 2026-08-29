@@ -2,6 +2,7 @@ import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/fires
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   contactDraftSchema,
+  contactMemorySchema,
   contactPrivacyDraftSchema,
   createContact as createContactEntity,
   type Contact,
@@ -36,6 +37,7 @@ function timestamp(value: number | null): Timestamp | null {
 function toContactRecord(id: string, data: DocumentData): ContactRecord {
   const relationship = data.relationship as DocumentData;
   const privacy = data.privacy as DocumentData;
+  const memory = (data.memory ?? {}) as DocumentData;
   const purposes = (privacy.purposes ?? {}) as Record<string, DocumentData>;
   return {
     ...(data as Contact),
@@ -49,6 +51,24 @@ function toContactRecord(id: string, data: DocumentData): ContactRecord {
       lastTouchAt: millis(relationship.lastTouchAt),
       nextActionAt: millis(relationship.nextActionAt),
     },
+    memory: contactMemorySchema.parse({
+      keyThingsToRemember: memory.keyThingsToRemember ?? [],
+      propertyPreferences: memory.propertyPreferences ?? {
+        transactionType: null,
+        propertyTypes: [],
+        preferredLocations: [],
+        budgetRange: null,
+        bedroomCountMin: null,
+        livingRoomCountMin: null,
+        roomCountMin: null,
+        areaMinM2: null,
+        areaMaxM2: null,
+        mustHaves: [],
+        dealBreakers: [],
+        timeline: null,
+      },
+      updatedAt: millis(memory.updatedAt),
+    }),
     privacy: {
       ...(privacy as Contact["privacy"]),
       purposes: Object.fromEntries(Object.entries(purposes).map(([key, purpose]) => [key, { legalBasis: (purpose.legalBasis ?? "legitimate_interest") as Contact["privacy"]["purposes"][string]["legalBasis"], startedAt: millis(purpose.startedAt) ?? 0 }])),
@@ -72,6 +92,10 @@ function toStoredContact(contact: Contact) {
       ...contact.relationship,
       lastTouchAt: timestamp(contact.relationship.lastTouchAt),
       nextActionAt: timestamp(contact.relationship.nextActionAt),
+    },
+    memory: {
+      ...contact.memory,
+      updatedAt: timestamp(contact.memory.updatedAt),
     },
     privacy: {
       ...contact.privacy,

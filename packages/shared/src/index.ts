@@ -7,6 +7,7 @@ export * from "./domain/entities.js";
 export * from "./domain/interaction-draft.js";
 export * from "./interactions/manual-interaction.js";
 export * from "./listings/index.js";
+export * from "./matching/portfolio-match.js";
 export * from "./opportunities/index.js";
 export * from "./referrals/index.js";
 export * from "./privacy/index.js";

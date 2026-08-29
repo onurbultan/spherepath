@@ -42,4 +42,15 @@ describe("today overview", () => {
     }], 2_000);
     expect(overview.tasks[0]).toMatchObject({ opportunityId: "opportunity-1", title: "Deniz Aral" });
   });
+
+  it("shows only today's interactions in reverse chronological order", () => {
+    const now = Date.UTC(2026, 7, 29, 12);
+    const overview = buildTodayOverview([], [], now, [], [], new Set(), [
+      { id: "older", contactId: "contact-1", contactName: "Dün", outcome: "Eski görüşme", occurredAt: Date.UTC(2026, 7, 28, 12) },
+      { id: "first", contactId: "contact-2", contactName: "Ayşe", outcome: "İlk görüşme", occurredAt: Date.UTC(2026, 7, 29, 8) },
+      { id: "latest", contactId: "contact-3", contactName: "Deniz", outcome: "Son görüşme", occurredAt: Date.UTC(2026, 7, 29, 10) },
+    ]);
+
+    expect(overview.recentInteractions.map((item) => item.id)).toEqual(["latest", "first"]);
+  });
 });

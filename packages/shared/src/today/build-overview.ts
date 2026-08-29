@@ -1,5 +1,6 @@
 import type { Contact, Opportunity } from "../domain/entities.js";
 import { z } from "zod";
+import { nextActionTypeLabels } from "../interactions/manual-interaction.js";
 
 export interface TodayContact {
   id: string;
@@ -32,6 +33,13 @@ export interface TodayTask {
 
 export interface TodayListing { id: string; status: "preparing" | "active" | "reserved" | "sold" | "rented" | "removed" }
 export interface TodayDeal { id: string; stage: "presentation" | "viewing" | "offer" | "contract" | "closed" | "lost" }
+export interface TodayInteraction {
+  id: string;
+  contactId: string;
+  contactName: string;
+  outcome: string;
+  occurredAt: number;
+}
 
 export interface TodayOverview {
   stages: {
@@ -43,6 +51,7 @@ export interface TodayOverview {
   };
   focus: { title: string; description: string; evidence: string; action: string; sampleSufficient: boolean };
   tasks: TodayTask[];
+  recentInteractions: TodayInteraction[];
   completedTaskCount: number;
 }
 
@@ -51,6 +60,10 @@ export type DailyTaskOutcome = z.infer<typeof dailyTaskOutcomeSchema>;
 
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1_000;
 
+function istanbulDayKey(timestamp: number): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(timestamp));
+}
+
 export function buildTodayOverview(
   contacts: readonly TodayContact[],
   opportunities: readonly TodayOpportunity[],
@@ -58,6 +71,7 @@ export function buildTodayOverview(
   listings: readonly TodayListing[] = [],
   deals: readonly TodayDeal[] = [],
   completedTaskIds: ReadonlySet<string> = new Set(),
+  interactions: readonly TodayInteraction[] = [],
 ): TodayOverview {
   const activeOpportunities = opportunities.filter((item) => item.stage !== "lost");
   const stages = {
@@ -74,7 +88,7 @@ export function buildTodayOverview(
       id: `next-action-${contact.id}`,
       contactId: contact.id,
       title: contact.name,
-      reason: "Kabul edilmiş sonraki aksiyon",
+      reason: contact.nextActionType ? nextActionTypeLabels[contact.nextActionType] : "Sonraki aksiyon",
       dueAt: contact.nextActionAt,
       type: "next_action",
       priority: (contact.nextActionAt ?? now) < now ? "overdue" : "relationship",
@@ -98,7 +112,7 @@ export function buildTodayOverview(
       contactId: opportunity.subjectContactId,
       opportunityId: opportunity.id,
       title: opportunity.subjectContactName,
-      reason: "Fırsatın kabul edilmiş sonraki aksiyonu",
+      reason: opportunity.nextActionType ? nextActionTypeLabels[opportunity.nextActionType] : "Fırsat aksiyonu",
       dueAt: opportunity.nextActionAt,
       type: "next_action",
       priority: (opportunity.nextActionAt ?? now) < now ? "overdue" : "bottleneck",
@@ -111,6 +125,11 @@ export function buildTodayOverview(
     .slice(0, 5);
 
   const opportunitiesWithoutAction = activeOpportunities.filter((item) => item.stage !== "won" && item.nextActionAt === null).length;
+  const currentDayKey = istanbulDayKey(now);
+  const recentInteractions = interactions
+    .filter((interaction) => istanbulDayKey(interaction.occurredAt) === currentDayKey)
+    .sort((left, right) => right.occurredAt - left.occurredAt)
+    .slice(0, 8);
   const sampleSufficient = contacts.length >= 5 || opportunities.length >= 5;
   const focus = contacts.length === 0
     ? { title: "Başlamak için kişi ekle", description: "İlişki sistemini ölçmek için ilk kişini çalışma alanına ekle.", evidence: "Son 30 günde 0 kişi", action: "Bugün ilk nitelikli kişiyi ekle.", sampleSufficient: false }
@@ -124,5 +143,5 @@ export function buildTodayOverview(
             ? { title: "Lead’den portföye geçişi hızlandır", description: `${stages.lead} açık fırsat var; aktif portföy henüz yok.`, evidence: `${stages.lead} açık lead / 0 aktif portföy`, action: "En yaşlı fırsatı değerleme veya yetki adımına ilerlet.", sampleSufficient }
             : { title: "Aktif portföyleri kapamaya taşı", description: `${stages.listing} aktif portföy ve ${stages.closing} tamamlanan işlem var.`, evidence: `${stages.listing} aktif portföy / ${stages.closing} kapanan işlem`, action: "En uygun alıcı için sunum veya teklif takibini tamamla.", sampleSufficient };
 
-  return { stages, focus, tasks, completedTaskCount: completedTaskIds.size };
+  return { stages, focus, tasks, recentInteractions, completedTaskCount: completedTaskIds.size };
 }

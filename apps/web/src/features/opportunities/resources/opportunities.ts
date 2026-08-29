@@ -1,5 +1,6 @@
 import {
   createCommandId,
+  type Contact,
   type Opportunity,
   type OpportunityDraft,
   type OpportunityStage,
@@ -12,6 +13,7 @@ import { apiClient } from "@/shared/api/client";
 export interface OpportunityRecord extends Opportunity {
   id: string;
   subjectContactName: string;
+  subjectContactMemory: Contact["memory"];
 }
 
 export interface OpportunityStageEventRecord extends StageEvent { id: string }

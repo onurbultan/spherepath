@@ -10,6 +10,7 @@ export function AuthView() {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -18,7 +19,7 @@ export function AuthView() {
     setPending(true);
     setFormError(null);
     try {
-      if (mode === "register") await createAccount(displayName, email, password);
+      if (mode === "register") await createAccount(displayName, email, password, inviteCode || undefined);
       else await signIn(email, password);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Oturum açılamadı.");
@@ -40,7 +41,7 @@ export function AuthView() {
         <h2 id="auth-title">{mode === "signin" ? "Tekrar hoş geldin" : "Çalışma alanını oluştur"}</h2>
         <form className="form-stack" onSubmit={submit}>
           {mode === "register" ? (
-            <label>Ad soyad<input autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} required minLength={2} /></label>
+            <><label>Ad soyad<input autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} required minLength={2} /></label><label>Ofis davet kodu <span className="optional">isteğe bağlı</span><input autoCapitalize="characters" maxLength={8} placeholder="ABCD2345" value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toLocaleUpperCase("tr-TR").replace(/[^A-Z2-9]/gu, ""))} /></label></>
           ) : null}
           <label>E-posta<input autoComplete="email" inputMode="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
           <label>Şifre<input autoComplete={mode === "register" ? "new-password" : "current-password"} type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={6} /></label>

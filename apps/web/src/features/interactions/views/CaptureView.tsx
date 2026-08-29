@@ -1,13 +1,17 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Check, ContactRound, Save } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Check, ContactRound, Save, UserPlus, X } from "lucide-react";
 import {
   apiQueryKeys,
   askOutcomeLabels,
   askOutcomes,
+  contactDraftSchema,
+  contactRoleLabels,
+  contactRoles,
+  contactSourceLabels,
+  contactSources,
   interactionChannelLabels,
   interactionChannels,
   interactionObjectiveLabels,
@@ -15,11 +19,12 @@ import {
   manualInteractionSchema,
   nextActionTypeLabels,
   nextActionTypes,
+  type ContactDraft,
   type ManualInteractionDraft,
 } from "@spherepath/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSession } from "@/features/auth/resources/session";
-import { listContacts } from "@/features/contacts/resources/contacts";
+import { listContacts, saveContact } from "@/features/contacts/resources/contacts";
 import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
 import { saveManualInteraction } from "../resources/interactions";
@@ -29,8 +34,11 @@ function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Temas kaydedilemedi.";
 }
 
+const emptyContactDraft: ContactDraft = { fullName: "", phone: "", metAtPlace: "", source: "in_person", role: "unknown" };
+
 export function CaptureView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { session } = useSession();
   const [pending, setPending] = useState(false);
@@ -45,6 +53,9 @@ export function CaptureView() {
   const [nextActionType, setNextActionType] = useState<ManualInteractionDraft["nextActionType"]>(null);
   const [nextActionAt, setNextActionAt] = useState("");
   const [noteSummary, setNoteSummary] = useState("");
+  const [quickContactOpen, setQuickContactOpen] = useState(false);
+  const [quickContactDraft, setQuickContactDraft] = useState<ContactDraft>(emptyContactDraft);
+  const [contactPending, setContactPending] = useState(false);
 
   const contactsQuery = useQuery({
     queryKey: apiQueryKeys.contacts,
@@ -52,11 +63,14 @@ export function CaptureView() {
     enabled: Boolean(session),
   });
   const contacts = contactsQuery.data ?? [];
-  const selectedContactId = contactId || contacts[0]?.id || "";
+  const requestedContactId = searchParams.get("contactId") ?? "";
+  const selectedContactId = contactId || (contacts.some((contact) => contact.id === requestedContactId) ? requestedContactId : "") || contacts[0]?.id || "";
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!session) return;
+    const submitted = new FormData(event.currentTarget);
+    const submittedNextActionAt = String(submitted.get("nextActionAt") ?? "");
     const raw = {
       contactId: selectedContactId,
       channel,
@@ -65,7 +79,7 @@ export function CaptureView() {
       outcome,
       askOutcome,
       nextActionType,
-      nextActionAt: nextActionAt ? new Date(nextActionAt).getTime() : null,
+      nextActionAt: submittedNextActionAt ? new Date(submittedNextActionAt).getTime() : null,
       noteSummary,
     };
     const parsed = manualInteractionSchema.safeParse(raw);
@@ -90,16 +104,48 @@ export function CaptureView() {
     }
   }
 
+  async function createQuickContact(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session) return;
+    const parsed = contactDraftSchema.safeParse(quickContactDraft);
+    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Kişi bilgilerini kontrol et.");
+    setContactPending(true); setError(null);
+    try {
+      const created = await saveContact(session, parsed.data);
+      setContactId(created.id);
+      setQuickContactDraft(emptyContactDraft);
+      setQuickContactOpen(false);
+      await queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts });
+      router.replace(`/capture?contactId=${encodeURIComponent(created.id)}`);
+    } catch (nextError) { setError(messageFrom(nextError)); }
+    finally { setContactPending(false); }
+  }
+
+  function resetManualInteraction() {
+    setChannel("in_person");
+    setObjective("get_acquainted");
+    setDirection("mutual");
+    setOutcome("");
+    setAskOutcome("not_asked");
+    setNextActionType(null);
+    setNextActionAt("");
+    setNoteSummary("");
+    setError(null);
+    setSaved(false);
+  }
+
+  const quickContactSheet = quickContactOpen ? <div className="sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target && !contactPending) setQuickContactOpen(false); }}><section className="form-sheet" role="dialog" aria-modal="true" aria-labelledby="quick-contact-title"><div className="sheet-heading"><div><p className="eyebrow">AYNI AKIŞTA</p><h2 id="quick-contact-title">Yeni kişi ekle</h2><p className="privacy-copy">Kişiyi kaydettiğinizde bu görüşme ekranında otomatik seçilir.</p></div><button className="icon-action" aria-label="Kapat" disabled={contactPending} onClick={() => setQuickContactOpen(false)} type="button"><X size={20} /></button></div><form className="form-stack" onSubmit={createQuickContact}><label>Ad, soyad veya tanımlayıcı<input autoFocus required value={quickContactDraft.fullName} onChange={(event) => setQuickContactDraft({ ...quickContactDraft, fullName: event.target.value })} /></label><label>Telefon <span className="optional">isteğe bağlı</span><input inputMode="tel" value={quickContactDraft.phone} onChange={(event) => setQuickContactDraft({ ...quickContactDraft, phone: event.target.value })} /></label><label>Tanışma yeri <span className="optional">isteğe bağlı</span><input placeholder="Örn. Urla açık ev etkinliği" value={quickContactDraft.metAtPlace} onChange={(event) => setQuickContactDraft({ ...quickContactDraft, metAtPlace: event.target.value })} /></label><div className="form-row"><label>Kaynak<select value={quickContactDraft.source} onChange={(event) => setQuickContactDraft({ ...quickContactDraft, source: event.target.value as ContactDraft["source"] })}>{contactSources.map((item) => <option key={item} value={item}>{contactSourceLabels[item]}</option>)}</select></label><label>Rol<select value={quickContactDraft.role} onChange={(event) => setQuickContactDraft({ ...quickContactDraft, role: event.target.value as ContactDraft["role"] })}>{contactRoles.map((item) => <option key={item} value={item}>{contactRoleLabels[item]}</option>)}</select></label></div>{error ? <p className="form-error" role="alert">{error}</p> : null}<button className="primary-action auth-submit" disabled={contactPending} type="submit">{contactPending ? "Kişi hazırlanıyor…" : "Kişiyi ekle ve görüşmeye dön"}</button></form></section></div> : null;
+
   if (contactsQuery.isPending) return <AppShell><div className="content-state">Kişiler yükleniyor…</div></AppShell>;
   if (contactsQuery.error) return <AppShell><p className="form-error notice" role="alert">{messageFrom(contactsQuery.error)}</p></AppShell>;
   if (contacts.length === 0) {
-    return <AppShell><header className="page-header"><p className="eyebrow">HIZLI KAYIT</p><h1>Temas kaydet</h1></header><SpCard className="empty-state"><ContactRound size={24} aria-hidden /><h2>Önce bir kişi ekle</h2><p>Temas kaydı mevcut bir kişiyle ilişkilendirilir.</p><Link className="secondary-action inline-link" href="/contacts">Kişilere git</Link></SpCard></AppShell>;
+    return <AppShell><header className="page-header"><p className="eyebrow">HIZLI KAYIT</p><h1>Temas kaydet</h1></header><SpCard className="empty-state"><ContactRound size={24} aria-hidden /><h2>İlk kişiyi burada ekle</h2><p>Kişiler ekranına gitmeden, kişiyi oluşturup görüşme kaydına devam edebilirsiniz.</p><button className="primary-action inline-action" onClick={() => setQuickContactOpen(true)} type="button"><UserPlus size={17} /> Yeni kişi ekle</button></SpCard>{quickContactSheet}</AppShell>;
   }
 
   return (
     <AppShell>
-      <header className="page-header capture-header"><p className="eyebrow">HIZLI KAYIT</p><h1>Temas kaydet</h1><p className="context-sentence">Görüşme sonucunu ve kabul edilmiş sonraki adımı kısa biçimde kapat.</p></header>
-      <VoiceCaptureCard session={session!} contacts={contacts} onSaved={async () => {
+      <header className="page-header contacts-header"><div><p className="eyebrow">HIZLI KAYIT</p><h1>Temas kaydet</h1><p className="context-sentence">Görüşme sonucunu ve kabul edilmiş sonraki adımı kısa biçimde kapat.</p></div><button className="secondary-action inline-action" onClick={() => { setError(null); setQuickContactOpen(true); }} type="button"><UserPlus size={17} /> Yeni kişi</button></header>
+      <VoiceCaptureCard key={selectedContactId} session={session!} contacts={contacts} initialContactId={selectedContactId} onSaved={async () => {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
           queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
@@ -107,16 +153,17 @@ export function CaptureView() {
       }} />
       <div className="capture-divider"><span>veya manuel kaydet</span></div>
       {saved ? (
-        <SpCard className="success-state"><div className="success-icon"><Check size={24} aria-hidden /></div><p className="eyebrow">KAYDEDİLDİ</p><h2>Temas ve sonraki aksiyon hazır</h2><p>Bugün ekranındaki ilişki görünümü birkaç saniye içinde güncellenecek.</p><button className="primary-action" type="button" onClick={() => router.push("/")}>Bugün ekranına dön</button></SpCard>
+        <SpCard className="success-state"><div className="success-icon"><Check size={24} aria-hidden /></div><p className="eyebrow">KAYDEDİLDİ</p><h2>Temas ve sonraki aksiyon hazır</h2><p>Bugün ekranındaki ilişki görünümü birkaç saniye içinde güncellenecek.</p><div className="capture-actions"><button className="secondary-action" type="button" onClick={() => router.push("/")}>Bugün ekranına dön</button><button className="primary-action" type="button" onClick={resetManualInteraction}>Başka temas kaydet</button></div></SpCard>
       ) : (
         <form className="capture-form" onSubmit={submit}>
           <SpCard className="form-section"><div className="section-heading compact"><div><p className="eyebrow">1 · KİM VE NASIL</p><h2>Temas bağlamı</h2></div></div><div className="form-row"><label>Kişi<select value={selectedContactId} onChange={(event) => setContactId(event.target.value)}>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.fullName ?? contact.label}</option>)}</select></label><label>Kanal<select value={channel} onChange={(event) => setChannel(event.target.value as ManualInteractionDraft["channel"])}>{interactionChannels.map((item) => <option key={item} value={item}>{interactionChannelLabels[item]}</option>)}</select></label></div><label>Görüşme amacı<select value={objective} onChange={(event) => setObjective(event.target.value as ManualInteractionDraft["objective"])}>{interactionObjectives.map((item) => <option key={item} value={item}>{interactionObjectiveLabels[item]}</option>)}</select></label><label>Yön<select value={direction} onChange={(event) => setDirection(event.target.value as ManualInteractionDraft["direction"])}><option value="mutual">Karşılıklı</option><option value="outbound">Giden</option><option value="inbound">Gelen</option></select></label></SpCard>
-          <SpCard className="form-section"><p className="eyebrow">2 · NE OLDU</p><h2>Sonuç</h2><label>Kısa sonuç<textarea value={outcome} onChange={(event) => setOutcome(event.target.value)} placeholder="Örn. Satış planını konuşmak için salı günü buluşacağız." required /></label><label>Talep sonucu<select value={askOutcome} onChange={(event) => setAskOutcome(event.target.value as ManualInteractionDraft["askOutcome"])}>{askOutcomes.map((item) => <option key={item} value={item}>{askOutcomeLabels[item]}</option>)}</select></label><label>Ek not <span className="optional">isteğe bağlı</span><textarea value={noteSummary} onChange={(event) => setNoteSummary(event.target.value)} /></label></SpCard>
-          <SpCard className="form-section"><p className="eyebrow">3 · SONRAKİ ADIM</p><h2>Takibi kapat</h2><div className="form-row"><label>Aksiyon<select value={nextActionType ?? ""} onChange={(event) => setNextActionType((event.target.value || null) as ManualInteractionDraft["nextActionType"])}><option value="">Henüz yok</option>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</select></label><label>Tarih ve saat<input type="datetime-local" disabled={!nextActionType} value={nextActionAt} onChange={(event) => setNextActionAt(event.target.value)} /></label></div></SpCard>
+          <SpCard className="form-section"><p className="eyebrow">2 · NE OLDU</p><h2>Sonuç</h2><label>Kısa sonuç<textarea value={outcome} onChange={(event) => setOutcome(event.target.value)} placeholder="Örn. Satış planını konuşmak için salı günü buluşacağız." required /></label><label>Görüşme sonucu<select value={askOutcome} onChange={(event) => setAskOutcome(event.target.value as ManualInteractionDraft["askOutcome"])}>{askOutcomes.map((item) => <option key={item} value={item}>{askOutcomeLabels[item]}</option>)}</select></label><label>Ek not <span className="optional">isteğe bağlı</span><textarea value={noteSummary} onChange={(event) => setNoteSummary(event.target.value)} /></label></SpCard>
+          <SpCard className="form-section"><p className="eyebrow">3 · SONRAKİ ADIM</p><h2>Takibi kapat</h2><div className="form-row"><label>Aksiyon<select value={nextActionType ?? ""} onChange={(event) => { const value = (event.target.value || null) as ManualInteractionDraft["nextActionType"]; setNextActionType(value); if (!value) setNextActionAt(""); }}><option value="">Henüz yok</option>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</select></label><label>Tarih ve saat<input name="nextActionAt" type="datetime-local" disabled={!nextActionType} required={Boolean(nextActionType)} value={nextActionAt} onChange={(event) => setNextActionAt(event.target.value)} /></label></div></SpCard>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
           <div className="capture-actions"><span className="privacy-copy">Yalnız gerekli iş sonucunu kaydedin.</span><button className="primary-action inline-action" disabled={pending} type="submit"><Save size={18} aria-hidden /> {pending ? "Kaydediliyor…" : "Teması kaydet"}</button></div>
         </form>
       )}
+      {quickContactSheet}
     </AppShell>
   );
 }
