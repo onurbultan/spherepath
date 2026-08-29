@@ -13,13 +13,13 @@ export const opportunityTypeLabels: Record<OpportunityType, string> = {
 };
 
 export const opportunityStageLabels: Record<OpportunityStage, string> = {
-  new_lead: "Yeni lead",
-  first_contact: "İlk temas",
+  new_lead: "Yeni talep",
+  first_contact: "Görüşüldü",
   appointment: "Randevu",
   valuation: "Değerleme",
-  mandate_offer: "Yetki teklifi",
-  won: "Kazanıldı",
-  lost: "Kaybedildi",
+  mandate_offer: "Yetki konuşuluyor",
+  won: "Yetki alındı",
+  lost: "Sonuçlanmadı",
 };
 
 export const opportunityDraftSchema = z.object({

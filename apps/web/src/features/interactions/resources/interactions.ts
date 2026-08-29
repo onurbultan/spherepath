@@ -5,6 +5,7 @@ import {
   type ManualInteractionDraft,
   type OpportunityDraft,
   type RegisterInteractionTextInput,
+  type RetryVoiceNoteProcessingInput,
   type RegisterVoiceNoteInput,
   type RegisterVoiceTextTestInput,
   type VoiceInsights,
@@ -59,6 +60,13 @@ export async function getVoiceNote(voiceNoteId: string): Promise<VoiceNoteView> 
 export async function getLatestReviewableVoiceNote(): Promise<VoiceNoteView | null> {
   const response = await apiClient.query<undefined, { voiceNote: VoiceNoteView | null }>("getLatestReviewableVoiceNote", undefined);
   return response.voiceNote;
+}
+
+export async function retryVoiceNoteProcessing(session: WorkspaceSession, voiceNoteId: string): Promise<void> {
+  const input: RetryVoiceNoteProcessingInput = { voiceNoteId };
+  await apiClient.command<RetryVoiceNoteProcessingInput, { voiceNoteId: string }>(
+    "retryVoiceNoteProcessing", input, createCommandId(session.uid),
+  );
 }
 
 export async function submitVoiceTextTest(

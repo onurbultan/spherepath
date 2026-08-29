@@ -69,4 +69,28 @@ describe("voice extraction normalization", () => {
     expect(result.insights.keyThingsToRemember).toEqual(["Kendisi arayacak."]);
     expect(result.interaction.askOutcome).toBe("not_asked");
   });
+
+  it("keeps explicit lifestyle requirements without inventing a detached house", () => {
+    const source = extraction("buy", "other");
+    const result = normalizeVoiceExtraction({
+      ...source,
+      interaction: { ...source.interaction, direction: "outbound" },
+      insights: {
+        ...source.insights,
+        propertyPreferences: {
+          ...source.insights.propertyPreferences,
+          propertyTypes: ["detached_house"],
+          mustHaves: ["Bahçeli"],
+        },
+      },
+    }, "Derya Kaya ile bugün telefonda görüştüm. Urla'da 3+1 bahçeli bir ev arıyor. Tercihi sakin bir sokak ve denize yürüme mesafesi.");
+
+    expect(result.interaction.direction).toBe("mutual");
+    expect(result.insights.propertyPreferences.propertyTypes).toEqual([]);
+    expect(result.insights.propertyPreferences.mustHaves).toEqual([
+      "Bahçeli",
+      "Sakin sokak",
+      "Denize yürüme mesafesi",
+    ]);
+  });
 });

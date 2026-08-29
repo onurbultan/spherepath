@@ -36,6 +36,26 @@ describe("voice action timing", () => {
     expect(result.interaction.daysFromNow).toBe(4);
   });
 
+  it("does not confuse today's completed call with next Tuesday's follow-up", () => {
+    const result = normalizeVoiceActionTiming(
+      extraction("call"),
+      "Derya Kaya ile bugün telefonda görüştüm. Önümüzdeki salı saat 11:00'de kendisini arayıp seçenekleri paylaşacağım.",
+      saturday,
+    );
+    expect(result.interaction.daysFromNow).toBe(3);
+    expect(result.interaction.actionTime).toBe("11:00");
+  });
+
+  it("recovers the future weekday when speech recognition splits a dotted time", () => {
+    const result = normalizeVoiceActionTiming(
+      extraction("call"),
+      "Derya Kaya ile bugün telefonla görüştüm. Urla'da 3 + 1 Bahçeli bir ev arıyor bütçesi 12 milyon liraya kadar taşınmak için acele etmiyor ama uygun bir portföy çıkarsa evi görmek istiyor. Önümüzdeki salı saat 11. 00'de kendisini arayıp seçenekleri paylaşacağım.",
+      saturday,
+    );
+    expect(result.interaction.daysFromNow).toBe(3);
+    expect(result.interaction.actionTime).toBeNull();
+  });
+
   it("resolves Turkish number words in relative dates", () => {
     const result = normalizeVoiceActionTiming(
       extraction("message"),

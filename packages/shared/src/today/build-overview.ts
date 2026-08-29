@@ -7,6 +7,7 @@ export interface TodayContact {
   name: string;
   createdAt: number;
   meaningfulTouchCount: number;
+  lastTouchAt?: number | null;
   nextActionAt: number | null;
   nextActionType: Contact["relationship"]["nextActionType"];
 }
@@ -18,6 +19,7 @@ export interface TodayOpportunity {
   stage: Opportunity["stage"];
   nextActionAt: number | null;
   nextActionType: Opportunity["nextActionType"];
+  createdAt?: number;
 }
 
 export interface TodayTask {
@@ -31,8 +33,8 @@ export interface TodayTask {
   priority: "overdue" | "bottleneck" | "relationship";
 }
 
-export interface TodayListing { id: string; status: "preparing" | "active" | "reserved" | "sold" | "rented" | "removed" }
-export interface TodayDeal { id: string; stage: "presentation" | "viewing" | "offer" | "contract" | "closed" | "lost" }
+export interface TodayListing { id: string; status: "preparing" | "active" | "reserved" | "sold" | "rented" | "removed"; createdAt?: number }
+export interface TodayDeal { id: string; stage: "presentation" | "viewing" | "offer" | "contract" | "closed" | "lost"; closedAt?: number | null }
 export interface TodayInteraction {
   id: string;
   contactId: string;
@@ -42,6 +44,7 @@ export interface TodayInteraction {
 }
 
 export interface TodayOverview {
+  period: ReportingPeriod;
   stages: {
     acquaintance: number;
     relationship: number;
@@ -49,11 +52,19 @@ export interface TodayOverview {
     listing: number;
     closing: number;
   };
-  focus: { title: string; description: string; evidence: string; action: string; sampleSufficient: boolean };
+  focus: { title: string; description: string; evidence: string; action: string; sampleSufficient: boolean; targetOpportunityId: string | null; targetContactId: string | null };
   tasks: TodayTask[];
   recentInteractions: TodayInteraction[];
   completedTaskCount: number;
 }
+
+export const reportingPeriods = ["30d", "90d", "1y"] as const;
+export const reportingPeriodSchema = z.enum(reportingPeriods);
+export const todayOverviewQuerySchema = z.preprocess(
+  (value) => value === null || value === undefined ? {} : value,
+  z.object({ period: reportingPeriodSchema.default("30d") }).strict(),
+);
+export type ReportingPeriod = z.infer<typeof reportingPeriodSchema>;
 
 export const dailyTaskOutcomeSchema = z.object({
   taskId: z.string().trim().min(3).max(240),
@@ -75,7 +86,9 @@ export const dailyTaskOutcomeSchema = z.object({
 });
 export type DailyTaskOutcome = z.infer<typeof dailyTaskOutcomeSchema>;
 
-const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1_000;
+const periodDays: Record<ReportingPeriod, number> = { "30d": 30, "90d": 90, "1y": 365 };
+
+export const reportingPeriodLabels: Record<ReportingPeriod, string> = { "30d": "30 gün", "90d": "90 gün", "1y": "1 yıl" };
 
 function istanbulDayKey(timestamp: number): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(timestamp));
@@ -89,14 +102,17 @@ export function buildTodayOverview(
   deals: readonly TodayDeal[] = [],
   completedTaskIds: ReadonlySet<string> = new Set(),
   interactions: readonly TodayInteraction[] = [],
+  period: ReportingPeriod = "30d",
 ): TodayOverview {
+  const windowStart = now - periodDays[period] * 24 * 60 * 60 * 1_000;
+  const periodLabel = reportingPeriodLabels[period];
   const activeOpportunities = opportunities.filter((item) => item.stage !== "lost");
   const stages = {
-    acquaintance: contacts.filter((contact) => contact.createdAt >= now - THIRTY_DAYS).length,
-    relationship: contacts.filter((contact) => contact.meaningfulTouchCount > 0).length,
-    lead: activeOpportunities.filter((item) => item.stage !== "won").length,
-    listing: listings.filter((item) => item.status === "active" || item.status === "reserved").length,
-    closing: deals.filter((item) => item.stage === "closed").length,
+    acquaintance: contacts.filter((contact) => contact.createdAt >= windowStart).length,
+    relationship: contacts.filter((contact) => contact.meaningfulTouchCount > 0 && (contact.lastTouchAt ?? now) >= windowStart).length,
+    lead: activeOpportunities.filter((item) => item.stage !== "won" && (item.createdAt ?? now) >= windowStart).length,
+    listing: listings.filter((item) => (item.status === "active" || item.status === "reserved") && (item.createdAt ?? now) >= windowStart).length,
+    closing: deals.filter((item) => item.stage === "closed" && (item.closedAt ?? now) >= windowStart).length,
   };
 
   const scheduled = contacts
@@ -135,11 +151,9 @@ export function buildTodayOverview(
       priority: (opportunity.nextActionAt ?? now) < now ? "overdue" : "bottleneck",
     }));
   const tasks = [...opportunityTasks, ...scheduled, ...uncontacted]
-    .filter((task, index, all) => all.findIndex((candidate) => candidate.contactId === task.contactId) === index)
     .filter((task) => !completedTaskIds.has(task.id))
     .sort((left, right) => (left.priority === "overdue" ? -1 : right.priority === "overdue" ? 1 : 0))
-    .sort((left, right) => (left.dueAt ?? Number.MAX_SAFE_INTEGER) - (right.dueAt ?? Number.MAX_SAFE_INTEGER))
-    .slice(0, 5);
+    .sort((left, right) => (left.dueAt ?? Number.MAX_SAFE_INTEGER) - (right.dueAt ?? Number.MAX_SAFE_INTEGER));
 
   const opportunitiesWithoutAction = activeOpportunities.filter((item) => item.stage !== "won" && item.nextActionAt === null).length;
   const currentDayKey = istanbulDayKey(now);
@@ -148,17 +162,23 @@ export function buildTodayOverview(
     .sort((left, right) => right.occurredAt - left.occurredAt)
     .slice(0, 8);
   const sampleSufficient = contacts.length >= 5 || opportunities.length >= 5;
+  const oldestOpportunityWithoutAction = activeOpportunities
+    .filter((item) => item.stage !== "won" && item.nextActionAt === null)
+    .sort((left, right) => (left.createdAt ?? now) - (right.createdAt ?? now))[0];
+  const newestUncontacted = [...contacts]
+    .filter((contact) => contact.meaningfulTouchCount === 0)
+    .sort((left, right) => right.createdAt - left.createdAt)[0];
   const focus = contacts.length === 0
-    ? { title: "Başlamak için kişi ekle", description: "İlişki sistemini ölçmek için ilk kişini çalışma alanına ekle.", evidence: "Son 30 günde 0 kişi", action: "Bugün ilk nitelikli kişiyi ekle.", sampleSufficient: false }
+    ? { title: "İlk kişini ekle", description: "Günlük planını hazırlamak için ilk kişiyi kaydet.", evidence: `Son ${periodLabel.toLocaleLowerCase("tr-TR")} içinde 0 kişi`, action: "Bugün ilk kişiyi ekle.", sampleSufficient: false, targetOpportunityId: null, targetContactId: null }
     : stages.relationship === 0
-      ? { title: "İlk temasları görünür kıl", description: `${contacts.length} kişi kayıtlı; henüz hiçbirinde anlamlı temas sonucu yok.`, evidence: `${contacts.length} uygun kişi / 0 anlamlı temas`, action: "En yeni üç kişiyle anlamlı temas sonucunu kaydet.", sampleSufficient }
+      ? { title: "İlk görüşmeleri kaydet", description: `${contacts.length} kişi kayıtlı; henüz görüşme sonucu yok.`, evidence: `${contacts.length} kişi / 0 görüşme`, action: "En yeni kişiyle görüşme sonucunu kaydet.", sampleSufficient, targetOpportunityId: null, targetContactId: newestUncontacted?.id ?? null }
       : stages.lead === 0
-        ? { title: "İlişkiden fırsata geçişi ölç", description: `${stages.relationship} kişide anlamlı temas var; henüz açık bir fırsat bulunmuyor.`, evidence: `${stages.relationship} ilişkili kişi / 0 açık lead`, action: "Uygun bir kişide açık talep veya portföy sinyalini fırsata dönüştür.", sampleSufficient }
+        ? { title: "Görüşmeden talebe geç", description: `${stages.relationship} kişiyle görüşüldü; henüz açık talep veya portföy adayı yok.`, evidence: `${stages.relationship} görüşülen kişi / 0 açık talep`, action: "Uygun kişide talep veya portföy adayı oluştur.", sampleSufficient, targetOpportunityId: null, targetContactId: null }
         : opportunitiesWithoutAction > 0
-          ? { title: "Sonraki aksiyonsuz lead’leri kapat", description: `${stages.lead} açık fırsatın ${opportunitiesWithoutAction} tanesinde sonraki aksiyon yok.`, evidence: `Son 30 gün · ${stages.lead} açık fırsat`, action: "En eski aksiyonsuz lead için randevu veya kapanış sonucu al.", sampleSufficient }
+          ? { title: "Sonraki adımı eksik talepleri tamamla", description: `${stages.lead} açık talebin ${opportunitiesWithoutAction} tanesinde sonraki adım yok.`, evidence: `Son ${periodLabel.toLocaleLowerCase("tr-TR")} · ${stages.lead} açık talep`, action: "En eski kaydın sonraki adımını belirle.", sampleSufficient, targetOpportunityId: oldestOpportunityWithoutAction?.id ?? null, targetContactId: oldestOpportunityWithoutAction?.subjectContactId ?? null }
           : stages.listing === 0
-            ? { title: "Lead’den portföye geçişi hızlandır", description: `${stages.lead} açık fırsat var; aktif portföy henüz yok.`, evidence: `${stages.lead} açık lead / 0 aktif portföy`, action: "En yaşlı fırsatı değerleme veya yetki adımına ilerlet.", sampleSufficient }
-            : { title: "Aktif portföyleri kapamaya taşı", description: `${stages.listing} aktif portföy ve ${stages.closing} tamamlanan işlem var.`, evidence: `${stages.listing} aktif portföy / ${stages.closing} kapanan işlem`, action: "En uygun alıcı için sunum veya teklif takibini tamamla.", sampleSufficient };
+            ? { title: "Talebi portföye dönüştür", description: `${stages.lead} açık talep var; aktif portföy henüz yok.`, evidence: `${stages.lead} açık talep / 0 aktif portföy`, action: "En eski kaydı değerleme veya yetki adımına ilerlet.", sampleSufficient, targetOpportunityId: activeOpportunities.filter((item) => item.stage !== "won").sort((a, b) => (a.createdAt ?? now) - (b.createdAt ?? now))[0]?.id ?? null, targetContactId: null }
+            : { title: "Aktif portföyleri sonuca taşı", description: `${stages.listing} aktif portföy ve ${stages.closing} tamamlanan işlem var.`, evidence: `${stages.listing} aktif portföy / ${stages.closing} kapanan işlem`, action: "En uygun alıcı için sunum veya teklif takibini tamamla.", sampleSufficient, targetOpportunityId: null, targetContactId: null };
 
-  return { stages, focus, tasks, recentInteractions, completedTaskCount: completedTaskIds.size };
+  return { period, stages, focus, tasks, recentInteractions, completedTaskCount: completedTaskIds.size };
 }

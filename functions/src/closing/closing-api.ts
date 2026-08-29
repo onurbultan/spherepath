@@ -15,7 +15,7 @@ const options = { region: "europe-west8" as const, cors: true, maxInstances: 10,
 const millis = (value: unknown): number | null => value instanceof Timestamp ? value.toMillis() : null;
 const stamp = (value: number | null): Timestamp | null => value === null ? null : Timestamp.fromMillis(value);
 function presentationRecord(id: string, data: DocumentData, contactName: string, listingAddress: string): PresentationRecord { return { ...(data as Presentation), id, contactName, listingAddress, userConfirmedSentAt: millis(data.userConfirmedSentAt), sentAt: millis(data.sentAt), deliveredAt: millis(data.deliveredAt), readAt: millis(data.readAt), repliedAt: millis(data.repliedAt), deletedAt: millis(data.deletedAt), createdAt: millis(data.createdAt) ?? 0, updatedAt: millis(data.updatedAt) ?? 0 }; }
-function dealRecord(id: string, data: DocumentData, buyerContactName: string | null, listingAddress: string): DealRecord { return { ...(data as Deal), id, buyerContactName, listingAddress, closedAt: millis(data.closedAt), deletedAt: millis(data.deletedAt), createdAt: millis(data.createdAt) ?? 0, updatedAt: millis(data.updatedAt) ?? 0 }; }
+function dealRecord(id: string, data: DocumentData, buyerContactName: string | null, listingAddress: string): DealRecord { return { ...(data as Deal), id, buyerContactName, listingAddress, actualAmount: typeof data.actualAmount === "number" ? data.actualAmount : null, commissionAmount: typeof data.commissionAmount === "number" ? data.commissionAmount : null, closedAt: millis(data.closedAt), deletedAt: millis(data.deletedAt), createdAt: millis(data.createdAt) ?? 0, updatedAt: millis(data.updatedAt) ?? 0 }; }
 function manageable(data: DocumentData, claims: ReturnType<typeof requireSpherepathClaims>) { return data.officeId === claims.officeId && (data.ownerUid === claims.uid || claims.role === "broker") && data.deletedAt === null; }
 
 export const getClosingOverview = onCall(options, async (request): Promise<{ presentations: PresentationRecord[]; deals: DealRecord[] }> => {
@@ -94,6 +94,8 @@ export const advanceDeal = onCall(options, async (request): Promise<{ dealId: st
       transaction.update(dealRef, {
         stage: parsed.data.toStage,
         offerAmount: parsed.data.offerAmount ?? deal.offerAmount ?? null,
+        actualAmount: parsed.data.toStage === "closed" ? parsed.data.actualAmount : deal.actualAmount ?? null,
+        commissionAmount: parsed.data.toStage === "closed" ? parsed.data.commissionAmount : deal.commissionAmount ?? null,
         currency: parsed.data.currency ?? deal.currency ?? null,
         lostReason: parsed.data.toStage === "lost" ? parsed.data.lostReason : null,
         closedAt: parsed.data.toStage === "closed" ? now : null,

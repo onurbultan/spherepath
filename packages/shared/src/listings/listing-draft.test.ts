@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPropertyAndListing, listingDraftSchema, type ListingDraft } from "./listing-draft.js";
+import { createPropertyAndListing, existingListingDraftSchema, listingDraftSchema, type ListingDraft } from "./listing-draft.js";
 
 const draft: ListingDraft = { opportunityId: "opp-1", address: "Teşvikiye Mah. 12", regionSlug: "Şişli Merkez", propertyType: "apartment", roomCount: 3, areaM2: 145, features: ["parking"], authorizationType: "exclusive", askingPrice: 12_500_000, currency: "TRY", expiresAt: null };
 
@@ -13,5 +13,11 @@ describe("listing draft", () => {
 
   it("rejects a non-positive asking price", () => {
     expect(listingDraftSchema.safeParse({ ...draft, askingPrice: 0 }).success).toBe(false);
+  });
+
+  it("accepts an existing owner authorization without a prebuilt opportunity", () => {
+    const listing = Object.fromEntries(Object.entries(draft).filter(([key]) => key !== "opportunityId"));
+    expect(existingListingDraftSchema.safeParse({ ...listing, ownerContactId: "contact", opportunityType: "seller_listing" }).success).toBe(true);
+    expect(existingListingDraftSchema.safeParse({ ...listing, ownerContactId: "", opportunityType: "seller_listing" }).success).toBe(false);
   });
 });

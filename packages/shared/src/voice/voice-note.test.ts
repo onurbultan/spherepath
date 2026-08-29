@@ -3,6 +3,7 @@ import {
   emptyVoicePropertyPreferences,
   mergeVoiceInsightsIntoContactMemory,
   registerVoiceTextTestSchema,
+  retryVoiceNoteProcessingSchema,
   voiceExtractionSchema,
 } from "./voice-note.js";
 
@@ -91,5 +92,10 @@ describe("voice extraction contract", () => {
       transcript: "Kadıköy'de üç odalı bir daire arıyor.",
     });
     expect(registerVoiceTextTestSchema.safeParse({ contactId: "contact-1", transcript: " " }).success).toBe(false);
+  });
+
+  it("validates a queued voice-note recovery command", () => {
+    expect(retryVoiceNoteProcessingSchema.parse({ voiceNoteId: "voice-note-1" })).toEqual({ voiceNoteId: "voice-note-1" });
+    expect(retryVoiceNoteProcessingSchema.safeParse({ voiceNoteId: "" }).success).toBe(false);
   });
 });

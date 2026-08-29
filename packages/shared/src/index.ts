@@ -1,4 +1,5 @@
 export * from "./analytics/events.js";
+export * from "./auth/error-message.js";
 export * from "./contacts/contact-draft.js";
 export * from "./closing/index.js";
 export * from "./daily-plan/rank-tasks.js";

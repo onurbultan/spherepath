@@ -14,6 +14,7 @@ import {
   mergeVoiceInsightsIntoContactMemory,
   getVoiceNoteSchema,
   registerInteractionTextSchema,
+  retryVoiceNoteProcessingSchema,
   registerVoiceTextTestSchema,
   registerVoiceNoteSchema,
   type Contact,
@@ -29,6 +30,7 @@ import { normalizeVoiceActionTiming } from "./temporal.js";
 import { normalizeVoiceExtraction } from "./normalization.js";
 
 const speechClient = new speech.SpeechClient();
+const processingLeaseMs = 150_000;
 
 function timestamp(value: number | null): Timestamp | null {
   return value === null ? null : Timestamp.fromMillis(value);
@@ -39,19 +41,30 @@ function milliseconds(value: unknown): number {
 }
 
 function voiceView(id: string, data: FirebaseFirestore.DocumentData): VoiceNoteView {
-  const extraction = voiceExtractionSchema.safeParse(data.extraction);
+  const parsedExtraction = voiceExtractionSchema.safeParse(data.extraction);
+  const maskedTranscript = typeof data.maskedTranscript === "string" ? data.maskedTranscript : null;
+  const createdAt = milliseconds(data.createdAt);
+  const extraction = parsedExtraction.success && maskedTranscript
+    ? normalizeVoiceActionTiming(
+      normalizeVoiceExtraction(parsedExtraction.data, maskedTranscript),
+      maskedTranscript,
+      new Date(createdAt || Date.now()),
+    )
+    : parsedExtraction.success
+      ? parsedExtraction.data
+      : null;
   return {
     id,
     contactId: data.contactId as string,
     inputMode: data.inputMode === "manual_text" ? "manual_text" : data.inputMode === "text_test" ? "text_test" : "audio",
     status: data.status as VoiceNoteStatus,
     durationMs: data.durationMs as number,
-    maskedTranscript: typeof data.maskedTranscript === "string" ? data.maskedTranscript : null,
+    maskedTranscript,
     maskedCategories: Array.isArray(data.maskedCategories) ? data.maskedCategories : [],
-    extraction: extraction.success ? extraction.data : null,
+    extraction,
     interactionId: typeof data.interactionId === "string" ? data.interactionId : null,
     errorCode: typeof data.errorCode === "string" ? data.errorCode : null,
-    createdAt: milliseconds(data.createdAt),
+    createdAt,
     updatedAt: milliseconds(data.updatedAt),
   };
 }
@@ -97,10 +110,13 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
     if (!snapshot.exists) return null;
     const data = snapshot.data()!;
     if (["needs_review", "confirmed", "discarded", "failed"].includes(data.status as string)) return null;
+    if (data.status === "processing" && Date.now() - milliseconds(data.updatedAt) < processingLeaseMs) return null;
     // Written notes are processed synchronously by their callable with a raw
     // transcript. The Firestore create trigger can race that callable, but it
     // must never try to download a non-existent audio object.
-    if (data.inputMode !== "audio" && rawOverride === undefined) return null;
+    const isAudioNote = data.inputMode === "audio"
+      || (data.inputMode == null && typeof data.storagePath === "string" && data.storagePath.length > 0);
+    if (!isAudioNote && rawOverride === undefined) return null;
     if ((data.emulatorImmediate === true || data.textTestImmediate === true || data.textImmediate === true) && rawOverride === undefined) return null;
     const now = Timestamp.now();
     transaction.update(noteRef, {
@@ -292,7 +308,7 @@ export const registerVoiceTextTest = onCall(
         ownerUid: claims.uid,
         contactId: input.contactId,
         storagePath: null,
-        durationMs: Math.max(10_000, Math.min(45_000, input.transcript.length * 50)),
+        durationMs: Math.max(5_000, Math.min(90_000, input.transcript.length * 50)),
         mimeType: "text/plain",
         conversationEndedConfirmed: true,
         inputMode: "text_test",
@@ -354,7 +370,7 @@ export const registerInteractionText = onCall(
         ownerUid: claims.uid,
         contactId: input.contactId,
         storagePath: null,
-        durationMs: Math.max(10_000, Math.min(45_000, input.transcript.length * 50)),
+        durationMs: Math.max(5_000, Math.min(90_000, input.transcript.length * 50)),
         mimeType: "text/plain",
         conversationEndedConfirmed: true,
         inputMode: "manual_text",
@@ -391,6 +407,52 @@ export const registerInteractionText = onCall(
 export const processVoiceNote = onDocumentCreated(
   { document: "voiceNotes/{voiceNoteId}", region: "europe-west8", retry: true, memory: "512MiB", timeoutSeconds: 120 },
   async (event) => processVoiceNoteDocument(event.params.voiceNoteId, event.id),
+);
+
+export const retryVoiceNoteProcessing = onCall(
+  { region: "europe-west8", cors: true, maxInstances: 10, memory: "512MiB", timeoutSeconds: 180 },
+  async (request): Promise<{ voiceNoteId: string }> => {
+    const claims = requireSpherepathClaims(request);
+    const envelope = readApiEnvelope<unknown>(request.data, { command: true });
+    const parsed = retryVoiceNoteProcessingSchema.safeParse(envelope.data);
+    if (!parsed.success) throw new HttpsError("invalid-argument", "Voice note retry input is invalid.", parsed.error.flatten());
+    const input = parsed.data;
+    const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
+    if (input.emulatorTranscript && !isEmulator) throw new HttpsError("invalid-argument", "Emulator transcript is not available.");
+
+    const firestore = getFirestore();
+    const noteRef = firestore.collection("voiceNotes").doc(input.voiceNoteId);
+    const commandRef = firestore.collection("commands").doc(envelope.commandId!);
+    const recovery = await observeApiRequest("retryVoiceNoteProcessing", envelope.requestId, () => firestore.runTransaction(async (transaction) => {
+      const [commandSnapshot, noteSnapshot] = await Promise.all([transaction.get(commandRef), transaction.get(noteRef)]);
+      if (commandSnapshot.exists) {
+        const receipt = commandSnapshot.data()!;
+        if (!canManage(receipt, claims) || receipt.type !== "retryVoiceNoteProcessing") {
+          throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+        }
+        return { shouldProcess: receipt.status !== "completed" };
+      }
+      if (!noteSnapshot.exists || !canManage(noteSnapshot.data()!, claims)) {
+        throw new HttpsError("not-found", "Voice note was not found.");
+      }
+      transaction.create(commandRef, {
+        officeId: claims.officeId,
+        ownerUid: claims.uid,
+        type: "retryVoiceNoteProcessing",
+        voiceNoteId: noteRef.id,
+        status: "started",
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      });
+      return { shouldProcess: true };
+    }));
+
+    if (recovery.shouldProcess) {
+      await processVoiceNoteDocument(input.voiceNoteId, `retry-${envelope.requestId}`, input.emulatorTranscript);
+      await commandRef.update({ status: "completed", updatedAt: Timestamp.now() });
+    }
+    return { voiceNoteId: input.voiceNoteId };
+  },
 );
 
 export const getVoiceNote = onCall(
@@ -506,10 +568,11 @@ export const confirmVoiceNote = onCall(
       if (!noteSnapshot.exists || !canManage(noteSnapshot.data()!, claims)) throw new HttpsError("not-found", "Voice note was not found.");
       const note = noteSnapshot.data()!;
       if (note.status !== "needs_review") throw new HttpsError("failed-precondition", "Voice note is not ready for review.");
-      if (parsed.data.interaction.contactId !== note.contactId) throw new HttpsError("failed-precondition", "Voice note contact cannot be changed.");
-      const contactRef = firestore.collection("contacts").doc(note.contactId as string);
+      const originalContactId = note.contactId as string;
+      const targetContactId = parsed.data.interaction.contactId;
+      const contactRef = firestore.collection("contacts").doc(targetContactId);
       const contactSnapshot = await transaction.get(contactRef);
-      if (!contactSnapshot.exists || !canManage(contactSnapshot.data()!, claims)) throw new HttpsError("not-found", "Contact was not found.");
+      if (!contactSnapshot.exists || !canManage(contactSnapshot.data()!, claims) || contactSnapshot.data()!.deletedAt !== null) throw new HttpsError("not-found", "Contact was not found.");
       const contact = contactSnapshot.data()!;
       const now = Date.now();
       const interaction = createInteraction(parsed.data.interaction, { officeId: note.officeId as string, ownerUid: note.ownerUid as string }, now);
@@ -559,7 +622,7 @@ export const confirmVoiceNote = onCall(
       });
       if (parsed.data.opportunity && opportunityRef && stageEventRef) {
         const opportunity = createOpportunityEntity({
-          subjectContactId: note.contactId as string,
+          subjectContactId: targetContactId,
           ...parsed.data.opportunity,
         }, { officeId: note.officeId as string, ownerUid: note.ownerUid as string }, now);
         transaction.create(opportunityRef, {
@@ -593,7 +656,15 @@ export const confirmVoiceNote = onCall(
       if (JSON.stringify(parsed.data.approvedInsights) !== JSON.stringify(note.extraction?.insights ?? null)) {
         corrections.push({ path: "insights", value: parsed.data.approvedInsights });
       }
-      transaction.update(noteRef, { status: "confirmed", interactionId: interactionRef.id, corrections, updatedAt: nowTimestamp });
+      if (targetContactId !== originalContactId) corrections.unshift({ path: "contactId", value: targetContactId });
+      transaction.update(noteRef, {
+        status: "confirmed",
+        contactId: targetContactId,
+        ...(targetContactId !== originalContactId ? { reassignedFromContactId: originalContactId } : {}),
+        interactionId: interactionRef.id,
+        corrections,
+        updatedAt: nowTimestamp,
+      });
       transaction.create(commandRef, {
         officeId: claims.officeId,
         ownerUid: claims.uid,

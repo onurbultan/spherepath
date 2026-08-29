@@ -3,10 +3,12 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   assertListingTransition,
   createPropertyAndListing,
+  existingListingDraftSchema,
   listingDraftSchema,
   listingTransitionSchema,
   type Listing,
   type ListingDraft,
+  type ExistingListingDraft,
   type ListingStatus,
 } from "../../../packages/shared/src/index";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
@@ -88,6 +90,82 @@ export const createListing = onCall(callableOptions, async (request): Promise<{ 
       transaction.create(eventRef, { officeId: opportunity.officeId, ownerUid: opportunity.ownerUid, entityType: "listing", entityId: listingRef.id, fromStage: null, toStage: "preparing", reason: "Listing created from won opportunity", commandId: envelope.commandId, occurredAt: nowTimestamp, createdAt: nowTimestamp });
       transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "createListing", listingId: listingRef.id, propertyId: propertyRef.id, ownerContactId: opportunity.subjectContactId, createdAt: nowTimestamp });
       return { listingId: listingRef.id, ownerContactId: opportunity.subjectContactId as string };
+    });
+
+    const [listingSnapshot, contactSnapshot] = await Promise.all([firestore.collection("listings").doc(result.listingId).get(), firestore.collection("contacts").doc(result.ownerContactId).get()]);
+    const contact = contactSnapshot.data();
+    return { listing: toListingRecord(listingSnapshot.id, listingSnapshot.data()!, (contact?.fullName ?? contact?.label ?? "İsimsiz kişi") as string) };
+  });
+});
+
+export const importExistingListing = onCall(callableOptions, async (request): Promise<{ listing: ListingRecord }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<ExistingListingDraft>(request.data, { command: true });
+  const parsed = existingListingDraftSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Existing listing input is invalid.", parsed.error.flatten());
+
+  return observeApiRequest("importExistingListing", envelope.requestId, async () => {
+    const firestore = getFirestore();
+    const contactRef = firestore.collection("contacts").doc(parsed.data.ownerContactId);
+    const opportunityRef = firestore.collection("opportunities").doc();
+    const propertyRef = firestore.collection("properties").doc();
+    const listingRef = firestore.collection("listings").doc();
+    const opportunityEventRef = firestore.collection("stageEvents").doc();
+    const listingEventRef = firestore.collection("stageEvents").doc();
+    const commandRef = firestore.collection("commands").doc(envelope.commandId!);
+    const result = await firestore.runTransaction(async (transaction) => {
+      const [receiptSnapshot, contactSnapshot] = await Promise.all([transaction.get(commandRef), transaction.get(contactRef)]);
+      if (receiptSnapshot.exists) {
+        const receipt = receiptSnapshot.data()!;
+        if (receipt.officeId !== claims.officeId || receipt.ownerUid !== claims.uid || receipt.type !== "importExistingListing") throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+        return { listingId: receipt.listingId as string, ownerContactId: receipt.ownerContactId as string };
+      }
+      if (!contactSnapshot.exists) throw new HttpsError("not-found", "Contact was not found.");
+      const contact = contactSnapshot.data()!;
+      const canManage = contact.officeId === claims.officeId && (contact.ownerUid === claims.uid || claims.role === "broker") && contact.deletedAt === null;
+      if (!canManage) throw new HttpsError("permission-denied", "Contact is outside your workspace.");
+
+      const now = Date.now();
+      const nowTimestamp = Timestamp.fromMillis(now);
+      const tenant = { officeId: contact.officeId as string, ownerUid: contact.ownerUid as string };
+      const entities = createPropertyAndListing({
+        opportunityId: opportunityRef.id,
+        address: parsed.data.address,
+        regionSlug: parsed.data.regionSlug,
+        propertyType: parsed.data.propertyType,
+        roomCount: parsed.data.roomCount,
+        areaM2: parsed.data.areaM2,
+        features: parsed.data.features,
+        authorizationType: parsed.data.authorizationType,
+        askingPrice: parsed.data.askingPrice,
+        currency: parsed.data.currency,
+        expiresAt: parsed.data.expiresAt,
+      }, tenant, parsed.data.ownerContactId, propertyRef.id, now);
+      transaction.create(opportunityRef, {
+        ...tenant,
+        type: parsed.data.opportunityType,
+        subjectContactId: parsed.data.ownerContactId,
+        sourceContactId: null,
+        referralId: null,
+        propertyId: propertyRef.id,
+        stage: "won",
+        qualifiedAt: nowTimestamp,
+        stageEnteredAt: nowTimestamp,
+        nextActionAt: null,
+        nextActionType: null,
+        lostReason: null,
+        estimatedValue: { amount: parsed.data.askingPrice, currency: parsed.data.currency },
+        closedAt: nowTimestamp,
+        deletedAt: null,
+        createdAt: nowTimestamp,
+        updatedAt: nowTimestamp,
+      });
+      transaction.create(propertyRef, { ...entities.property, deletedAt: null, createdAt: nowTimestamp, updatedAt: nowTimestamp });
+      transaction.create(listingRef, toStoredListing(entities.listing));
+      transaction.create(opportunityEventRef, { ...tenant, entityType: "opportunity", entityId: opportunityRef.id, fromStage: null, toStage: "won", reason: "Mevcut yetki içe aktarıldı", commandId: envelope.commandId, occurredAt: nowTimestamp, createdAt: nowTimestamp });
+      transaction.create(listingEventRef, { ...tenant, entityType: "listing", entityId: listingRef.id, fromStage: null, toStage: "preparing", reason: "Mevcut yetki içe aktarıldı", commandId: envelope.commandId, occurredAt: nowTimestamp, createdAt: nowTimestamp });
+      transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "importExistingListing", listingId: listingRef.id, opportunityId: opportunityRef.id, propertyId: propertyRef.id, ownerContactId: parsed.data.ownerContactId, createdAt: nowTimestamp });
+      return { listingId: listingRef.id, ownerContactId: parsed.data.ownerContactId };
     });
 
     const [listingSnapshot, contactSnapshot] = await Promise.all([firestore.collection("listings").doc(result.listingId).get(), firestore.collection("contacts").doc(result.ownerContactId).get()]);

@@ -1,24 +1,28 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
 import { deleteApp, initializeApp } from "firebase/app";
 import { connectAuthEmulator, createUserWithEmailAndPassword, getAuth } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/functions";
 
 const projectId = "spherepath-96ecd";
 const app = initializeApp({ apiKey: "demo-key", projectId, authDomain: `${projectId}.firebaseapp.com` }, "api-integration");
 const auth = getAuth(app);
 const functions = getFunctions(app, "europe-west8");
+let testEnvironment: RulesTestEnvironment;
 
 function envelope<T>(data: T, requestId: string, commandId?: string) {
   return { data, requestId, commandId };
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
   connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+  testEnvironment = await initializeTestEnvironment({ projectId });
 });
 
 afterAll(async () => {
-  await deleteApp(app);
+  await Promise.all([deleteApp(app), testEnvironment.cleanup()]);
 });
 
 describe("callable API vertical slice", () => {
@@ -109,12 +113,15 @@ describe("callable API vertical slice", () => {
 
     const getTodayOverview = httpsCallable(functions, "getTodayOverview");
     const today = (await getTodayOverview(envelope(undefined, "request-today"))).data as {
-      overview: { stages: { relationship: number; lead: number }; tasks: Array<{ opportunityId?: string }> };
+      overview: { stages: { relationship: number; lead: number }; tasks: Array<{ id: string; opportunityId?: string }> };
     };
     expect(today.overview.stages.relationship).toBe(1);
     expect(today.overview.stages.lead).toBe(1);
-    expect(today.overview.tasks).toHaveLength(1);
-    expect(today.overview.tasks[0]?.opportunityId).toBe(opportunity.opportunity.id);
+    expect(today.overview.tasks).toHaveLength(2);
+    expect(today.overview.tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: `opportunity-action-${opportunity.opportunity.id}`, opportunityId: opportunity.opportunity.id }),
+      expect.objectContaining({ id: `next-action-${created.contact.id}` }),
+    ]));
     const completeDailyTask = httpsCallable(functions, "completeDailyTask");
     await completeDailyTask(envelope({ taskId: `opportunity-action-${opportunity.opportunity.id}`, status: "completed", outcomeNote: null, skippedReason: null, rescheduledAt: null, rescheduledActionType: null }, "request-task-complete", "command-task-complete"));
     const todayAfterCompletion = (await getTodayOverview(envelope(undefined, "request-today-completed"))).data as { overview: { completedTaskCount: number; tasks: Array<{ id: string }> } };
@@ -172,14 +179,14 @@ describe("callable API vertical slice", () => {
     const createDeal = httpsCallable(functions, "createDeal");
     const deal = (await createDeal(envelope({ listingId: listing.listing.id, buyerContactId: created.contact.id }, "request-deal", "command-deal"))).data as { dealId: string };
     const advanceDeal = httpsCallable(functions, "advanceDeal");
-    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "viewing", offerAmount: null, currency: null, lostReason: null }, "request-deal-viewing", "command-deal-viewing"));
-    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "offer", offerAmount: 9_500_000, currency: "TRY", lostReason: null }, "request-deal-offer", "command-deal-offer"));
-    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "contract", offerAmount: null, currency: null, lostReason: null }, "request-deal-contract", "command-deal-contract"));
-    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "closed", offerAmount: null, currency: null, lostReason: null }, "request-deal-closed", "command-deal-closed"));
+    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "viewing", offerAmount: null, actualAmount: null, commissionAmount: null, currency: null, lostReason: null }, "request-deal-viewing", "command-deal-viewing"));
+    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "offer", offerAmount: 9_500_000, actualAmount: null, commissionAmount: null, currency: "TRY", lostReason: null }, "request-deal-offer", "command-deal-offer"));
+    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "contract", offerAmount: null, actualAmount: null, commissionAmount: null, currency: null, lostReason: null }, "request-deal-contract", "command-deal-contract"));
+    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "closed", offerAmount: null, actualAmount: 9_300_000, commissionAmount: 186_000, currency: "TRY", lostReason: null }, "request-deal-closed", "command-deal-closed"));
     const getClosingOverview = httpsCallable(functions, "getClosingOverview");
-    const closing = (await getClosingOverview(envelope(undefined, "request-closing"))).data as { presentations: Array<{ id: string; status: string }>; deals: Array<{ id: string; stage: string }> };
+    const closing = (await getClosingOverview(envelope(undefined, "request-closing"))).data as { presentations: Array<{ id: string; status: string }>; deals: Array<{ id: string; stage: string; actualAmount: number | null; commissionAmount: number | null }> };
     expect(closing.presentations).toEqual([expect.objectContaining({ id: presentation.presentationId, status: "sent" })]);
-    expect(closing.deals).toEqual([expect.objectContaining({ id: deal.dealId, stage: "closed" })]);
+    expect(closing.deals).toEqual([expect.objectContaining({ id: deal.dealId, stage: "closed", actualAmount: 9_300_000, commissionAmount: 186_000 })]);
     const listingsAfterClosing = (await listListings(envelope(undefined, "request-list-listings-after-closing"))).data as { listings: Array<{ id: string; status: string }> };
     expect(listingsAfterClosing.listings).toEqual([expect.objectContaining({ id: listing.listing.id, status: "sold" })]);
 
@@ -203,6 +210,48 @@ describe("callable API vertical slice", () => {
     expect(voice.voiceNote.maskedTranscript).not.toContain("Sağlık durumu");
     expect(voice.voiceNote.maskedCategories).toContain("health");
     expect(voice.voiceNote.extraction.interaction).toMatchObject({ nextActionType: "call", daysFromNow: 1 });
+
+    const recoveryVoiceNoteId = `recovery-${Date.now()}`;
+    const recoveryTimestamp = new Date();
+    await testEnvironment.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "voiceNotes", recoveryVoiceNoteId), {
+        officeId: workspace.officeId,
+        ownerUid: credential.user.uid,
+        contactId: created.contact.id,
+        storagePath: `offices/${workspace.officeId}/voice/${credential.user.uid}/recovery.webm`,
+        durationMs: 12_000,
+        mimeType: "audio/webm",
+        conversationEndedConfirmed: true,
+        status: "queued",
+        attempts: 0,
+        processingEventId: null,
+        maskedTranscript: null,
+        maskedCategories: [],
+        maskedRanges: [],
+        extraction: null,
+        corrections: [],
+        interactionId: null,
+        sourceAudioDeletedAt: null,
+        errorCode: null,
+        emulatorImmediate: true,
+        createdAt: recoveryTimestamp,
+        updatedAt: recoveryTimestamp,
+      });
+    });
+    const retryVoiceNoteProcessing = httpsCallable(functions, "retryVoiceNoteProcessing");
+    const recoveryRequest = envelope({
+      voiceNoteId: recoveryVoiceNoteId,
+      emulatorTranscript: "Urla'da bahçeli ev arıyor. Yarın yeniden arayacağım.",
+    }, "request-voice-recovery", "command-voice-recovery");
+    await retryVoiceNoteProcessing(recoveryRequest);
+    await retryVoiceNoteProcessing({ ...recoveryRequest, requestId: "request-voice-recovery-replay" });
+    const recoveredVoice = (await getVoiceNote(envelope({ voiceNoteId: recoveryVoiceNoteId }, "request-voice-recovered-get"))).data as {
+      voiceNote: { status: string; maskedTranscript: string; extraction: { interaction: { nextActionType: string } } };
+    };
+    expect(recoveredVoice.voiceNote.status).toBe("needs_review");
+    expect(recoveredVoice.voiceNote.maskedTranscript).toContain("Urla");
+    expect(recoveredVoice.voiceNote.extraction.interaction.nextActionType).toBe("call");
+
     const registerVoiceTextTest = httpsCallable(functions, "registerVoiceTextTest");
     const textVoice = (await registerVoiceTextTest(envelope({
       contactId: created.contact.id,
@@ -220,11 +269,18 @@ describe("callable API vertical slice", () => {
       voiceNote: { status: string; maskedTranscript: string | null; extraction: unknown };
     };
     expect(discardedVoiceView.voiceNote).toMatchObject({ status: "discarded", maskedTranscript: null, extraction: null });
+    const reassignedContact = (await createContact(envelope({
+      fullName: "Derya Kaya",
+      phone: "",
+      metAtPlace: "Voice reassignment",
+      source: "other",
+      role: "buyer",
+    }, "request-create-reassigned-contact", "command-create-reassigned-contact"))).data as { contact: { id: string } };
     const confirmVoiceNote = httpsCallable(functions, "confirmVoiceNote");
     const confirmedVoice = (await confirmVoiceNote(envelope({
       voiceNoteId: registeredVoice.voiceNoteId,
       interaction: {
-        contactId: created.contact.id,
+        contactId: reassignedContact.contact.id,
         channel: "phone",
         objective: "follow_up",
         direction: "outbound",
@@ -262,7 +318,13 @@ describe("callable API vertical slice", () => {
     expect(confirmedVoice.interactionId).toBeTruthy();
     expect(confirmedVoice.opportunityId).toBeTruthy();
     const contactsAfterVoice = (await listContacts(envelope(undefined, "request-list-after-voice"))).data as { contacts: Array<{ id: string; memory: { keyThingsToRemember: string[] } }> };
-    expect(contactsAfterVoice.contacts[0]?.memory.keyThingsToRemember).toContain("Yarın yeniden aranacak.");
+    expect(contactsAfterVoice.contacts.find((contact) => contact.id === reassignedContact.contact.id)?.memory.keyThingsToRemember).toContain("Yarın yeniden aranacak.");
+    expect(contactsAfterVoice.contacts.find((contact) => contact.id === created.contact.id)?.memory.keyThingsToRemember).not.toContain("Yarın yeniden aranacak.");
+    const opportunitiesAfterVoice = (await listOpportunities(envelope(undefined, "request-list-opportunities-after-voice"))).data as { opportunities: Array<{ id: string; subjectContactId: string }> };
+    expect(opportunitiesAfterVoice.opportunities).toContainEqual(expect.objectContaining({
+      id: confirmedVoice.opportunityId,
+      subjectContactId: reassignedContact.contact.id,
+    }));
 
     const createPortfolioItemFromDraft = httpsCallable(functions, "createPortfolioItemFromDraft");
     const portfolioRequest = envelope({
@@ -293,7 +355,7 @@ describe("callable API vertical slice", () => {
     expect(listedPortfolio.portfolioItems).toEqual([expect.objectContaining({ id: portfolio.portfolioItem.id })]);
     const listPortfolioMatches = httpsCallable(functions, "listPortfolioMatches");
     const portfolioMatches = (await listPortfolioMatches(envelope(undefined, "request-portfolio-matches"))).data as { matches: Array<{ contactId: string; portfolioItem: { id: string }; eligible: boolean; score: number }> };
-    expect(portfolioMatches.matches).toEqual([expect.objectContaining({ contactId: created.contact.id, eligible: true, score: 100, portfolioItem: expect.objectContaining({ id: portfolio.portfolioItem.id }) })]);
+    expect(portfolioMatches.matches).toEqual([expect.objectContaining({ contactId: reassignedContact.contact.id, eligible: true, score: 100, portfolioItem: expect.objectContaining({ id: portfolio.portfolioItem.id }) })]);
     const withdrawPortfolioItem = httpsCallable(functions, "withdrawPortfolioItem");
     await withdrawPortfolioItem(envelope({ portfolioItemId: portfolio.portfolioItem.id }, "request-portfolio-withdraw", "command-portfolio-withdraw"));
     const portfolioAfterWithdrawal = (await listPortfolioItems(envelope(undefined, "request-portfolio-list-after-withdrawal"))).data as { portfolioItems: unknown[] };

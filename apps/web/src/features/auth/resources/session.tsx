@@ -14,12 +14,13 @@ import {
   createUserWithEmailAndPassword,
   deleteUser,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   updateProfile,
   type User as FirebaseUser,
 } from "firebase/auth";
-import { createCommandId } from "@spherepath/shared";
+import { authErrorMessage, createCommandId } from "@spherepath/shared";
 import { apiClient } from "@/shared/api/client";
 import { firebaseServices } from "@/shared/firebase/client";
 
@@ -37,29 +38,12 @@ interface SessionContextValue {
   error: string | null;
   signIn(email: string, password: string): Promise<void>;
   createAccount(displayName: string, email: string, password: string, inviteCode?: string): Promise<void>;
+  resetPassword(email: string): Promise<void>;
   refreshSession(): Promise<void>;
   signOut(): Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
-
-function messageFrom(error: unknown): string {
-  if (typeof error === "object" && error !== null && "code" in error) {
-    switch (error.code) {
-      case "auth/invalid-credential":
-      case "auth/wrong-password":
-      case "auth/user-not-found":
-        return "E-posta veya şifre hatalı.";
-      case "auth/too-many-requests":
-        return "Çok fazla başarısız deneme yapıldı. Biraz sonra yeniden deneyin.";
-      case "auth/network-request-failed":
-        return "Bağlantı kurulamadı. İnternet bağlantınızı kontrol edip yeniden deneyin.";
-      default:
-        break;
-    }
-  }
-  return error instanceof Error ? error.message : "Beklenmeyen bir oturum hatası oluştu.";
-}
 
 async function workspaceFor(user: FirebaseUser, displayName?: string, inviteCode?: string): Promise<WorkspaceSession> {
   let token = await user.getIdTokenResult();
@@ -98,9 +82,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const { auth } = firebaseServices();
-    return onAuthStateChanged(auth, async (user) => {
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (registrationInProgress.current) return;
       if (!user) {
+        if (!active) return;
         setSession(null);
         setError(null);
         setStatus("signedOut");
@@ -109,15 +95,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       setStatus("loading");
       try {
-        setSession(await workspaceFor(user));
+        const nextSession = await workspaceFor(user);
+        if (!active) return;
+        setSession(nextSession);
         setError(null);
         setStatus("ready");
       } catch (nextError) {
+        if (!active) return;
         setSession(null);
-        setError(messageFrom(nextError));
+        setError(authErrorMessage(nextError));
         setStatus("error");
       }
     });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
@@ -126,25 +119,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await signInWithEmailAndPassword(auth, email.trim(), password);
     } catch (nextError) {
       setStatus("signedOut");
-      throw new Error(messageFrom(nextError));
+      throw new Error(authErrorMessage(nextError));
     }
   }, []);
 
   const createAccount = useCallback(async (displayName: string, email: string, password: string, inviteCode?: string) => {
     const { auth } = firebaseServices();
     registrationInProgress.current = true;
-    setStatus("loading");
     let credential: Awaited<ReturnType<typeof createUserWithEmailAndPassword>> | null = null;
     try {
       credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       await updateProfile(credential.user, { displayName: displayName.trim() });
       setSession(await workspaceFor(credential.user, displayName, inviteCode));
+      setError(null);
       setStatus("ready");
     } catch (nextError) {
       if (credential) await deleteUser(credential.user).catch(() => firebaseSignOut(auth));
       setSession(null);
       setStatus("signedOut");
-      throw nextError;
+      throw new Error(authErrorMessage(nextError));
     } finally {
       registrationInProgress.current = false;
     }
@@ -155,6 +148,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await firebaseSignOut(auth);
   }, []);
 
+  const resetPassword = useCallback(async (email: string) => {
+    if (!email.trim()) throw new Error("Şifre sıfırlama bağlantısı için e-posta adresini yazın.");
+    try { await sendPasswordResetEmail(firebaseServices().auth, email.trim()); }
+    catch (nextError) { throw new Error(authErrorMessage(nextError)); }
+  }, []);
+
   const refreshSession = useCallback(async () => {
     const { auth } = firebaseServices();
     if (!auth.currentUser) throw new Error("Oturum bulunamadı.");
@@ -163,8 +162,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ session, status, error, signIn, createAccount, refreshSession, signOut }),
-    [session, status, error, signIn, createAccount, refreshSession, signOut],
+    () => ({ session, status, error, signIn, createAccount, resetPassword, refreshSession, signOut }),
+    [session, status, error, signIn, createAccount, resetPassword, refreshSession, signOut],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

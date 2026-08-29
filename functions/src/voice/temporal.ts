@@ -57,6 +57,15 @@ export function voiceReferenceContext(date: Date): string {
 }
 
 function explicitDaysInText(text: string, referenceDate: Date): number | null {
+  const explicitlyFutureWeekdays = [...text.matchAll(/(?:^|\s)(?:önümüzdeki|gelecek)\s+(pazartesi|salı|çarşamba|perşembe|cuma|cumartesi|pazar)(?:\s+günü)?/giu)];
+  if (explicitlyFutureWeekdays.length === 1) {
+    const currentWeekday = localDateParts(referenceDate).weekday;
+    const targetWeekday = weekdayIndexes[explicitlyFutureWeekdays[0]?.[1]?.toLocaleLowerCase("tr-TR") ?? ""];
+    if (targetWeekday !== undefined) {
+      const delta = (targetWeekday - currentWeekday + 7) % 7;
+      return delta === 0 ? 7 : delta;
+    }
+  }
   if (/\bbugün\b/iu.test(text)) return 0;
   if (/\b(?:yarın|ertesi gün)\b/iu.test(text)) return 1;
   if (/\böbür gün\b/iu.test(text)) return 2;
@@ -86,13 +95,17 @@ function actionClauses(text: string): string[] {
     .filter(Boolean);
 }
 
+function describesCompletedInteraction(clause: string): boolean {
+  return /\b(?:görüştüm|görüştük|konuştum|konuştuk|aradım|aradı|arandım|gerçekleşti)\b/iu.test(clause);
+}
+
 function explicitDaysFromNow(
   text: string,
   referenceDate: Date,
   nextActionType: VoiceExtraction["interaction"]["nextActionType"],
 ): number | null {
   const matching = actionClauses(text)
-    .filter((clause) => actionSentenceMatches(clause, nextActionType))
+    .filter((clause) => actionSentenceMatches(clause, nextActionType) && !describesCompletedInteraction(clause))
     .map((clause) => explicitDaysInText(clause, referenceDate))
     .filter((value): value is number => value !== null);
   const unique = [...new Set(matching)];

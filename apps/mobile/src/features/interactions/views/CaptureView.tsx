@@ -10,6 +10,7 @@ import {
 import { Check, ContactRound, Save } from "lucide-react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import {
   apiQueryKeys,
   askOutcomeLabels,
@@ -27,6 +28,7 @@ import { useSession } from "@/features/auth/resources/session";
 import { listContacts } from "@/features/contacts/resources/contacts";
 import { SpCard } from "@/shared/ui/SpCard";
 import { SpText } from "@/shared/ui/SpText";
+import { ContactPicker } from "@/shared/ui/ContactPicker";
 import { radius, space } from "@/shared/ui/tokens.generated";
 import { useSpTheme } from "@/shared/ui/theme";
 import { saveManualInteraction } from "../resources/interactions";
@@ -64,7 +66,7 @@ export default function CaptureView() {
     enabled: Boolean(session),
   });
   const contacts = contactsQuery.data ?? [];
-  const selectedContactId = contactId || contacts[0]?.id || "";
+  const selectedContactId = contactId;
 
   async function submit() {
     if (!session) return;
@@ -116,13 +118,14 @@ export default function CaptureView() {
     styles.choice,
     { backgroundColor: selected ? theme.deedBg : theme.card, borderColor: selected ? theme.deed : theme.line },
   ];
+  const radioProps = (selected: boolean) => ({ accessibilityRole: "radio" as const, accessibilityState: { checked: selected } });
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={[styles.safe, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}><SpText variant="eyebrow" color="ask">HIZLI KAYIT</SpText><SpText variant="hero">Temas kaydet</SpText><SpText color="secondary">Görüşme sonucunu ve kabul edilmiş sonraki adımı kısa biçimde kapat.</SpText></View>
         {contactsQuery.isPending ? <View style={styles.state}><ActivityIndicator color={theme.deed} /><SpText color="secondary">Kişiler yükleniyor…</SpText></View> : contactsQuery.error ? <SpCard style={styles.state}><SpText variant="title">Kişiler yüklenemedi</SpText><SpText color="secondary">{messageFrom(contactsQuery.error)}</SpText></SpCard> : contacts.length === 0 ? (
-          <SpCard style={styles.state}><ContactRound color={theme.deed} size={26} /><SpText variant="title">Önce bir kişi ekle</SpText><SpText color="secondary">Temas kaydı mevcut bir kişiyle ilişkilendirilir.</SpText></SpCard>
+          <SpCard style={styles.state}><ContactRound color={theme.deed} size={26} /><SpText variant="title">Önce bir kişi ekle</SpText><SpText color="secondary">Temas kaydı mevcut bir kişiyle ilişkilendirilir.</SpText><Pressable onPress={() => router.push("/(tabs)/contacts")} style={[styles.primary, { backgroundColor: theme.ask, alignSelf: "stretch" }]}><SpText style={{ color: theme.onAsk }}>Kişi eklemeye git</SpText></Pressable></SpCard>
         ) : saved ? (
           <SpCard style={styles.state}><View style={[styles.icon, { backgroundColor: theme.deedBg }]}><Check color={theme.deed} size={24} /></View><SpText variant="eyebrow" color="deed">KAYDEDİLDİ</SpText><SpText variant="title">Temas ve sonraki aksiyon hazır</SpText><Pressable onPress={reset} style={[styles.primary, { backgroundColor: theme.ask }]}><SpText style={{ color: theme.onAsk }}>Yeni temas kaydet</SpText></Pressable></SpCard>
         ) : <>
@@ -133,11 +136,11 @@ export default function CaptureView() {
             ]);
           }} />
           <View style={styles.divider}><View style={[styles.line, { backgroundColor: theme.line }]} /><SpText variant="caption" color="secondary">VEYA MANUEL KAYDET</SpText><View style={[styles.line, { backgroundColor: theme.line }]} /></View>
-          <SpCard style={styles.section}><SpText variant="eyebrow">1 · KİM VE NASIL</SpText><SpText variant="title">Kişi</SpText><View style={styles.choices}>{contacts.map((contact) => <Pressable key={contact.id} onPress={() => setContactId(contact.id)} style={choice(selectedContactId === contact.id)}><SpText variant="bodySmall" color={selectedContactId === contact.id ? "deed" : "secondary"}>{contact.fullName ?? contact.label}</SpText></Pressable>)}</View><SpText variant="title">Kanal</SpText><View style={styles.choices}>{interactionChannels.map((item) => <Pressable key={item} onPress={() => setChannel(item)} style={choice(channel === item)}><SpText variant="bodySmall" color={channel === item ? "deed" : "secondary"}>{interactionChannelLabels[item]}</SpText></Pressable>)}</View><SpText variant="title">Amaç</SpText><View style={styles.choices}>{interactionObjectives.map((item) => <Pressable key={item} onPress={() => setObjective(item)} style={choice(objective === item)}><SpText variant="bodySmall" color={objective === item ? "deed" : "secondary"}>{interactionObjectiveLabels[item]}</SpText></Pressable>)}</View></SpCard>
-          <SpCard style={styles.section}><SpText variant="eyebrow">2 · NE OLDU</SpText><SpText variant="title">Kısa sonuç</SpText><TextInput multiline placeholder="Örn. Salı günü satış planını konuşacağız." placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.multiline]} value={outcome} onChangeText={setOutcome} /><SpText variant="title">Talep sonucu</SpText><View style={styles.choices}>{askOutcomes.map((item) => <Pressable key={item} onPress={() => setAskOutcome(item)} style={choice(askOutcome === item)}><SpText variant="bodySmall" color={askOutcome === item ? "deed" : "secondary"}>{askOutcomeLabels[item]}</SpText></Pressable>)}</View><SpText variant="title">Ek not</SpText><TextInput multiline placeholder="İsteğe bağlı" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.multiline]} value={noteSummary} onChangeText={setNoteSummary} /></SpCard>
-          <SpCard style={styles.section}><SpText variant="eyebrow">3 · SONRAKİ ADIM</SpText><SpText variant="title">Aksiyon</SpText><View style={styles.choices}><Pressable onPress={() => { setNextActionType(null); setNextActionDays(null); }} style={choice(nextActionType === null)}><SpText variant="bodySmall" color={nextActionType === null ? "deed" : "secondary"}>Henüz yok</SpText></Pressable>{nextActionTypes.map((item) => <Pressable key={item} onPress={() => { setNextActionType(item); setNextActionDays((current) => current ?? 1); }} style={choice(nextActionType === item)}><SpText variant="bodySmall" color={nextActionType === item ? "deed" : "secondary"}>{nextActionTypeLabels[item]}</SpText></Pressable>)}</View>{nextActionType ? <><SpText variant="title">Zaman</SpText><View style={styles.choices}>{dayOptions.map((item) => <Pressable key={item.days} onPress={() => setNextActionDays(item.days)} style={choice(nextActionDays === item.days)}><SpText variant="bodySmall" color={nextActionDays === item.days ? "deed" : "secondary"}>{item.label}</SpText></Pressable>)}</View></> : null}</SpCard>
+          <SpCard style={styles.section}><SpText variant="eyebrow">1 · KİM</SpText><ContactPicker contacts={contacts} value={selectedContactId} onChange={setContactId} /><SpText variant="title">Kanal</SpText><View accessibilityLabel="Kanal" accessibilityRole="radiogroup" style={styles.choices}>{interactionChannels.map((item) => <Pressable {...radioProps(channel === item)} key={item} onPress={() => setChannel(item)} style={choice(channel === item)}><SpText variant="bodySmall" color={channel === item ? "deed" : "secondary"}>{interactionChannelLabels[item]}</SpText></Pressable>)}</View><SpText variant="title">Amaç</SpText><View accessibilityLabel="Amaç" accessibilityRole="radiogroup" style={styles.choices}>{interactionObjectives.map((item) => <Pressable {...radioProps(objective === item)} key={item} onPress={() => setObjective(item)} style={choice(objective === item)}><SpText variant="bodySmall" color={objective === item ? "deed" : "secondary"}>{interactionObjectiveLabels[item]}</SpText></Pressable>)}</View></SpCard>
+          <SpCard style={styles.section}><SpText variant="eyebrow">2 · NE OLDU</SpText><SpText variant="title">Kısa sonuç</SpText><TextInput accessibilityLabel="Kısa sonuç" multiline placeholder="Örn. Salı günü satış planını konuşacağız." placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.multiline]} value={outcome} onChangeText={setOutcome} /><SpText variant="title">Talep sonucu</SpText><View accessibilityLabel="Talep sonucu" accessibilityRole="radiogroup" style={styles.choices}>{askOutcomes.map((item) => <Pressable {...radioProps(askOutcome === item)} key={item} onPress={() => setAskOutcome(item)} style={choice(askOutcome === item)}><SpText variant="bodySmall" color={askOutcome === item ? "deed" : "secondary"}>{askOutcomeLabels[item]}</SpText></Pressable>)}</View><SpText variant="title">Ek not</SpText><TextInput accessibilityLabel="Ek not" multiline placeholder="İsteğe bağlı" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.multiline]} value={noteSummary} onChangeText={setNoteSummary} /></SpCard>
+          <SpCard style={styles.section}><SpText variant="eyebrow">3 · SONRAKİ ADIM</SpText><SpText variant="title">Aksiyon</SpText><View accessibilityLabel="Aksiyon" accessibilityRole="radiogroup" style={styles.choices}><Pressable {...radioProps(nextActionType === null)} onPress={() => { setNextActionType(null); setNextActionDays(null); }} style={choice(nextActionType === null)}><SpText variant="bodySmall" color={nextActionType === null ? "deed" : "secondary"}>Henüz yok</SpText></Pressable>{nextActionTypes.map((item) => <Pressable {...radioProps(nextActionType === item)} key={item} onPress={() => { setNextActionType(item); setNextActionDays((current) => current ?? 1); }} style={choice(nextActionType === item)}><SpText variant="bodySmall" color={nextActionType === item ? "deed" : "secondary"}>{nextActionTypeLabels[item]}</SpText></Pressable>)}</View>{nextActionType ? <><SpText variant="title">Zaman</SpText><View accessibilityLabel="Zaman" accessibilityRole="radiogroup" style={styles.choices}>{dayOptions.map((item) => <Pressable {...radioProps(nextActionDays === item.days)} key={item.days} onPress={() => setNextActionDays(item.days)} style={choice(nextActionDays === item.days)}><SpText variant="bodySmall" color={nextActionDays === item.days ? "deed" : "secondary"}>{item.label}</SpText></Pressable>)}</View></> : null}</SpCard>
           {error ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText variant="bodySmall" color="ask">{error}</SpText></View> : null}
-          <Pressable disabled={pending} onPress={() => void submit()} style={({ pressed }) => [styles.primary, { backgroundColor: theme.ask, opacity: pressed || pending ? .65 : 1 }]}><Save color={theme.onAsk} size={18} /><SpText style={{ color: theme.onAsk }}>{pending ? "Kaydediliyor…" : "Teması kaydet"}</SpText></Pressable>
+          <Pressable accessibilityRole="button" disabled={pending || !selectedContactId} onPress={() => void submit()} style={({ pressed }) => [styles.primary, { backgroundColor: theme.ask, opacity: pressed || pending || !selectedContactId ? .65 : 1 }]}><Save color={theme.onAsk} size={18} /><SpText style={{ color: theme.onAsk }}>{pending ? "Kaydediliyor…" : "Teması kaydet"}</SpText></Pressable>
         </>}
       </ScrollView>
     </SafeAreaView>

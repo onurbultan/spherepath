@@ -9,7 +9,7 @@ import { useSpTheme } from "@/shared/ui/theme";
 
 export function AuthView() {
   const theme = useSpTheme();
-  const { signIn, createAccount } = useSession();
+  const { signIn, createAccount, resetPassword } = useSession();
   const [mode, setMode] = useState<"signin" | "register">("signin");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -48,6 +48,7 @@ export function AuthView() {
             <TextInput autoCapitalize="none" autoComplete={mode === "register" ? "new-password" : "current-password"} placeholder="Şifre" placeholderTextColor={theme.textTertiary} secureTextEntry style={inputStyle} value={password} onChangeText={setPassword} />
             {error ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText variant="bodySmall" color="ask">{error}</SpText></View> : null}
             <Pressable disabled={pending} onPress={() => void submit()} style={({ pressed }) => [styles.primary, { backgroundColor: theme.ask, opacity: pressed || pending ? .68 : 1 }]}><SpText style={{ color: theme.onAsk }}>{pending ? "Hazırlanıyor…" : mode === "signin" ? "Giriş yap" : "Hesap oluştur"}</SpText><ArrowRight color={theme.onAsk} size={18} /></Pressable>
+            {mode === "signin" ? <Pressable onPress={() => { setError(null); void resetPassword(email).then(() => setError("Şifre sıfırlama bağlantısı gönderildi.")).catch((nextError) => setError(nextError instanceof Error ? nextError.message : "Bağlantı gönderilemedi.")); }}><SpText color="deed" style={styles.center}>Şifremi unuttum</SpText></Pressable> : null}
             <Pressable onPress={() => { setMode(mode === "signin" ? "register" : "signin"); setError(null); }}><SpText color="deed" style={styles.center}>{mode === "signin" ? "Yeni misin? Hesap oluştur" : "Zaten hesabın var mı? Giriş yap"}</SpText></Pressable>
           </View>
         </ScrollView>

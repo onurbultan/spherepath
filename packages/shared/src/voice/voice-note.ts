@@ -94,7 +94,7 @@ export const contactMemorySchema = z.object({
 export const registerVoiceNoteSchema = z.object({
   contactId: z.string().min(1).max(160),
   storagePath: z.string().min(1).max(500),
-  durationMs: z.number().int().min(10_000).max(45_000),
+  durationMs: z.number().int().min(5_000).max(90_000),
   mimeType: z.enum(["audio/mp4", "audio/m4a", "audio/webm", "audio/wav", "audio/x-wav"]),
   conversationEndedConfirmed: z.literal(true),
   emulatorTranscript: z.string().trim().min(2).max(4_000).optional(),
@@ -147,6 +147,10 @@ export const getVoiceNoteSchema = z.object({
   voiceNoteId: z.string().min(1).max(160),
 }).strict();
 
+export const retryVoiceNoteProcessingSchema = getVoiceNoteSchema.extend({
+  emulatorTranscript: z.string().trim().min(2).max(4_000).optional(),
+});
+
 export const discardVoiceNoteSchema = getVoiceNoteSchema;
 
 export type RegisterVoiceNoteInput = z.infer<typeof registerVoiceNoteSchema>;
@@ -157,6 +161,7 @@ export type VoiceInsights = z.infer<typeof voiceInsightsSchema>;
 export type VoicePropertyPreferences = z.infer<typeof voicePropertyPreferencesSchema>;
 export type ConfirmVoiceNoteInput = z.infer<typeof confirmVoiceNoteSchema>;
 export type DiscardVoiceNoteInput = z.infer<typeof discardVoiceNoteSchema>;
+export type RetryVoiceNoteProcessingInput = z.infer<typeof retryVoiceNoteProcessingSchema>;
 
 export interface VoiceNoteView {
   id: string;

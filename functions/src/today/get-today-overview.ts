@@ -1,6 +1,6 @@
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { buildTodayOverview, dailyTaskOutcomeSchema, type DailyTaskOutcome, type OpportunityStage, type TodayOverview } from "../../../packages/shared/src/index";
+import { buildTodayOverview, dailyTaskOutcomeSchema, todayOverviewQuerySchema, type DailyTaskOutcome, type OpportunityStage, type TodayOverview } from "../../../packages/shared/src/index";
 import { requireSpherepathClaims } from "../auth/claims.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 
@@ -22,7 +22,9 @@ export const getTodayOverview = onCall(
   },
   async (request): Promise<{ overview: TodayOverview }> => {
     const claims = requireSpherepathClaims(request);
-    const envelope = readApiEnvelope<undefined>(request.data);
+    const envelope = readApiEnvelope<unknown>(request.data);
+    const parsedQuery = todayOverviewQuerySchema.safeParse(envelope.data);
+    if (!parsedQuery.success) throw new HttpsError("invalid-argument", "Reporting period is invalid.", parsedQuery.error.flatten());
     return observeApiRequest("getTodayOverview", envelope.requestId, async () => {
     const firestore = getFirestore();
     let contactsQuery: FirebaseFirestore.Query = firestore.collection("contacts").where("officeId", "==", claims.officeId);
@@ -56,6 +58,7 @@ export const getTodayOverview = onCall(
           name: (data.fullName ?? data.label ?? "İsimsiz kişi") as string,
           createdAt: millis(data.createdAt) ?? 0,
           meaningfulTouchCount: Number(data.relationship?.meaningfulTouchCount ?? 0),
+          lastTouchAt: millis(data.relationship?.lastTouchAt),
           nextActionAt: millis(data.relationship?.nextActionAt),
           nextActionType: data.relationship?.nextActionType ?? null,
           deletedAt: millis(data.deletedAt),
@@ -73,13 +76,14 @@ export const getTodayOverview = onCall(
           stage: data.stage as OpportunityStage,
           nextActionAt: millis(data.nextActionAt),
           nextActionType: data.nextActionType ?? null,
+          createdAt: millis(data.createdAt) ?? 0,
           deletedAt: millis(data.deletedAt),
         };
       })
       .filter((opportunity) => opportunity.deletedAt === null);
 
-    const listings = listingsSnapshot.docs.map((item) => ({ id: item.id, status: item.data().status, deletedAt: millis(item.data().deletedAt) })).filter((item) => item.deletedAt === null);
-    const deals = dealsSnapshot.docs.map((item) => ({ id: item.id, stage: item.data().stage, deletedAt: millis(item.data().deletedAt) })).filter((item) => item.deletedAt === null);
+    const listings = listingsSnapshot.docs.map((item) => ({ id: item.id, status: item.data().status, createdAt: millis(item.data().createdAt) ?? 0, deletedAt: millis(item.data().deletedAt) })).filter((item) => item.deletedAt === null);
+    const deals = dealsSnapshot.docs.map((item) => ({ id: item.id, stage: item.data().stage, closedAt: millis(item.data().closedAt), deletedAt: millis(item.data().deletedAt) })).filter((item) => item.deletedAt === null);
     const interactions = interactionsSnapshot.docs.map((item) => {
       const data = item.data();
       return {
@@ -92,7 +96,7 @@ export const getTodayOverview = onCall(
     });
     const dayKey = istanbulDayKey();
     const completedTaskIds = new Set(completionsSnapshot.docs.filter((item) => { const data = item.data(); return data.dayKey === dayKey && ["completed", "skipped", "rescheduled"].includes(data.status as string) && (claims.role === "broker" || data.ownerUid === claims.uid); }).map((item) => item.data().taskId as string));
-    return { overview: buildTodayOverview(contacts, opportunities, Date.now(), listings, deals, completedTaskIds, interactions) };
+    return { overview: buildTodayOverview(contacts, opportunities, Date.now(), listings, deals, completedTaskIds, interactions, parsedQuery.data.period) };
     });
   },
 );

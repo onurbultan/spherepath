@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { assertOpportunityTransition, canTransitionOpportunity } from "./transitions";
-import { opportunityTransitionSchema } from "./transitions.schema";
+import { opportunityStageCorrectionSchema, opportunityTransitionSchema } from "./transitions.schema";
 
 describe("opportunity transitions", () => {
   it("allows the observable forward path", () => {
@@ -36,5 +36,12 @@ describe("opportunity transitions", () => {
       nextActionType: null,
       nextActionAt: null,
     }).success).toBe(false);
+  });
+});
+
+describe("opportunity stage correction", () => {
+  it("requires an audit reason and a next action for an open stage", () => {
+    expect(opportunityStageCorrectionSchema.safeParse({ opportunityId: "o", toStage: "appointment", reason: "", lostReason: null, nextActionType: null, nextActionAt: null }).success).toBe(false);
+    expect(opportunityStageCorrectionSchema.safeParse({ opportunityId: "o", toStage: "appointment", reason: "Yanlışlıkla ilerletildi", lostReason: null, nextActionType: "call", nextActionAt: Date.now() + 1_000 }).success).toBe(true);
   });
 });

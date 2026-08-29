@@ -4,19 +4,22 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   getIdTokenResult,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   updateProfile,
   type User as FirebaseUser,
 } from "@react-native-firebase/auth";
-import { createCommandId } from "@spherepath/shared";
+import { authErrorMessage, createCommandId } from "@spherepath/shared";
 import { apiClient } from "@/shared/api/client";
 import { firebaseServices } from "@/shared/firebase/client";
 
@@ -34,14 +37,11 @@ interface SessionContextValue {
   error: string | null;
   signIn(email: string, password: string): Promise<void>;
   createAccount(displayName: string, email: string, password: string): Promise<void>;
+  resetPassword(email: string): Promise<void>;
   signOut(): Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
-
-function messageFrom(error: unknown): string {
-  return error instanceof Error ? error.message : "Beklenmeyen bir oturum hatası oluştu.";
-}
 
 async function workspaceFor(user: FirebaseUser, displayName?: string): Promise<WorkspaceSession> {
   let token = await getIdTokenResult(user);
@@ -73,14 +73,18 @@ async function workspaceFor(user: FirebaseUser, displayName?: string): Promise<W
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
+  const registrationInProgress = useRef(false);
   const [session, setSession] = useState<WorkspaceSession | null>(null);
   const [status, setStatus] = useState<SessionContextValue["status"]>("loading");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const { auth } = firebaseServices();
-    return onAuthStateChanged(auth, async (user) => {
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (registrationInProgress.current) return;
       if (!user) {
+        if (!active) return;
         setSession(null);
         setError(null);
         setStatus("signedOut");
@@ -88,37 +92,66 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       setStatus("loading");
       try {
-        setSession(await workspaceFor(user));
+        const nextSession = await workspaceFor(user);
+        if (!active) return;
+        setSession(nextSession);
         setError(null);
         setStatus("ready");
       } catch (nextError) {
+        if (!active) return;
         setSession(null);
-        setError(messageFrom(nextError));
+        setError(authErrorMessage(nextError));
         setStatus("error");
       }
     });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    setStatus("loading");
-    await signInWithEmailAndPassword(firebaseServices().auth, email.trim(), password);
+    try {
+      await signInWithEmailAndPassword(firebaseServices().auth, email.trim(), password);
+    } catch (nextError) {
+      setStatus("signedOut");
+      throw new Error(authErrorMessage(nextError));
+    }
   }, []);
 
   const createAccount = useCallback(async (displayName: string, email: string, password: string) => {
-    setStatus("loading");
-    const credential = await createUserWithEmailAndPassword(firebaseServices().auth, email.trim(), password);
-    await updateProfile(credential.user, { displayName: displayName.trim() });
-    setSession(await workspaceFor(credential.user, displayName));
-    setStatus("ready");
+    const { auth } = firebaseServices();
+    registrationInProgress.current = true;
+    let credential: Awaited<ReturnType<typeof createUserWithEmailAndPassword>> | null = null;
+    try {
+      credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      await updateProfile(credential.user, { displayName: displayName.trim() });
+      setSession(await workspaceFor(credential.user, displayName));
+      setError(null);
+      setStatus("ready");
+    } catch (nextError) {
+      if (credential) await deleteUser(credential.user).catch(() => firebaseSignOut(auth));
+      setSession(null);
+      setStatus("signedOut");
+      throw new Error(authErrorMessage(nextError));
+    } finally {
+      registrationInProgress.current = false;
+    }
   }, []);
 
   const signOut = useCallback(async () => {
     await firebaseSignOut(firebaseServices().auth);
   }, []);
 
+  const resetPassword = useCallback(async (email: string) => {
+    if (!email.trim()) throw new Error("Önce e-posta adresini yazın.");
+    try { await sendPasswordResetEmail(firebaseServices().auth, email.trim()); }
+    catch (nextError) { throw new Error(authErrorMessage(nextError)); }
+  }, []);
+
   const value = useMemo(
-    () => ({ session, status, error, signIn, createAccount, signOut }),
-    [session, status, error, signIn, createAccount, signOut],
+    () => ({ session, status, error, signIn, createAccount, resetPassword, signOut }),
+    [session, status, error, signIn, createAccount, resetPassword, signOut],
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

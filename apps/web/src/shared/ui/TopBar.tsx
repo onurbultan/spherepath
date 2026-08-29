@@ -14,6 +14,7 @@ const pageTitles: Record<string, string> = {
   "/contacts": "Kişiler",
   "/opportunities": "Fırsatlar",
   "/listings": "Portföy",
+  "/closing": "Kapama",
   "/capture": "Temas kaydet",
   "/settings": "Ayarlar ve uyum",
 };
@@ -44,6 +45,7 @@ export function TopBar({ pathname, onOpenSearch }: { pathname: string; onOpenSea
 
   return (
     <header className="app-topbar">
+      <div className="topbar-inner">
       <nav className="topbar-crumbs" aria-label="Konum">
         <span>Çalışma alanı</span>
         <ChevronRight size={13} aria-hidden />
@@ -73,6 +75,7 @@ export function TopBar({ pathname, onOpenSearch }: { pathname: string; onOpenSea
         <Link className="primary-action inline-action compact-action" href="/capture">
           <Plus size={15} aria-hidden /> Temas kaydet
         </Link>
+      </div>
       </div>
     </header>
   );

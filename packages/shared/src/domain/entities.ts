@@ -274,6 +274,8 @@ export interface Deal extends TenantOwned, Audited {
   buyerContactId: string | null;
   stage: DealStage;
   offerAmount: number | null;
+  actualAmount: number | null;
+  commissionAmount: number | null;
   currency: CurrencyCode | null;
   lostReason: string | null;
   closedAt: Instant | null;

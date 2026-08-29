@@ -14,12 +14,16 @@ coverage/
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
+.firebase/
 apps/mobile/google-services.json
 apps/mobile/GoogleService-Info.plist
 
 # Web
 apps/web/.next/
+apps/web/.next-e2e/
 apps/web/out/
+apps/web/playwright-report/
+apps/web/test-results/
 
 # Mobile
 apps/mobile/.expo/

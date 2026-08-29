@@ -8,7 +8,8 @@
     "dev:emulators": "NEXT_PUBLIC_USE_FIREBASE_EMULATORS=true next dev -p 5050",
     "lint": "eslint .",
     "start": "next start -p 5050",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --passWithNoTests --exclude 'e2e/**'",
+    "test:e2e": "playwright test",
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
@@ -21,6 +22,8 @@
     "react-dom": "19.2.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.62.1",
     "@types/node": "26.4.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

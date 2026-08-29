@@ -4,6 +4,7 @@ import {
   type Opportunity,
   type OpportunityDraft,
   type OpportunityStage,
+  type OpportunityStageCorrection,
   type OpportunityTransition,
   type StageEvent,
 } from "@spherepath/shared";
@@ -37,4 +38,8 @@ export async function moveOpportunity(session: WorkspaceSession, transition: Opp
   return apiClient.command<OpportunityTransition, { opportunityId: string; toStage: OpportunityStage; eventId: string }>(
     "advanceOpportunity", transition, createCommandId(session.uid),
   );
+}
+
+export async function correctOpportunity(session: WorkspaceSession, correction: OpportunityStageCorrection): Promise<{ opportunityId: string; toStage: OpportunityStage; eventId: string }> {
+  return apiClient.command<OpportunityStageCorrection, { opportunityId: string; toStage: OpportunityStage; eventId: string }>("correctOpportunityStage", correction, createCommandId(session.uid));
 }

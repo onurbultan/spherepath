@@ -14,6 +14,19 @@
       "ignore": ["node_modules", ".git", "firebase-debug.log", "*.local"]
     }
   ],
+  "hosting": {
+    "site": "spherepath-96ecd",
+    "public": "apps/web/out",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "cleanUrls": true,
+    "trailingSlash": false,
+    "rewrites": [
+      {
+        "source": "/contacts/**",
+        "destination": "/contacts/__contact__/index.html"
+      }
+    ]
+  },
   "emulators": {
     "auth": { "port": 9099 },
     "functions": { "port": 5001 },

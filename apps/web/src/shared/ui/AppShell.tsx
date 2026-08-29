@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { BriefcaseBusiness, ContactRound, House, ListTodo, Network, Plus, SlidersHorizontal, Users } from "lucide-react";
+import { BriefcaseBusiness, ContactRound, Handshake, House, ListTodo, Network, Plus, SlidersHorizontal, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -22,6 +22,7 @@ const workNavigation = [
   { label: "Kişiler", icon: ContactRound, href: "/contacts", count: "contacts" },
   { label: "Fırsatlar", icon: BriefcaseBusiness, href: "/opportunities", count: "opportunities" },
   { label: "Portföy", icon: House, href: "/listings", count: "listings" },
+  { label: "Kapama", icon: Handshake, href: "/closing", count: null },
 ] as const;
 
 const officeNavigation = [
@@ -98,7 +99,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="nav-group-label">Çalışma</span>
             {workNavigation.map(navItem)}
           </div>
-          <div className="nav-group">
+          <div className="nav-group nav-group-office">
             <span className="nav-group-label">Ofis</span>
             {officeNavigation.map(navItem)}
           </div>
@@ -122,7 +123,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </main>
       </div>
 
-      <Link href="/capture" className="record-button" aria-label="Yeni kayıt"><Plus size={26} aria-hidden /></Link>
+      {pathname === "/capture" ? null : <Link href="/capture" className="record-button" aria-label="Yeni kayıt"><Plus size={26} aria-hidden /></Link>}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   );

@@ -73,7 +73,7 @@ function PaletteDialog({ onClose }: { onClose(): void }) {
       group: "Kişiler",
       title: contact.fullName ?? contact.label ?? "İsimsiz kişi",
       subtitle: [contactRoleLabels[contact.roles[0] ?? "unknown"], contact.phone].filter(Boolean).join(" · "),
-      href: `/capture?contactId=${encodeURIComponent(contact.id)}`,
+      href: `/contacts/${encodeURIComponent(contact.id)}`,
       icon: ContactRound,
     }));
     const opportunities = (opportunitiesQuery.data ?? []).map<PaletteItem>((opportunity) => ({

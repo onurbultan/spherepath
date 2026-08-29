@@ -1,5 +1,13 @@
 import { voiceExtractionSchema, type VoiceExtraction } from "../../../packages/shared/src/index.js";
 
+function appendUnique(values: string[], additions: string[]): string[] {
+  const result = [...values];
+  for (const addition of additions) {
+    if (!result.some((value) => value.localeCompare(addition, "tr-TR", { sensitivity: "base" }) === 0)) result.push(addition);
+  }
+  return result.slice(0, 20);
+}
+
 export function normalizeVoiceExtraction(
   extraction: VoiceExtraction,
   maskedTranscript: string,
@@ -32,6 +40,21 @@ export function normalizeVoiceExtraction(
     !/(?:artık geçerli değil|artık geçersiz|eski.+geçersiz)/iu.test(item)
     && !/(?:şart|zorunlu|önemli) değil/iu.test(item)
   ));
+  const explicitMustHaves = [
+    /\bbahçeli\b/iu.test(maskedTranscript) ? "Bahçeli" : null,
+    /\bsakin\s+(?:bir\s+)?(?:sokak|cadde|mahalle)\b/iu.test(maskedTranscript) ? "Sakin sokak" : null,
+    /\bdenize\s+yürüme\s+mesafesi(?:nde)?\b/iu.test(maskedTranscript) ? "Denize yürüme mesafesi" : null,
+  ].filter((item): item is string => item !== null);
+  const propertyTypes = preferences.propertyTypes.filter((propertyType) => {
+    if (propertyType === "detached_house") return /\bmüstakil\b/iu.test(maskedTranscript);
+    if (propertyType === "villa") return /\bvilla\b/iu.test(maskedTranscript);
+    return true;
+  });
+  const explicitDirection = /\b(?:ben\s+|kendisini\s+)?aradım\b|\btelefon\s+ettim\b/iu.test(maskedTranscript)
+    ? "outbound"
+    : /\b(?:beni|bizi)\s+aradı\b|\bkendisi\s+aradı\b/iu.test(maskedTranscript)
+      ? "inbound"
+      : "mutual";
 
   return voiceExtractionSchema.parse({
     ...extraction,
@@ -39,6 +62,7 @@ export function normalizeVoiceExtraction(
       ...extraction.interaction,
       askOutcome,
       nextActionType,
+      direction: explicitDirection,
     },
     insights: {
       ...extraction.insights,
@@ -46,11 +70,13 @@ export function normalizeVoiceExtraction(
       propertyContext,
       propertyPreferences: {
         ...preferences,
+        propertyTypes,
         bedroomCountMin: roomConfiguration?.[1] ? Number(roomConfiguration[1]) : preferences.bedroomCountMin,
         livingRoomCountMin: roomConfiguration?.[2] ? Number(roomConfiguration[2]) : preferences.livingRoomCountMin,
         roomCountMin: roomConfiguration ? null : preferences.roomCountMin,
         areaMinM2: areaRange?.[1] ? Number(areaRange[1]) : preferences.areaMinM2,
         areaMaxM2: areaRange?.[2] ? Number(areaRange[2]) : preferences.areaMaxM2,
+        mustHaves: appendUnique(preferences.mustHaves, explicitMustHaves),
       },
     },
   });
