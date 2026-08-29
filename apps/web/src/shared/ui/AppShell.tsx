@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { BriefcaseBusiness, ContactRound, House, ListTodo, Network, Plus, SlidersHorizontal, Users } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { apiQueryKeys } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
@@ -31,6 +31,7 @@ const officeNavigation = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { session } = useSession();
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -54,11 +55,19 @@ export function AppShell({ children }: { children: ReactNode }) {
       if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         setPaletteOpen((current) => !current);
+      } else if (event.shiftKey && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v") {
+        event.preventDefault();
+        setPaletteOpen(false);
+        router.push("/capture");
+      } else if (event.shiftKey && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setPaletteOpen(false);
+        router.push("/opportunities?create=1");
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [router]);
 
   function navItem({ label, icon: Icon, href, count }: { label: string; icon: typeof ListTodo; href: string; count: string | null }) {
     const route = href.split("#")[0] ?? href;

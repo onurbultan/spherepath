@@ -211,6 +211,17 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .secondary-action:disabled { opacity: .55; cursor: not-allowed; }
 .danger-secondary { border-color: color-mix(in srgb, var(--ask) 35%, var(--line)); color: var(--ask); }
 .danger-secondary:hover:not(:disabled) { background: var(--ask-bg); }
+.confirm-backdrop { position: fixed; z-index: 120; inset: 0; display: grid; place-items: center; padding: 20px; background: var(--overlay); }
+.confirm-dialog { width: min(420px, 100%); display: grid; grid-template-columns: auto 1fr; gap: var(--space-lg); padding: var(--space-xl); border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--elevated); box-shadow: var(--shadow-lg); }
+.confirm-dialog h2 { margin: 0 0 5px; font-family: var(--font-zilla-slab), Georgia, serif; font-size: 18px; }
+.confirm-dialog p { margin: 0; color: var(--text-secondary); font-size: 12.5px; line-height: 1.5; }
+.confirm-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: var(--radius-md); }
+.confirm-icon.danger { color: var(--ask); background: var(--ask-bg); }
+.confirm-dialog > .form-error, .confirm-actions { grid-column: 1 / -1; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: var(--space-md); margin-top: var(--space-sm); }
+.danger-action { min-height: var(--hit-compact); display: inline-flex; align-items: center; justify-content: center; padding: 0 var(--space-lg); border: 1px solid var(--ask); border-radius: var(--radius-md); background: var(--ask); color: #fff; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.danger-action:hover:not(:disabled) { filter: brightness(.94); }
+.danger-action:disabled { cursor: wait; opacity: .6; }
 .compact-action { min-height: var(--control-sm); padding: 0 12px; font-size: 12.5px; }
 .inline-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex: 0 0 auto; }
 .inline-link { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
@@ -477,11 +488,20 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .contact-search input { padding-left: 38px; }
 
 .contact-table-card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--card); box-shadow: var(--shadow-sm); overflow: hidden; }
-.contact-table-header, .contact-table-row { display: grid; grid-template-columns: minmax(220px, 1.45fr) 110px 110px 110px minmax(190px, 1.15fr) 150px; align-items: center; gap: 12px; padding: 0 16px; }
+.contact-bulk-bar { min-height: 42px; margin: 0 0 9px; padding: 6px 10px 6px 13px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--deed); border-radius: var(--radius-md); background: var(--deed-bg); }
+.contact-bulk-bar strong { color: var(--deed); font-size: 12.5px; }
+.contact-bulk-bar > span { flex: 1; color: var(--text-secondary); font-size: 11.5px; }
+.contact-bulk-bar .secondary-action { min-height: 30px; }
+.contact-table-header, .contact-table-row { display: grid; grid-template-columns: 24px minmax(205px, 1.45fr) 100px 100px 105px minmax(170px, 1.15fr) 145px 34px; align-items: center; gap: 10px; padding: 0 14px; }
 .contact-table-header { height: 34px; border-bottom: 1px solid var(--line); background: var(--background); color: var(--text-secondary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10px; letter-spacing: 1.1px; text-transform: uppercase; }
-.contact-table-row { width: 100%; min-height: 61px; border: 0; border-bottom: 1px solid var(--line); background: var(--card); color: var(--text-secondary); text-align: left; font-size: 12.5px; cursor: pointer; }
+.contact-table-row { position: relative; width: 100%; min-height: 61px; border: 0; border-bottom: 1px solid var(--line); background: var(--card); color: var(--text-secondary); text-align: left; font-size: 12.5px; }
 .contact-table-row:hover { background: var(--background); }
+.contact-table-row.selected { background: var(--deed-bg); }
+.contact-select { width: 24px; height: 34px; display: grid; place-items: center; cursor: pointer; }
+.contact-select input { width: 15px; height: 15px; margin: 0; accent-color: var(--deed); cursor: pointer; }
 .contact-table-person { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.contact-row-open { width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.contact-row-open:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: var(--radius-sm); }
 .contact-table-person .contact-avatar { width: 32px; height: 32px; flex: 0 0 32px; font-size: 14px; }
 .contact-table-person > span:last-child { min-width: 0; display: grid; gap: 2px; }
 .contact-table-person strong, .contact-table-person small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -491,6 +511,13 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .compliance-pill { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: var(--radius-pill); font-size: 11px; font-weight: 600; white-space: nowrap; }
 .compliance-pill.compliant { background: var(--good-bg); color: var(--good); }
 .compliance-pill.pending { background: var(--warm-bg); color: var(--warm); }
+.contact-row-actions { display: none; grid-column: 7 / 9; grid-row: 1; justify-content: flex-end; gap: 5px; z-index: 1; }
+.contact-row-actions button, .contact-row-menu { width: 28px; height: 28px; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card); color: var(--text-secondary); cursor: pointer; }
+.contact-row-actions button:hover, .contact-row-menu:hover { border-color: var(--line-strong); color: var(--deed); }
+.contact-row-actions button:last-child:hover { color: var(--ask); background: var(--ask-bg); }
+.contact-row-menu { grid-column: 8; grid-row: 1; }
+.contact-table-row:hover .contact-row-actions, .contact-table-row:focus-within .contact-row-actions { display: flex; }
+.contact-table-row:hover .contact-row-compliance, .contact-table-row:focus-within .contact-row-compliance, .contact-table-row:hover .contact-row-menu, .contact-table-row:focus-within .contact-row-menu { visibility: hidden; }
 .contact-pagination { min-height: 46px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--text-tertiary); font-size: 11.5px; }
 .contact-pagination > div { display: flex; align-items: center; gap: 3px; }
 .contact-pagination button { min-width: 28px; height: 28px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-secondary); display: grid; place-items: center; font-size: 11.5px; cursor: pointer; }
@@ -574,6 +601,11 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .voice-confirm input { width: 18px; height: 18px; flex: 0 0 auto; }
 .voice-confirm span { display: grid; gap: 2px; font-size: 12px; }
 .voice-confirm small { color: var(--text-secondary); }
+.voice-review-subject { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--deed); border-radius: var(--radius-md); background: var(--deed-bg); color: var(--deed); }
+.voice-review-subject > span { display: grid; gap: 1px; min-width: 0; }
+.voice-review-subject small { font-family: var(--font-ibm-plex-mono), monospace; font-size: 9.5px; letter-spacing: .9px; }
+.voice-review-subject strong { color: var(--text-primary); font-size: 13px; }
+.voice-review-subject em { color: var(--text-secondary); font-size: 11px; font-style: normal; text-align: right; }
 
 .voice-text-test { display: grid; gap: var(--space-lg); margin-top: var(--space-xl); padding: var(--space-xl); border: 1px dashed color-mix(in srgb, var(--deed) 45%, var(--line)); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--deed-bg) 48%, var(--card)); }
 .voice-text-test h3 { margin: 2px 0 3px; font-size: 15px; }
@@ -628,6 +660,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .opportunity-column-heading strong { min-width: 22px; height: 20px; border-radius: var(--radius-pill); background: var(--sunk); color: var(--text-secondary); display: grid; place-items: center; font-size: 10px; }
 .opportunity-column-list { min-height: 430px; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--chrome) 58%, var(--background)); display: flex; flex-direction: column; gap: 8px; }
 .kanban-card { width: 100%; min-height: 126px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--card); box-shadow: var(--shadow-sm); color: var(--text-primary); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; cursor: pointer; }
+.kanban-card.missing-action, .kanban-card.overdue-action { border-left: 3px solid var(--ask); }
 .kanban-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-md); }
 .kanban-card > span { color: var(--deed); font-family: var(--font-ibm-plex-mono), monospace; font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase; }
 .kanban-card > strong { font-size: 13px; font-weight: 600; }
@@ -868,6 +901,8 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
   .capture-actions { align-items: stretch; flex-direction: column; }
   .voice-setup, .voice-review-grid { grid-template-columns: 1fr; }
   .voice-review-grid .wide { grid-column: auto; }
+  .voice-review-subject { grid-template-columns: auto minmax(0, 1fr); }
+  .voice-review-subject em { grid-column: 1 / -1; text-align: left; }
   .voice-recording { flex-wrap: wrap; }
   .settings-grid { grid-template-columns: 1fr; }
   .settings-save { grid-column: auto; justify-self: stretch; }
@@ -882,12 +917,18 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
   .match-strip { grid-template-columns: 1fr; }
   .contact-table-card, .listing-table, .opportunity-list-table { border: 0; box-shadow: none; background: transparent; overflow: visible; display: grid; gap: 9px; }
   .contact-table-header, .listing-table-head, .opportunity-list-head { display: none; }
-  .contact-table-row { min-height: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; }
-  .contact-table-row > :nth-child(1) { grid-column: 1 / -1; }
-  .contact-table-row > :nth-child(2), .contact-table-row > :nth-child(3) { font-size: 11.5px; }
-  .contact-table-row > :nth-child(4) { display: none; }
-  .contact-table-row > :nth-child(5) { grid-column: 1 / -1; color: var(--deed); font-weight: 600; }
-  .contact-table-row > :nth-child(6) { grid-column: 1 / -1; justify-self: start; }
+  .contact-bulk-bar { align-items: flex-start; flex-wrap: wrap; }
+  .contact-bulk-bar > span { flex-basis: calc(100% - 100px); }
+  .contact-table-row { min-height: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); grid-template-columns: 24px minmax(0, 1fr) auto; gap: 8px 10px; }
+  .contact-select { grid-column: 1; grid-row: 1; align-self: center; }
+  .contact-row-open { grid-column: 2; grid-row: 1; }
+  .contact-row-menu { grid-column: 3; grid-row: 1; visibility: visible !important; }
+  .contact-row-role { grid-column: 2; grid-row: 2; font-size: 11.5px; }
+  .contact-row-source { grid-column: 3; grid-row: 2; font-size: 11.5px; }
+  .contact-row-last-touch { display: none; }
+  .contact-row-next-action { grid-column: 2 / 4; grid-row: 3; color: var(--deed); font-weight: 600; }
+  .contact-row-compliance { grid-column: 2 / 4; grid-row: 4; justify-self: start; visibility: visible !important; }
+  .contact-row-actions { display: none !important; }
   .contact-pagination { padding: 8px 4px; flex-wrap: wrap; }
   .listing-table > button { position: relative; min-height: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; }
   .listing-table > button > :nth-child(1) { grid-column: 1 / -1; padding-right: 24px; }

@@ -22,6 +22,7 @@ import {
 import { listContacts } from "@/features/contacts/resources/contacts";
 import { listOpportunities } from "@/features/opportunities/resources/opportunities";
 import { listListings } from "@/features/listings/resources/listings";
+import { useSheetDismiss } from "./useSheetDismiss";
 
 interface PaletteItem {
   id: string;
@@ -41,6 +42,11 @@ const pages: PaletteItem[] = [
   { id: "page-settings", group: "Sayfalar", title: "Ayarlar ve uyum", subtitle: "Profil, ofis ekibi, veri sahibi talepleri", href: "/settings", icon: Settings },
 ];
 
+const actions: PaletteItem[] = [
+  { id: "action-voice", group: "Eylemler", title: "Sesli temas notu başlat", subtitle: "⌘⇧V · görüşme sonrası not", href: "/capture", icon: MessageSquarePlus },
+  { id: "action-opportunity", group: "Eylemler", title: "Yeni fırsat oluştur", subtitle: "⌘⇧F · kişi ve sonraki aksiyon", href: "/opportunities?create=1", icon: BriefcaseBusiness },
+];
+
 const normalize = (value: string) => value.toLocaleLowerCase("tr-TR");
 
 function matches(item: PaletteItem, query: string): boolean {
@@ -54,6 +60,7 @@ function PaletteDialog({ onClose }: { onClose(): void }) {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+  useSheetDismiss(true, onClose);
 
   const contactsQuery = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts });
   const opportunitiesQuery = useQuery({ queryKey: apiQueryKeys.opportunities, queryFn: listOpportunities });
@@ -91,20 +98,9 @@ function PaletteDialog({ onClose }: { onClose(): void }) {
       ...contacts.filter((item) => matches(item, normalized)).slice(0, 6),
       ...opportunities.filter((item) => matches(item, normalized)).slice(0, 5),
       ...listings.filter((item) => matches(item, normalized)).slice(0, 5),
+      ...actions.filter((item) => matches(item, normalized)),
     ];
   }, [contactsQuery.data, listingsQuery.data, opportunitiesQuery.data, query]);
-
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, []);
-
-  useEffect(() => {
-    listRef.current?.querySelector(".palette-item.active")?.scrollIntoView({ block: "nearest" });
-  }, [activeIndex, items.length]);
 
   function go(item: PaletteItem) {
     onClose();
@@ -112,7 +108,7 @@ function PaletteDialog({ onClose }: { onClose(): void }) {
   }
 
   function onKeyDown(event: KeyboardEvent) {
-    if (event.key === "Escape") return onClose();
+    if (event.key === "Escape") return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
       return setActiveIndex((current) => (items.length ? (current + 1) % items.length : 0));
@@ -127,6 +123,10 @@ function PaletteDialog({ onClose }: { onClose(): void }) {
       if (item) go(item);
     }
   }
+
+  useEffect(() => {
+    listRef.current?.querySelector(".palette-item.active")?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, items.length]);
 
   const safeIndex = items.length ? Math.min(activeIndex, items.length - 1) : 0;
   let lastGroup = "";
