@@ -31,6 +31,7 @@ export interface TodayTask {
   type: "record_interaction" | "next_action";
   opportunityId?: string;
   priority: "overdue" | "bottleneck" | "relationship";
+  resolutionStatus?: "completed" | "skipped" | "rescheduled" | null;
 }
 
 export interface TodayListing { id: string; status: "preparing" | "active" | "reserved" | "sold" | "rented" | "removed"; createdAt?: number }
@@ -85,6 +86,9 @@ export const dailyTaskOutcomeSchema = z.object({
   }
 });
 export type DailyTaskOutcome = z.infer<typeof dailyTaskOutcomeSchema>;
+
+export const replaceDailyPlanItemSchema = z.object({ taskId: z.string().trim().min(3).max(240) }).strict();
+export type ReplaceDailyPlanItemInput = z.infer<typeof replaceDailyPlanItemSchema>;
 
 const periodDays: Record<ReportingPeriod, number> = { "30d": 30, "90d": 90, "1y": 365 };
 

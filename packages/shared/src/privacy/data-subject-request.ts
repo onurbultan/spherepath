@@ -64,4 +64,5 @@ export interface ContactDataExport {
   presentations: Array<Record<string, unknown>>;
   deals: Array<Record<string, unknown>>;
   voiceNotes: Array<Record<string, unknown>>;
+  inboxItems: Array<Record<string, unknown>>;
 }

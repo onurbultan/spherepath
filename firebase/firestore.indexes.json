@@ -47,6 +47,22 @@
         { "fieldPath": "ownerUid", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "inboxItems",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "officeId", "order": "ASCENDING" },
+        { "fieldPath": "ownerUid", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "stageEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "officeId", "order": "ASCENDING" },
+        { "fieldPath": "ownerUid", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -54,5 +70,7 @@
     { "collectionGroup": "portfolioItems", "fieldPath": "summary", "indexes": [] },
     { "collectionGroup": "portfolioItems", "fieldPath": "attributes", "indexes": [] },
     { "collectionGroup": "voiceNotes", "fieldPath": "transcript", "indexes": [] }
+    ,{ "collectionGroup": "inboxItems", "fieldPath": "safeText", "indexes": [] }
+    ,{ "collectionGroup": "inboxItems", "fieldPath": "summary", "indexes": [] }
   ]
 }

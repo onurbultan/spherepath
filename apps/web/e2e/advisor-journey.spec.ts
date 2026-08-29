@@ -27,12 +27,18 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await page.getByLabel("E-posta").fill(`${runId}@example.test`);
   await page.getByLabel("Şifre").fill("spherepath-test-123");
   await page.getByRole("button", { name: "Hesap oluştur" }).click();
-  await expect(page.getByRole("heading", { name: "Bugünün odağı" })).toBeVisible();
-  await page.getByRole("button", { name: "90 gün" }).click();
-  await expect(page.getByRole("button", { name: "90 gün" })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Yıl" }).click();
-  await expect(page.getByRole("button", { name: "Yıl" })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "30 gün" }).click();
+  await expect(page.getByRole("heading", { name: "Bugün" })).toBeVisible();
+  await page.getByLabel("Hızlı not").fill("Bahçeli satılık bir ev duydum.");
+  await page.getByRole("button", { name: "Kaydet" }).click();
+  await expect(page.getByText("Bahçeli satılık bir ev duydum.")).toBeVisible();
+  await expect(page.getByText(/Nerede\?/)).toBeVisible();
+  await page.getByRole("link", { name: "Huni" }).click();
+  await expect(page.getByRole("heading", { name: "Nerede takılıyor?" })).toBeVisible();
+  await page.getByRole("radio", { name: "90 gün" }).click();
+  await expect(page.getByRole("radio", { name: "90 gün" })).toBeChecked();
+  await page.getByRole("radio", { name: "1 yıl" }).click();
+  await expect(page.getByRole("radio", { name: "1 yıl" })).toBeChecked();
+  await page.getByRole("radio", { name: "30 gün" }).click();
 
   await page.goto("/contacts");
   await expect(page.getByRole("heading", { name: "Kişiler" })).toBeVisible();
@@ -69,6 +75,20 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   }
   await contactActionMenus.first().locator("summary").click();
 
+  await page.goto("/");
+  const dailyTasks = page.locator(".daily-five li");
+  await expect(dailyTasks).toHaveCount(2);
+  const stableTaskTitles = await dailyTasks.locator("strong").allTextContents();
+  await page.reload();
+  await expect(dailyTasks.locator("strong")).toHaveText(stableTaskTitles);
+  await dailyTasks.first().getByRole("button", { name: /görevini tamamla/ }).click();
+  await expect(dailyTasks.first()).toHaveClass(/resolved/);
+  await page.reload();
+  await expect(dailyTasks).toHaveCount(2);
+  await expect(dailyTasks.first()).toHaveClass(/resolved/);
+  await expect(dailyTasks.locator("strong")).toHaveText(stableTaskTitles);
+  await page.goto("/contacts");
+
   await page.getByRole("button", { name: new RegExp(contactName) }).first().click();
   await expect(page.getByRole("heading", { name: contactName })).toBeVisible();
   const workspaceGaps = await page.locator(".contact-workspace-layout").evaluate((layout) => {
@@ -81,7 +101,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   expect(workspaceGaps).toHaveLength(2);
   for (const gap of workspaceGaps) expect(gap).toBeGreaterThanOrEqual(19);
   await page.getByRole("main").getByRole("link", { name: "Temas kaydet" }).click();
-  await expect(page).toHaveURL(/\/capture\?contactId=/);
+  await expect(page).toHaveURL(/\/capture\/?\?contactId=/);
   const voiceSetupHeights = await page.locator(".voice-setup .contact-combobox, .voice-setup .voice-confirm, .voice-setup .voice-start").evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
   expect(voiceSetupHeights).toHaveLength(3);
   if ((page.viewportSize()?.width ?? 0) > 620) {
@@ -157,6 +177,17 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await context.setOffline(true);
   await expect(page.getByRole("status")).toContainText("Çevrimdışısın");
   await context.setOffline(false);
+
+  const routes = ["/", "/funnel", "/capture", "/contacts", "/opportunities", "/listings", "/closing", "/settings"];
+  for (const route of routes) {
+    await page.goto(route);
+    await expect(page.locator("main")).toBeVisible();
+    const width = await page.evaluate(() => ({ documentWidth: document.documentElement.scrollWidth, viewportWidth: document.documentElement.clientWidth }));
+    expect(width.documentWidth).toBeLessThanOrEqual(width.viewportWidth + 1);
+    expect(await page.locator("a, button, input, select, textarea").evaluateAll((elements) => elements.filter((element) => {
+      const rect = element.getBoundingClientRect(); const style = getComputedStyle(element); return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.right > window.innerWidth + 1;
+    }).length)).toBe(0);
+  }
 
   await expectNoSeriousAccessibilityViolations(page);
 });

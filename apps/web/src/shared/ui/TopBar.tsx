@@ -10,7 +10,8 @@ import { listMatchNotifications, markMatchNotificationsRead } from "@/features/m
 import { useThemePreference } from "./theme";
 
 const pageTitles: Record<string, string> = {
-  "/": "Bugün",
+  "/": "Akış",
+  "/funnel": "Huni",
   "/contacts": "Kişiler",
   "/opportunities": "Fırsatlar",
   "/listings": "Portföy",

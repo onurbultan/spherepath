@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { BriefcaseBusiness, ContactRound, House, ListTodo, Plus } from "lucide-react-native";
+import { ContactRound, House, ListTodo, Plus, Pyramid } from "lucide-react-native";
 import { useSpTheme } from "@/shared/ui/theme";
 
 export default function TabsLayout() {
@@ -21,8 +21,8 @@ export default function TabsLayout() {
         tabBarLabelStyle: { fontFamily: "Karla_600SemiBold", fontSize: 11 },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: "Bugün", tabBarIcon: ({ color }) => <ListTodo color={color} size={21} /> }} />
-      <Tabs.Screen name="contacts" options={{ title: "Kişiler", tabBarIcon: ({ color }) => <ContactRound color={color} size={21} /> }} />
+      <Tabs.Screen name="index" options={{ title: "Akış", tabBarIcon: ({ color }) => <ListTodo color={color} size={21} /> }} />
+      <Tabs.Screen name="funnel" options={{ title: "Huni", tabBarIcon: ({ color }) => <Pyramid color={color} size={21} /> }} />
       <Tabs.Screen
         name="capture"
         options={{
@@ -32,8 +32,9 @@ export default function TabsLayout() {
           tabBarLabelStyle: { color: theme.onAsk, fontFamily: "Karla_700Bold", fontSize: 10 },
         }}
       />
-      <Tabs.Screen name="opportunities" options={{ title: "Fırsatlar", tabBarIcon: ({ color }) => <BriefcaseBusiness color={color} size={21} /> }} />
       <Tabs.Screen name="listings" options={{ title: "Portföy", tabBarIcon: ({ color }) => <House color={color} size={21} /> }} />
+      <Tabs.Screen name="contacts" options={{ title: "Kişiler", tabBarIcon: ({ color }) => <ContactRound color={color} size={21} /> }} />
+      <Tabs.Screen name="opportunities" options={{ href: null }} />
       <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );

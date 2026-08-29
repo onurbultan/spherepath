@@ -30,10 +30,11 @@ export const runRetentionPurge = onSchedule(
     timeoutSeconds: 540,
   },
   async () => {
-    const [voiceSnapshot, commandSnapshot, requestSnapshot] = await Promise.all([
+    const [voiceSnapshot, commandSnapshot, requestSnapshot, inboxSnapshot] = await Promise.all([
       olderThan("voiceNotes", 180),
       olderThan("commands", 90),
       olderThan("dataSubjectRequests", 180),
+      olderThan("inboxItems", 365),
     ]);
     const expiredVoiceNotes = voiceSnapshot.docs.filter((item) => ["confirmed", "failed"].includes(item.data().status as string));
     await Promise.all(expiredVoiceNotes.map(async (note) => {
@@ -41,11 +42,13 @@ export const runRetentionPurge = onSchedule(
       if (typeof path === "string") await getStorage().bucket().file(path).delete({ ignoreNotFound: true });
     }));
     const completedRequests = requestSnapshot.docs.filter((item) => ["completed", "rejected"].includes(item.data().status as string));
-    const [voiceNotesDeleted, commandsDeleted, requestsDeleted] = await Promise.all([
+    const archivedInboxItems = inboxSnapshot.docs.filter((item) => item.data().status === "archived");
+    const [voiceNotesDeleted, commandsDeleted, requestsDeleted, inboxItemsDeleted] = await Promise.all([
       deleteDocuments(expiredVoiceNotes),
       deleteDocuments(commandSnapshot.docs),
       deleteDocuments(completedRequests),
+      deleteDocuments(archivedInboxItems),
     ]);
-    logger.info("Retention purge completed", { voiceNotesDeleted, commandsDeleted, requestsDeleted, policyVersion: "v1" });
+    logger.info("Retention purge completed", { voiceNotesDeleted, commandsDeleted, requestsDeleted, inboxItemsDeleted, policyVersion: "v2" });
   },
 );

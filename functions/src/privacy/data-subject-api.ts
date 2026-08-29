@@ -196,7 +196,7 @@ export const getContactDataExport = onCall(callableOptions, async (request): Pro
     const firestore = getFirestore();
     const contactSnapshot = await firestore.collection("contacts").doc(contactId).get();
     if (!contactSnapshot.exists || !canManage(contactSnapshot.data()!, claims)) throw new HttpsError("not-found", "Contact was not found.");
-    const [interactions, sourceReferrals, referredReferrals, opportunities, presentations, deals, voiceNotes] = await Promise.all([
+    const [interactions, sourceReferrals, referredReferrals, opportunities, presentations, deals, voiceNotes, inboxItems] = await Promise.all([
       records("interactions", "contactId", contactId, claims.officeId),
       records("referrals", "sourceContactId", contactId, claims.officeId),
       records("referrals", "referredContactId", contactId, claims.officeId),
@@ -204,6 +204,7 @@ export const getContactDataExport = onCall(callableOptions, async (request): Pro
       records("presentations", "contactId", contactId, claims.officeId),
       records("deals", "buyerContactId", contactId, claims.officeId),
       records("voiceNotes", "contactId", contactId, claims.officeId),
+      records("inboxItems", "linkedContactId", contactId, claims.officeId),
     ]);
     const contact = contactSnapshot.data()!;
     const relationship = contact.relationship as DocumentData;
@@ -230,6 +231,7 @@ export const getContactDataExport = onCall(callableOptions, async (request): Pro
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
       })),
+      inboxItems: inboxItems.map((item) => publicRecord({ id: item.id, source: item.source, safeText: item.safeText, summary: item.summary, kind: item.kind, status: item.status, appliedActions: item.appliedActions, createdAt: item.createdAt, updatedAt: item.updatedAt })),
     } };
   });
 });

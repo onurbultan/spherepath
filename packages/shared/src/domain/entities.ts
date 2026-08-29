@@ -179,6 +179,7 @@ export interface Interaction extends TenantOwned {
   createdAt: Instant;
 }
 
+
 export type ReferralStatus = "received" | "first_contact_pending" | "qualified" | "converted" | "lost";
 export interface Referral extends TenantOwned, Audited {
   sourceContactId: string;

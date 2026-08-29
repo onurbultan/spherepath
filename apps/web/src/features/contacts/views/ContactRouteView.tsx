@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import { ContactWorkspaceView } from "./ContactWorkspaceView";
 
 export function ContactRouteView() {
-  const [contactId, setContactId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const [, contactsSegment, id] = window.location.pathname.split("/");
-    setContactId(contactsSegment === "contacts" && id ? decodeURIComponent(id) : null);
-  }, []);
+  const params = useParams<{ id?: string }>();
+  const search = useSearchParams();
+  const routeId = params.id && params.id !== "__contact__" ? decodeURIComponent(params.id) : null;
+  const contactId = search.get("contactId") ?? routeId;
 
   if (!contactId) return <main className="session-state"><p>Kişi çalışma alanı hazırlanıyor…</p></main>;
   return <ContactWorkspaceView contactId={contactId} />;

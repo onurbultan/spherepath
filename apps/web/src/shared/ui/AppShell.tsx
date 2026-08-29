@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { BriefcaseBusiness, ContactRound, Handshake, House, ListTodo, Network, Plus, SlidersHorizontal, Users } from "lucide-react";
+import { BriefcaseBusiness, ContactRound, Handshake, House, ListTodo, Network, Plus, Pyramid, SlidersHorizontal, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -18,14 +18,16 @@ import { ConnectivityBanner } from "./ConnectivityBanner";
 import { TopBar } from "./TopBar";
 
 const workNavigation = [
-  { label: "Bugün", icon: ListTodo, href: "/", count: null },
-  { label: "Kişiler", icon: ContactRound, href: "/contacts", count: "contacts" },
-  { label: "Fırsatlar", icon: BriefcaseBusiness, href: "/opportunities", count: "opportunities" },
+  { label: "Akış", icon: ListTodo, href: "/", count: null },
+  { label: "Huni", icon: Pyramid, href: "/funnel", count: null },
+  { label: "Kayıt", icon: Plus, href: "/capture", count: null },
   { label: "Portföy", icon: House, href: "/listings", count: "listings" },
-  { label: "Kapama", icon: Handshake, href: "/closing", count: null },
+  { label: "Kişiler", icon: ContactRound, href: "/contacts", count: "contacts" },
 ] as const;
 
 const officeNavigation = [
+  { label: "Fırsatlar", icon: BriefcaseBusiness, href: "/opportunities", count: "opportunities" },
+  { label: "Kapama", icon: Handshake, href: "/closing", count: null },
   { label: "Ofis havuzu", icon: Network, href: "/listings#office-pool", count: "portfolioItems" },
   { label: "Ekip", icon: Users, href: "/settings#office-team", count: "team" },
 ] as const;
@@ -75,7 +77,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     const active = pathname === route && !href.includes("#");
     const value = count ? counts[count] : undefined;
     return (
-      <Link key={href} href={href} className={active ? "nav-item active" : "nav-item"} aria-current={active ? "page" : undefined}>
+      <Link key={href} href={href} className={`${active ? "nav-item active" : "nav-item"}${href === "/capture" ? " nav-capture" : ""}`} aria-current={active ? "page" : undefined}>
         <Icon size={17} aria-hidden />
         <span>{label}</span>
         {value !== undefined ? <span className="nav-count">{value}</span> : null}
@@ -123,7 +125,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </main>
       </div>
 
-      {pathname === "/capture" ? null : <Link href="/capture" className="record-button" aria-label="Yeni kayıt"><Plus size={26} aria-hidden /></Link>}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   );

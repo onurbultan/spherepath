@@ -10,6 +10,8 @@ export { bootstrapWorkspace } from "./auth/bootstrap-workspace.js";
 export { createOfficeInvite, getOfficeTeam, joinOffice, revokeOfficeInvite } from "./auth/office-team.js";
 export { archiveContact, createContact, listContactInteractions, listContacts, updateContact, updateContactPrivacy } from "./contacts/contact-api.js";
 export { recordInteraction } from "./interactions/record-interaction.js";
+export { createInboxItem, listInboxItems, updateInboxItem, retryInboxItem, undoInboxApplication } from "./inbox/inbox-api.js";
+export { getFunnelOverview } from "./funnel/get-funnel-overview.js";
 export { advanceListing, createListing, importExistingListing, listListings } from "./listings/listing-api.js";
 export { createPortfolioItemFromDraft, extractPortfolioText, listMatchNotifications, listPortfolioItems, listPortfolioMatches, markMatchNotificationsRead, withdrawPortfolioItem } from "./matching/portfolio-api.js";
 export { createReferral, listReferrals } from "./referrals/referral-api.js";
@@ -17,6 +19,6 @@ export { createDataSubjectRequest, getContactDataExport, listDataSubjectRequests
 export { processDeletionJob } from "./privacy/deletion-worker.js";
 export { runRetentionPurge } from "./privacy/retention.js";
 export { getWorkspaceSettings, updateWorkspaceSettings } from "./settings/workspace-api.js";
-export { completeDailyTask, getTodayOverview } from "./today/get-today-overview.js";
+export { completeDailyTask, getTodayOverview, replaceDailyPlanItem } from "./today/get-today-overview.js";
 export { confirmVoiceNote, discardVoiceNote, getLatestReviewableVoiceNote, getVoiceNote, processVoiceNote, registerInteractionText, registerVoiceNote, registerVoiceTextTest, retryVoiceNoteProcessing } from "./voice/voice-api.js";
 export { health } from "./system/health.js";

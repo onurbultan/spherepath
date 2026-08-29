@@ -3,7 +3,10 @@ import { Slot } from "expo-router";
 import { useFonts } from "expo-font";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, useQueryClient } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRetryDelay, shouldRetryApiCall } from "@spherepath/shared";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
@@ -35,6 +38,7 @@ const queryClient = new QueryClient({
     mutations: { retry: false },
   },
 });
+const queryPersister = createAsyncStoragePersister({ storage: AsyncStorage, key: "spherepath.query-cache.v1", throttleTime: 1_000 });
 
 function SessionGate() {
   const theme = useSpTheme();
@@ -45,6 +49,12 @@ function SessionGate() {
   }
   if (status !== "ready") return <View style={[styles.state, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.deed} /><SpText color="secondary">Çalışma alanın hazırlanıyor…</SpText></View>;
   return <><ConnectivityBanner /><Slot /><StatusBar style="auto" /></>;
+}
+
+function SessionCacheBoundary({ children }: { children: React.ReactNode }) {
+  const { status } = useSession(); const client = useQueryClient();
+  useEffect(() => { if (status === "signedOut") { client.clear(); void queryPersister.removeClient(); } }, [client, status]);
+  return children;
 }
 
 export default function RootLayout() {
@@ -68,9 +78,9 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
-        <SessionProvider><SessionGate /></SessionProvider>
-      </QueryClientProvider>
+      <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister, maxAge: 24 * 60 * 60 * 1_000, buster: "spherepath-v2" }}>
+        <SessionProvider><SessionCacheBoundary><SessionGate /></SessionCacheBoundary></SessionProvider>
+      </PersistQueryClientProvider>
     </SafeAreaProvider>
   );
 }

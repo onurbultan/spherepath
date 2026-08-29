@@ -1,15 +1,11 @@
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { buildTodayOverview, dailyTaskOutcomeSchema, todayOverviewQuerySchema, type DailyTaskOutcome, type OpportunityStage, type TodayOverview } from "../../../packages/shared/src/index";
+import { buildTodayOverview, dailyTaskOutcomeSchema, istanbulDayKey, replaceDailyPlanItemSchema, replaceDailyPlanTask, selectDailyPlanTasks, todayOverviewQuerySchema, topUpDailyPlanTasks, type DailyTaskOutcome, type OpportunityStage, type ReplaceDailyPlanItemInput, type TodayOverview, type TodayTask } from "../../../packages/shared/src/index";
 import { requireSpherepathClaims } from "../auth/claims.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 
 function millis(value: unknown): number | null {
   return value instanceof Timestamp ? value.toMillis() : null;
-}
-
-function istanbulDayKey(now = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
 export const getTodayOverview = onCall(
@@ -94,9 +90,28 @@ export const getTodayOverview = onCall(
         occurredAt: millis(data.occurredAt) ?? 0,
       };
     });
-    const dayKey = istanbulDayKey();
-    const completedTaskIds = new Set(completionsSnapshot.docs.filter((item) => { const data = item.data(); return data.dayKey === dayKey && ["completed", "skipped", "rescheduled"].includes(data.status as string) && (claims.role === "broker" || data.ownerUid === claims.uid); }).map((item) => item.data().taskId as string));
-    return { overview: buildTodayOverview(contacts, opportunities, Date.now(), listings, deals, completedTaskIds, interactions, parsedQuery.data.period) };
+    const now = Date.now();
+    const dayKey = istanbulDayKey(now);
+    const completions = completionsSnapshot.docs.filter((item) => { const data = item.data(); return data.dayKey === dayKey && ["completed", "skipped", "rescheduled"].includes(data.status as string) && data.ownerUid === claims.uid; });
+    const resolutionById = new Map(completions.map((item) => [item.data().taskId as string, item.data().status as "completed" | "skipped" | "rescheduled"]));
+    const candidateOverview = buildTodayOverview(contacts, opportunities, now, listings, deals, new Set(), interactions, parsedQuery.data.period);
+    const planRef = firestore.collection("dailyPlans").doc(`${claims.uid}-${dayKey}`.replace(/[^a-zA-Z0-9_-]/g, "_"));
+    const planSnapshot = await planRef.get();
+    const storedSnapshots = (planSnapshot.data()?.taskSnapshots ?? []) as TodayTask[];
+    const storedTaskIds = planSnapshot.exists ? ((planSnapshot.data()!.taskIds ?? []) as string[]) : [];
+    const taskIds = planSnapshot.exists
+      ? topUpDailyPlanTasks([...storedSnapshots, ...candidateOverview.tasks], storedTaskIds)
+      : selectDailyPlanTasks(candidateOverview.tasks).map((task) => task.id);
+    const snapshotById = new Map([...storedSnapshots, ...candidateOverview.tasks].map((task) => [task.id, task]));
+    const selectedSnapshots = taskIds.flatMap((taskId) => { const task = snapshotById.get(taskId); return task ? [task] : []; });
+    if (!planSnapshot.exists) {
+      await planRef.set({ officeId: claims.officeId, ownerUid: claims.uid, dayKey, taskIds, taskSnapshots: selectedSnapshots, createdAt: Timestamp.fromMillis(now), updatedAt: Timestamp.fromMillis(now) });
+    } else if (taskIds.join("|") !== storedTaskIds.join("|")) {
+      await planRef.update({ taskIds, taskSnapshots: selectedSnapshots, updatedAt: Timestamp.fromMillis(now) });
+    }
+    const tasksById = new Map(selectedSnapshots.map((task) => [task.id, task]));
+    const plannedTasks = taskIds.flatMap((taskId) => { const task = tasksById.get(taskId); return task ? [{ ...task, resolutionStatus: resolutionById.get(taskId) ?? null }] : []; });
+    return { overview: { ...candidateOverview, tasks: plannedTasks, completedTaskCount: plannedTasks.filter((task) => task.resolutionStatus).length } };
     });
   },
 );
@@ -112,7 +127,7 @@ export const completeDailyTask = onCall(
     return observeApiRequest("completeDailyTask", envelope.requestId, async () => {
       const db = getFirestore();
       const commandRef = db.collection("commands").doc(envelope.commandId!);
-      const completionRef = db.collection("dailyTaskCompletions").doc(`${claims.uid}-${istanbulDayKey()}-${parsed.data.taskId}`.replace(/[^a-zA-Z0-9_-]/g, "_"));
+      const completionRef = db.collection("dailyTaskCompletions").doc(`${claims.uid}-${istanbulDayKey(Date.now())}-${parsed.data.taskId}`.replace(/[^a-zA-Z0-9_-]/g, "_"));
       const opportunityPrefix = "opportunity-action-";
       const contactPrefixes = ["next-action-", "first-interaction-"] as const;
       const opportunityId = parsed.data.taskId.startsWith(opportunityPrefix) ? parsed.data.taskId.slice(opportunityPrefix.length) : null;
@@ -189,7 +204,7 @@ export const completeDailyTask = onCall(
           officeId: claims.officeId,
           ownerUid: claims.uid,
           taskId: parsed.data.taskId,
-          dayKey: istanbulDayKey(),
+          dayKey: istanbulDayKey(Date.now()),
           status: parsed.data.status,
           outcomeNote: parsed.data.outcomeNote,
           skippedReason: parsed.data.skippedReason,
@@ -210,6 +225,60 @@ export const completeDailyTask = onCall(
         });
       });
       return { taskId: parsed.data.taskId, status: parsed.data.status };
+    });
+  },
+);
+
+async function loadTaskCandidates(claims: ReturnType<typeof requireSpherepathClaims>): Promise<TodayTask[]> {
+  const db = getFirestore();
+  let contactsQuery: FirebaseFirestore.Query = db.collection("contacts").where("officeId", "==", claims.officeId);
+  let opportunitiesQuery: FirebaseFirestore.Query = db.collection("opportunities").where("officeId", "==", claims.officeId);
+  if (claims.role !== "broker") {
+    contactsQuery = contactsQuery.where("ownerUid", "==", claims.uid);
+    opportunitiesQuery = opportunitiesQuery.where("ownerUid", "==", claims.uid);
+  }
+  const [contactSnapshot, opportunitySnapshot] = await Promise.all([contactsQuery.limit(200).get(), opportunitiesQuery.limit(200).get()]);
+  const contacts = contactSnapshot.docs.map((item) => {
+    const data = item.data();
+    return { id: item.id, name: (data.fullName ?? data.label ?? "İsimsiz kişi") as string, createdAt: millis(data.createdAt) ?? 0, meaningfulTouchCount: Number(data.relationship?.meaningfulTouchCount ?? 0), lastTouchAt: millis(data.relationship?.lastTouchAt), nextActionAt: millis(data.relationship?.nextActionAt), nextActionType: data.relationship?.nextActionType ?? null, deletedAt: millis(data.deletedAt) };
+  }).filter((item) => item.deletedAt === null);
+  const names = new Map(contacts.map((item) => [item.id, item.name]));
+  const opportunities = opportunitySnapshot.docs.map((item) => {
+    const data = item.data();
+    return { id: item.id, subjectContactId: data.subjectContactId as string, subjectContactName: names.get(data.subjectContactId as string) ?? "İsimsiz kişi", stage: data.stage as OpportunityStage, nextActionAt: millis(data.nextActionAt), nextActionType: data.nextActionType ?? null, createdAt: millis(data.createdAt) ?? 0, deletedAt: millis(data.deletedAt) };
+  }).filter((item) => item.deletedAt === null);
+  return buildTodayOverview(contacts, opportunities, Date.now()).tasks;
+}
+
+export const replaceDailyPlanItem = onCall(
+  { region: "europe-west8", cors: true, maxInstances: 10, memory: "256MiB", timeoutSeconds: 60 },
+  async (request): Promise<{ taskIds: string[] }> => {
+    const claims = requireSpherepathClaims(request);
+    const envelope = readApiEnvelope<ReplaceDailyPlanItemInput>(request.data, { command: true });
+    const parsed = replaceDailyPlanItemSchema.safeParse(envelope.data);
+    if (!parsed.success) throw new HttpsError("invalid-argument", "Daily plan replacement is invalid.");
+    return observeApiRequest("replaceDailyPlanItem", envelope.requestId, async () => {
+      const db = getFirestore();
+      const dayKey = istanbulDayKey(Date.now());
+      const planRef = db.collection("dailyPlans").doc(`${claims.uid}-${dayKey}`.replace(/[^a-zA-Z0-9_-]/g, "_"));
+      const commandRef = db.collection("commands").doc(envelope.commandId!);
+      const candidates = await loadTaskCandidates(claims);
+      let result: string[] = [];
+      await db.runTransaction(async (transaction) => {
+        const [plan, receipt] = await Promise.all([transaction.get(planRef), transaction.get(commandRef)]);
+        if (!plan.exists) throw new HttpsError("failed-precondition", "Daily plan has not been generated yet.");
+        if (receipt.exists) { result = (receipt.data()!.taskIds ?? []) as string[]; return; }
+        if (plan.data()!.officeId !== claims.officeId || plan.data()!.ownerUid !== claims.uid) throw new HttpsError("permission-denied", "Daily plan is outside your workspace.");
+        result = replaceDailyPlanTask(candidates, plan.data()!.taskIds as string[], parsed.data.taskId);
+        if (result.join("|") === (plan.data()!.taskIds as string[]).join("|")) throw new HttpsError("failed-precondition", "Bu görevin yerine geçecek başka uygun iş yok.");
+        const previousSnapshots = (plan.data()!.taskSnapshots ?? []) as TodayTask[];
+        const taskMap = new Map([...previousSnapshots, ...candidates].map((task) => [task.id, task]));
+        const taskSnapshots = result.flatMap((id) => { const task = taskMap.get(id); return task ? [task] : []; });
+        const now = Timestamp.now();
+        transaction.update(planRef, { taskIds: result, taskSnapshots, updatedAt: now });
+        transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "replaceDailyPlanItem", taskIds: result, createdAt: now });
+      });
+      return { taskIds: result };
     });
   },
 );

@@ -162,6 +162,8 @@ export const apiQueryKeys = {
   closing: ["closing"] as const,
   todayOverview: ["today", "overview"] as const,
   todayOverviewPeriod: (period: string) => ["today", "overview", period] as const,
+  inboxItems: ["inbox", "items"] as const,
+  funnelOverview: (period: string) => ["funnel", "overview", period] as const,
   workspaceSettings: ["workspace", "settings"] as const,
   officeTeam: ["workspace", "team"] as const,
   dataSubjectRequests: ["privacy", "requests"] as const,
