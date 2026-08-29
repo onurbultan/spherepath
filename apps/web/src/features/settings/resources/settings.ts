@@ -9,6 +9,8 @@ import {
   type ResolveDataSubjectRequestInput,
   type WorkspaceSettingsDraft,
   type WorkspaceSettingsView,
+  type WhatsAppGroupConfiguration,
+  type WhatsAppGroupIntegrationView,
 } from "@spherepath/shared";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
 import { apiClient } from "@/shared/api/client";
@@ -63,4 +65,20 @@ export async function resolveDataSubjectRequest(session: WorkspaceSession, input
 
 export async function getContactDataExport(contactId: string): Promise<ContactDataExport> {
   return (await apiClient.query<{ contactId: string }, { export: ContactDataExport }>("getContactDataExport", { contactId })).export;
+}
+
+export async function loadWhatsAppGroupIntegration(): Promise<WhatsAppGroupIntegrationView> {
+  return (await apiClient.query<undefined, { integration: WhatsAppGroupIntegrationView }>("getWhatsAppGroupIntegration", undefined)).integration;
+}
+
+export async function configureWhatsAppGroupIntegration(session: WorkspaceSession, input: WhatsAppGroupConfiguration): Promise<WhatsAppGroupIntegrationView> {
+  return (await apiClient.command<WhatsAppGroupConfiguration, { integration: WhatsAppGroupIntegrationView }>(
+    "configureWhatsAppGroupIntegration", input, createCommandId(session.uid),
+  )).integration;
+}
+
+export async function createWhatsAppOfficeGroup(session: WorkspaceSession): Promise<WhatsAppGroupIntegrationView> {
+  return (await apiClient.command<undefined, { integration: WhatsAppGroupIntegrationView }>(
+    "createWhatsAppOfficeGroup", undefined, createCommandId(session.uid),
+  )).integration;
 }

@@ -165,6 +165,7 @@ export const apiQueryKeys = {
   inboxItems: ["inbox", "items"] as const,
   funnelOverview: (period: string) => ["funnel", "overview", period] as const,
   workspaceSettings: ["workspace", "settings"] as const,
+  whatsappGroupIntegration: ["workspace", "whatsapp-group"] as const,
   officeTeam: ["workspace", "team"] as const,
   dataSubjectRequests: ["privacy", "requests"] as const,
 };

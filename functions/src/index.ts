@@ -19,6 +19,7 @@ export { createDataSubjectRequest, getContactDataExport, listDataSubjectRequests
 export { processDeletionJob } from "./privacy/deletion-worker.js";
 export { runRetentionPurge } from "./privacy/retention.js";
 export { getWorkspaceSettings, updateWorkspaceSettings } from "./settings/workspace-api.js";
+export { configureWhatsAppGroupIntegration, createWhatsAppOfficeGroup, getWhatsAppGroupIntegration, whatsappGroupsWebhook } from "./whatsapp/group-api.js";
 export { completeDailyTask, getTodayOverview, replaceDailyPlanItem } from "./today/get-today-overview.js";
 export { confirmVoiceNote, discardVoiceNote, getLatestReviewableVoiceNote, getVoiceNote, processVoiceNote, registerInteractionText, registerVoiceNote, registerVoiceTextTest, retryVoiceNoteProcessing } from "./voice/voice-api.js";
 export { health } from "./system/health.js";

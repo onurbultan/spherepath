@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createHmac } from "node:crypto";
 import { initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
 import { deleteApp, initializeApp } from "firebase/app";
 import { connectAuthEmulator, createUserWithEmailAndPassword, getAuth } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, updateDoc } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/functions";
 
 const projectId = "spherepath-96ecd";
@@ -379,6 +380,57 @@ describe("callable API vertical slice", () => {
     const replayedSettings = (await updateWorkspaceSettings({ ...settingsRequest, requestId: "request-settings-replay" })).data as { settings: { displayName: string } };
     expect(updatedSettings.settings).toMatchObject({ displayName: "API Test Advisor", dailyPlanReminderHour: 8 });
     expect(replayedSettings.settings.displayName).toBe("API Test Advisor");
+
+    const getWhatsAppGroupIntegration = httpsCallable(functions, "getWhatsAppGroupIntegration");
+    const initialWhatsApp = (await getWhatsAppGroupIntegration(envelope(undefined, "request-whatsapp-get"))).data as { integration: { status: string; webhookUrl: string } };
+    expect(initialWhatsApp.integration).toMatchObject({ status: "not_configured" });
+    expect(initialWhatsApp.integration.webhookUrl).toContain("whatsappGroupsWebhook");
+    const configureWhatsAppGroupIntegration = httpsCallable(functions, "configureWhatsAppGroupIntegration");
+    const whatsappRequest = envelope({
+      businessPhoneNumberId: "12784358810",
+      subject: "Spherepath Integration Group",
+      description: "Integration group for office pool messages",
+      joinApprovalMode: "approval_required",
+    }, "request-whatsapp-configure", "command-whatsapp-configure");
+    const configuredWhatsApp = (await configureWhatsAppGroupIntegration(whatsappRequest)).data as { integration: { status: string; businessPhoneNumberId: string } };
+    const replayedWhatsApp = (await configureWhatsAppGroupIntegration({ ...whatsappRequest, requestId: "request-whatsapp-configure-replay" })).data as { integration: { status: string } };
+    expect(configuredWhatsApp.integration).toMatchObject({ status: "configured", businessPhoneNumberId: "12784358810" });
+    expect(replayedWhatsApp.integration.status).toBe("configured");
+    await testEnvironment.withSecurityRulesDisabled(async (context) => updateDoc(doc(context.firestore(), "whatsappGroupIntegrations", workspace.officeId), { status: "creating", pendingRequestId: "integration-group-request-1" }));
+    const lifecyclePayload = { object: "whatsapp_business_account", entry: [{ changes: [{ field: "group_lifecycle_update", value: { metadata: { phone_number_id: "12784358810" }, groups: [{ type: "group_create", request_id: "integration-group-request-1", group_id: "integration-group-1", invite_link: "https://chat.whatsapp.com/integration" }] } }] }] };
+    const lifecycleRaw = JSON.stringify(lifecyclePayload);
+    const lifecycleSignature = `sha256=${createHmac("sha256", "integration-app-secret").update(lifecycleRaw).digest("hex")}`;
+    const lifecycleResponse = await fetch(`http://127.0.0.1:5001/${projectId}/europe-west8/whatsappGroupsWebhook`, { method: "POST", headers: { "content-type": "application/json", "x-hub-signature-256": lifecycleSignature }, body: lifecycleRaw });
+    expect(lifecycleResponse.status).toBe(200);
+    const activeWhatsApp = (await getWhatsAppGroupIntegration(envelope(undefined, "request-whatsapp-active"))).data as { integration: { status: string; groupId: string; inviteLink: string } };
+    expect(activeWhatsApp.integration).toMatchObject({ status: "active", groupId: "integration-group-1", inviteLink: "https://chat.whatsapp.com/integration" });
+    const webhookPayload = {
+      object: "whatsapp_business_account",
+      entry: [{ changes: [{ field: "messages", value: {
+        metadata: { phone_number_id: "12784358810" },
+        messages: [
+          { id: "wamid.integration-1", group_id: "integration-group-1", timestamp: String(Math.floor(Date.now() / 1_000)), type: "text", text: { body: "Urla'da bahçeli bir ev var, konumu Kuşçular." } },
+          { id: "wamid.integration-2", group_id: "integration-group-1", timestamp: String(Math.floor(Date.now() / 1_000)), type: "text", text: { body: "Sağlık durumu hakkında ayrıntı paylaşıldı." } },
+        ],
+      } }] }],
+    };
+    const webhookRaw = JSON.stringify(webhookPayload);
+    const webhookSignature = `sha256=${createHmac("sha256", "integration-app-secret").update(webhookRaw).digest("hex")}`;
+    const verificationResponse = await fetch(`http://127.0.0.1:5001/${projectId}/europe-west8/whatsappGroupsWebhook?hub.mode=subscribe&hub.verify_token=integration-verify-token&hub.challenge=spherepath-challenge`);
+    expect(await verificationResponse.text()).toBe("spherepath-challenge");
+    const rejectedWebhook = await fetch(`http://127.0.0.1:5001/${projectId}/europe-west8/whatsappGroupsWebhook`, { method: "POST", headers: { "content-type": "application/json", "x-hub-signature-256": "sha256=invalid" }, body: webhookRaw });
+    expect(rejectedWebhook.status).toBe(401);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const webhookResponse = await fetch(`http://127.0.0.1:5001/${projectId}/europe-west8/whatsappGroupsWebhook`, { method: "POST", headers: { "content-type": "application/json", "x-hub-signature-256": webhookSignature }, body: webhookRaw });
+      expect(webhookResponse.status).toBe(200);
+    }
+    const listWhatsAppInbox = httpsCallable(functions, "listInboxItems");
+    const whatsappInbox = (await listWhatsAppInbox(envelope({ cursor: null, limit: 50 }, "request-whatsapp-inbox"))).data as { items: Array<{ safeText: string; source: string; kind: string; status: string }> };
+    expect(whatsappInbox.items.filter((item) => item.safeText === "Urla'da bahçeli bir ev var, konumu Kuşçular.")).toEqual([
+      expect.objectContaining({ source: "whatsapp", kind: "property", status: "needs_review" }),
+    ]);
+    expect(whatsappInbox.items.some((item) => item.safeText.includes("Sağlık durumu"))).toBe(false);
+    expect(whatsappInbox.items).toContainEqual(expect.objectContaining({ source: "whatsapp", safeText: "[HASSAS İÇERİK MASKELENDİ]", status: "needs_review" }));
 
     const createDataSubjectRequest = httpsCallable(functions, "createDataSubjectRequest");
     const accessRequest = (await createDataSubjectRequest(envelope({

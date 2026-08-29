@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { Bell, Building2, Check, Copy, Download, FileText, Lock, Save, ShieldCheck, UserPlus, UserRoundCog, Users } from "lucide-react";
+import { Bell, Building2, Check, Copy, Download, FileText, Lock, MessageCircleMore, Save, ShieldCheck, UserPlus, UserRoundCog, Users } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   apiQueryKeys,
@@ -25,6 +25,7 @@ import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
 import { ContactCombobox } from "@/shared/ui/ContactCombobox";
 import { useActiveAnchor } from "@/shared/ui/useActiveAnchor";
+import { WhatsAppGroupSettingsCard } from "../components/WhatsAppGroupSettingsCard";
 import {
   createOfficeInvite,
   createDataSubjectRequest,
@@ -38,7 +39,7 @@ import {
   saveWorkspaceSettings,
 } from "../resources/settings";
 
-const settingsSections = ["advisor-profile", "reminders", "data-controller", "voice-privacy", "office-team", "data-requests"] as const;
+const settingsSections = ["advisor-profile", "reminders", "whatsapp-group", "data-controller", "voice-privacy", "office-team", "data-requests"] as const;
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Ayarlar güncellenemedi.";
@@ -231,6 +232,7 @@ export function SettingsView() {
         </div>
         <div><span>Ofis</span>
           <a aria-current={activeSection === "office-team" ? "true" : undefined} className={activeSection === "office-team" ? "active" : ""} href="#office-team"><Users size={16} /> Ekip ve davetler <em>{teamQuery.data?.members.length ?? 0}</em></a>
+          <a aria-current={activeSection === "whatsapp-group" ? "true" : undefined} className={activeSection === "whatsapp-group" ? "active" : ""} href="#whatsapp-group"><MessageCircleMore size={16} /> WhatsApp grubu</a>
           <a aria-current={activeSection === "data-controller" ? "true" : undefined} className={activeSection === "data-controller" ? "active" : ""} href="#data-controller"><ShieldCheck size={16} /> Veri sorumlusu</a>
         </div>
         <div><span>Uyum</span>
@@ -265,6 +267,7 @@ export function SettingsView() {
 
       <div className="settings-sections-footer"><button className="primary-action inline-action" disabled={!editedDraft || pending} type="submit"><Save size={18} /> {pending ? "Kaydediliyor…" : "Ayarları kaydet"}</button></div>
     </form>
+    <WhatsAppGroupSettingsCard />
     <section className="office-team-section" id="voice-privacy"><div className="section-heading"><div><p className="eyebrow">SES VE GİZLİLİK</p><h2>Görüşme sonrası güvenli not</h2><p>Sesli not yalnız danışmanın görüşme bittikten sonra verdiği özettir; karşı taraf kaydedilmez.</p></div></div><div className="settings-grid"><SpCard className="settings-card"><div className="settings-title"><Lock size={20} /><div><p className="eyebrow">KALICI KORUMALAR</p><h2>Değiştirilemeyen güvenlik sınırları</h2></div></div><ul className="privacy-policy-list"><li>Aktif görüşme sırasında kayıt başlatılmaz; yalnız olduğunuzu ayrıca onaylamanız gerekir.</li><li>Ham ses ve maskelenmemiş döküm kalıcı olarak saklanmaz.</li><li>Hassas veri kategorileri inceleme öncesinde maskelenir.</li><li>Çıkarılan taslak, danışman onayı olmadan kişi veya fırsat kaydına dönüşmez.</li></ul><a className="secondary-action inline-link" href="/capture">Sesli not akışını aç</a></SpCard><SpCard className="settings-card"><div className="settings-title"><ShieldCheck size={20} /><div><p className="eyebrow">VERİ HAKLARI</p><h2>Dışa aktarma ve silme</h2></div></div><p className="privacy-copy">Kişi bazlı JSON dışa aktarımı ve silme talebi aşağıdaki veri sahibi talepleri bölümünden kimlik doğrulamasıyla yürütülür.</p><a className="secondary-action inline-link" href="#data-requests">Veri sahibi taleplerine git</a></SpCard></div></section>
     <section className="office-team-section" id="office-team"><div className="section-heading"><div><p className="eyebrow">OFİS EKİBİ</p><h2>Ortak çalışma alanı</h2><p>Kişiler danışmana ait kalır; broker ofis genelini, danışman kendi kayıtlarını görür. Ortak portföy havuzu bütün ekibe açıktır.</p></div></div><div className="settings-grid">
       <SpCard className="settings-card office-team-card"><div className="settings-title"><Users size={20} /><div><p className="eyebrow">{teamQuery.data?.officeName ?? "OFİS"}</p><h2>Ekip üyeleri</h2></div></div>{teamQuery.isPending ? <p>Ofis ekibi yükleniyor…</p> : teamQuery.error ? <p className="form-error">{messageFrom(teamQuery.error)}</p> : <div className="office-member-list">{teamQuery.data?.members.map((member) => <div className="office-member" key={member.uid}><span className="contact-avatar">{member.displayName.slice(0, 1).toLocaleUpperCase("tr-TR")}</span><div><strong>{member.displayName}</strong><small>{member.role === "broker" ? "Broker / ofis yöneticisi" : "Gayrimenkul danışmanı"}</small></div></div>)}</div>}{teamQuery.data?.canInvite ? <button className="secondary-action inline-action" disabled={pending} onClick={() => void createInvite()} type="button"><UserPlus size={17} /> Davet kodu oluştur</button> : null}{invite ? <div className="office-invite-result"><div className="office-invite-code"><span>7 gün geçerli · tek kullanımlık</span><strong>{invite.code}</strong></div><div className="office-invite-actions"><button className="secondary-action compact-action inline-action" onClick={() => void copyInvite()} type="button">{inviteCopied ? <Check size={15} aria-hidden /> : <Copy size={15} aria-hidden />} {inviteCopied ? "Kopyalandı" : "Kodu kopyala"}</button><button className="secondary-action danger-secondary compact-action inline-action" disabled={pending} onClick={() => void revokeInvite(invite.code)} type="button">İptal et</button></div></div> : null}{teamQuery.data?.activeInvites.filter((item) => item.code !== invite?.code).map((item) => <div className="office-invite-result" key={item.code}><div className="office-invite-code"><span>{new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(item.expiresAt)} tarihine kadar geçerli</span><strong>{item.code}</strong></div><div className="office-invite-actions"><button className="secondary-action danger-secondary compact-action inline-action" disabled={pending} onClick={() => void revokeInvite(item.code)} type="button">İptal et</button></div></div>)}</SpCard>

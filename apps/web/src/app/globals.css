@@ -891,6 +891,10 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .warm-text { color: var(--warm); }
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-xl); }
 .settings-card { display: grid; gap: var(--space-xl); align-content: start; }
+.inline-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); }
+.code-value { overflow-wrap: anywhere; color: var(--text-secondary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 11px; line-height: 1.5; }
+.status-chip { align-self: flex-start; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--sunk); color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.status-chip.success { border-color: color-mix(in srgb, var(--good) 30%, var(--line)); background: var(--good-bg); color: var(--good); }
 .settings-title { display: flex; align-items: center; gap: 11px; color: var(--deed); }
 .settings-title .eyebrow { margin-bottom: 2px; }
 .settings-title h2 { color: var(--text-primary); }
