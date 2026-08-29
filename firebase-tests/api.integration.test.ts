@@ -119,7 +119,11 @@ describe("callable API vertical slice", () => {
     await completeDailyTask(envelope({ taskId: `opportunity-action-${opportunity.opportunity.id}`, status: "completed", outcomeNote: null, skippedReason: null, rescheduledAt: null, rescheduledActionType: null }, "request-task-complete", "command-task-complete"));
     const todayAfterCompletion = (await getTodayOverview(envelope(undefined, "request-today-completed"))).data as { overview: { completedTaskCount: number; tasks: Array<{ id: string }> } };
     expect(todayAfterCompletion.overview.completedTaskCount).toBe(1);
-    expect(todayAfterCompletion.overview.tasks).toHaveLength(0);
+    expect(todayAfterCompletion.overview.tasks).toEqual([expect.objectContaining({ id: `next-action-${created.contact.id}` })]);
+    await completeDailyTask(envelope({ taskId: `next-action-${created.contact.id}`, status: "completed", outcomeNote: null, skippedReason: null, rescheduledAt: null, rescheduledActionType: null }, "request-contact-task-complete", "command-contact-task-complete"));
+    const todayAfterBothCompletions = (await getTodayOverview(envelope(undefined, "request-today-both-completed"))).data as { overview: { completedTaskCount: number; tasks: Array<{ id: string }> } };
+    expect(todayAfterBothCompletions.overview.completedTaskCount).toBe(2);
+    expect(todayAfterBothCompletions.overview.tasks).toHaveLength(0);
 
     for (const [index, toStage] of ["appointment", "valuation", "mandate_offer", "won"].entries()) {
       await advanceOpportunity(envelope({
@@ -170,10 +174,14 @@ describe("callable API vertical slice", () => {
     const advanceDeal = httpsCallable(functions, "advanceDeal");
     await advanceDeal(envelope({ dealId: deal.dealId, toStage: "viewing", offerAmount: null, currency: null, lostReason: null }, "request-deal-viewing", "command-deal-viewing"));
     await advanceDeal(envelope({ dealId: deal.dealId, toStage: "offer", offerAmount: 9_500_000, currency: "TRY", lostReason: null }, "request-deal-offer", "command-deal-offer"));
+    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "contract", offerAmount: null, currency: null, lostReason: null }, "request-deal-contract", "command-deal-contract"));
+    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "closed", offerAmount: null, currency: null, lostReason: null }, "request-deal-closed", "command-deal-closed"));
     const getClosingOverview = httpsCallable(functions, "getClosingOverview");
     const closing = (await getClosingOverview(envelope(undefined, "request-closing"))).data as { presentations: Array<{ id: string; status: string }>; deals: Array<{ id: string; stage: string }> };
     expect(closing.presentations).toEqual([expect.objectContaining({ id: presentation.presentationId, status: "sent" })]);
-    expect(closing.deals).toEqual([expect.objectContaining({ id: deal.dealId, stage: "offer" })]);
+    expect(closing.deals).toEqual([expect.objectContaining({ id: deal.dealId, stage: "closed" })]);
+    const listingsAfterClosing = (await listListings(envelope(undefined, "request-list-listings-after-closing"))).data as { listings: Array<{ id: string; status: string }> };
+    expect(listingsAfterClosing.listings).toEqual([expect.objectContaining({ id: listing.listing.id, status: "sold" })]);
 
     const registerVoiceNote = httpsCallable(functions, "registerVoiceNote");
     const voiceRequest = envelope({

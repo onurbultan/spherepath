@@ -138,6 +138,28 @@ export const completeDailyTask = onCall(
           throw new HttpsError("permission-denied", "Daily task target is outside your workspace.");
         }
 
+        let linkedContactRef: FirebaseFirestore.DocumentReference | null = null;
+        let linkedContactData: FirebaseFirestore.DocumentData | null = null;
+        if (opportunityId && typeof targetData.subjectContactId === "string") {
+          const contactRef = db.collection("contacts").doc(targetData.subjectContactId);
+          const contactSnapshot = await transaction.get(contactRef);
+          const contactData = contactSnapshot.data();
+          const contactActionAt = contactData?.relationship?.nextActionAt;
+          const opportunityActionAt = targetData.nextActionAt;
+          const sameAction = contactSnapshot.exists
+            && contactData?.officeId === claims.officeId
+            && (contactData?.ownerUid === claims.uid || claims.role === "broker")
+            && !(contactData?.deletedAt instanceof Timestamp)
+            && contactData?.relationship?.nextActionType === targetData.nextActionType
+            && contactActionAt instanceof Timestamp
+            && opportunityActionAt instanceof Timestamp
+            && Math.abs(contactActionAt.toMillis() - opportunityActionAt.toMillis()) <= 5 * 60 * 1_000;
+          if (sameAction) {
+            linkedContactRef = contactRef;
+            linkedContactData = contactData ?? null;
+          }
+        }
+
         const now = Timestamp.now();
         if (opportunityId) {
           transaction.update(targetRef, {
@@ -145,6 +167,13 @@ export const completeDailyTask = onCall(
             nextActionType: parsed.data.status === "rescheduled" ? parsed.data.rescheduledActionType : null,
             updatedAt: now,
           });
+          if (linkedContactRef && linkedContactData) {
+            transaction.update(linkedContactRef, {
+              "relationship.nextActionAt": parsed.data.status === "rescheduled" ? Timestamp.fromMillis(parsed.data.rescheduledAt!) : null,
+              "relationship.nextActionType": parsed.data.status === "rescheduled" ? parsed.data.rescheduledActionType : null,
+              updatedAt: now,
+            });
+          }
         } else if (contactId && (contactPrefix === "next-action-" || parsed.data.status === "rescheduled")) {
           transaction.update(targetRef, {
             "relationship.nextActionAt": parsed.data.status === "rescheduled" ? Timestamp.fromMillis(parsed.data.rescheduledAt!) : null,

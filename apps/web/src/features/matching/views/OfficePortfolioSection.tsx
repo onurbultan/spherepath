@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
-import { Check, Copy, ExternalLink, Link as LinkIcon, Network, Plus, RefreshCw, Sparkles, X } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Check, Copy, ExternalLink, Link as LinkIcon, Network, RefreshCw, Sparkles, X } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   apiQueryKeys, currencyCodes, portfolioAuthorizationLabels, portfolioAuthorizationTypes, portfolioItemDraftSchema,
@@ -62,7 +62,7 @@ function PortfolioMatchCard({ match }: { match: PortfolioMatchRecord }) {
   }
 
   return <SpCard className="match-card">
-    <div className="match-score"><strong>%{match.score}</strong><span>uyum</span><em>%{match.coverage} veri</em></div>
+    <div className="match-score"><strong>%{match.score}</strong><span>uyum</span><div className="match-progress" aria-label={`Eşleşme puanı yüzde ${match.score}`}><i style={{ width: `${match.score}%` }} /></div><em>%{match.coverage} veri</em></div>
     <h3>{match.contactName} ↔ {match.portfolioItem.headline}</h3>
     <ul>{match.reasons.filter((reason) => reason.status !== "mismatch").slice(0, 3).map((reason) => <li className={`match-reason-${reason.status}`} key={reason.key}>{reason.status === "unknown" ? "Doğrulanmalı: " : ""}{reason.detail}</li>)}</ul>
     {copyState === "failed" ? <p className="form-error compact-error">Mesaj kopyalanamadı. Tarayıcı pano iznini kontrol edin.</p> : null}
@@ -74,7 +74,7 @@ function PortfolioMatchCard({ match }: { match: PortfolioMatchRecord }) {
   </SpCard>;
 }
 
-export function OfficePortfolioSection() {
+export function OfficePortfolioSection({ openSignal = 0 }: { openSignal?: number }) {
   const { session } = useSession();
   const queryClient = useQueryClient();
   const itemsQuery = useQuery({ queryKey: apiQueryKeys.portfolioItems, queryFn: listPortfolioItems });
@@ -90,10 +90,19 @@ export function OfficePortfolioSection() {
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPool, setShowPool] = useState(false);
+  const previousOpenSignal = useRef(openSignal);
   const items = itemsQuery.data ?? [];
   const matches = matchesQuery.data ?? [];
   const detectedMessageCount = source === "whatsapp_group" ? splitPortfolioMessages(text).length : text.trim().length >= 10 ? 1 : 0;
   const batchTotal = savedBatchCount + draftQueue.length + (draft ? 1 : 0);
+
+  useEffect(() => {
+    if (openSignal !== previousOpenSignal.current) {
+      previousOpenSignal.current = openSignal;
+      setOpen(true);
+      setError(null);
+    }
+  }, [openSignal]);
 
   useSheetDismiss(open, () => { if (!pending) { setOpen(false); setDraft(null); setDraftQueue([]); setSavedBatchCount(0); setText(""); setAttributes(""); setError(null); } });
 
@@ -142,7 +151,7 @@ export function OfficePortfolioSection() {
   }
 
   return <section className="office-pool-section" id="office-pool" aria-labelledby="office-pool-title">
-    <div className="inline-section-heading"><div><h2 id="office-pool-title">Ofis havuzu eşleşmeleri</h2><span>kayıtlı alıcı taleplerinle ortak havuzun açıklanabilir kesişimi</span></div><div className="office-pool-heading-actions"><button className="text-button" disabled={!items.length} onClick={() => setShowPool((current) => !current)} type="button">{showPool ? "Eşleşmelere dön" : `Tüm havuzu gör · ${items.length}`}</button><button className="secondary-action compact-action inline-action" onClick={() => setOpen(true)} type="button"><Plus size={15} /> Havuza ekle</button></div></div>
+    <div className="inline-section-heading"><div><h2 id="office-pool-title">Ofis havuzu eşleşmeleri</h2><span>kayıtlı alıcı taleplerinle ortak havuzun açıklanabilir kesişimi</span></div><div className="office-pool-heading-actions"><button className="text-button" disabled={!items.length} onClick={() => setShowPool((current) => !current)} type="button">{showPool ? "Eşleşmelere dön" : `Tüm havuzu gör · ${items.length}`}</button></div></div>
     {!showPool && matches.length ? <div className="match-strip" aria-label="Uygun eşleşmeler">{matches.slice(0, 3).map((match) => <PortfolioMatchCard key={`${match.contactId}-${match.portfolioItem.id}`} match={match} />)}</div> : null}
     {!showPool && !matches.length && items.length && !matchesQuery.isPending ? <SpCard className="office-pool-empty"><Network size={22} /><div><strong>Henüz uygun eşleşme yok</strong><p>Havuzdaki portföyler kayıtlı alıcı talepleriyle karşılaştırıldı.</p></div></SpCard> : null}
     {error && !open ? <p className="form-error notice">{error}</p> : null}{itemsQuery.isPending || matchesQuery.isPending ? <div className="content-state compact"><RefreshCw className="spin" size={20} /> Ofis havuzu taranıyor…</div> : itemsQuery.error || matchesQuery.error ? <p className="form-error notice">{messageFrom(itemsQuery.error ?? matchesQuery.error)}</p> : items.length === 0 ? <SpCard className="office-pool-empty"><Network size={22} /><div><strong>Ortak havuz henüz boş</strong><p>Bir WhatsApp portföy mesajını yapıştırarak ilk kaydı oluşturabilirsiniz.</p></div></SpCard> : null}

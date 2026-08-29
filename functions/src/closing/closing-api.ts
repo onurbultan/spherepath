@@ -1,10 +1,10 @@
 import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
-  assertDealTransition, assertPresentationTransition, canMarketOnChannel, createDeal as createDealEntity,
+  assertDealTransition, assertListingTransition, assertPresentationTransition, canMarketOnChannel, createDeal as createDealEntity,
   createPresentation as createPresentationEntity, dealDraftSchema, dealTransitionSchema, presentationDraftSchema,
   presentationTransitionSchema, type Deal, type DealDraft, type DealStage, type DealTransition, type Presentation,
-  type PresentationDraft, type PresentationStatus,
+  type ListingStatus, type PresentationDraft, type PresentationStatus,
 } from "../../../packages/shared/src/index";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 import { requireSpherepathClaims } from "../auth/claims.js";
@@ -48,5 +48,82 @@ export const createDeal = onCall(options, async (request): Promise<{ dealId: str
 
 export const advanceDeal = onCall(options, async (request): Promise<{ dealId: string; toStage: DealStage }> => {
   const claims = requireSpherepathClaims(request); const envelope = readApiEnvelope<DealTransition>(request.data, { command: true }); const parsed = dealTransitionSchema.safeParse(envelope.data); if (!parsed.success) throw new HttpsError("invalid-argument", "Deal transition is invalid.", parsed.error.flatten());
-  return observeApiRequest("advanceDeal", envelope.requestId, async () => { const db = getFirestore(); const ref = db.collection("deals").doc(parsed.data.dealId); const commandRef = db.collection("commands").doc(envelope.commandId!); return db.runTransaction(async (transaction) => { const [receipt, snapshot] = await Promise.all([transaction.get(commandRef), transaction.get(ref)]); if (receipt.exists) return { dealId: receipt.data()!.dealId as string, toStage: receipt.data()!.toStage as DealStage }; if (!snapshot.exists || !manageable(snapshot.data()!, claims)) throw new HttpsError("permission-denied", "Deal is outside your workspace."); try { assertDealTransition(snapshot.data()!.stage, parsed.data.toStage); } catch { throw new HttpsError("failed-precondition", "Deal stage transition is invalid."); } const now = Timestamp.now(); transaction.update(ref, { stage: parsed.data.toStage, offerAmount: parsed.data.offerAmount ?? snapshot.data()!.offerAmount ?? null, currency: parsed.data.currency ?? snapshot.data()!.currency ?? null, lostReason: parsed.data.toStage === "lost" ? parsed.data.lostReason : null, closedAt: parsed.data.toStage === "closed" ? now : null, updatedAt: now }); transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "advanceDeal", dealId: ref.id, toStage: parsed.data.toStage, createdAt: now }); return { dealId: ref.id, toStage: parsed.data.toStage }; }); });
+  return observeApiRequest("advanceDeal", envelope.requestId, async () => {
+    const db = getFirestore();
+    const dealRef = db.collection("deals").doc(parsed.data.dealId);
+    const commandRef = db.collection("commands").doc(envelope.commandId!);
+    const listingEventRef = db.collection("stageEvents").doc();
+
+    return db.runTransaction(async (transaction) => {
+      const [receipt, dealSnapshot] = await Promise.all([transaction.get(commandRef), transaction.get(dealRef)]);
+      if (receipt.exists) {
+        const data = receipt.data()!;
+        if (data.officeId !== claims.officeId || data.ownerUid !== claims.uid || data.type !== "advanceDeal") throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+        return { dealId: data.dealId as string, toStage: data.toStage as DealStage };
+      }
+      if (!dealSnapshot.exists || !manageable(dealSnapshot.data()!, claims)) throw new HttpsError("permission-denied", "Deal is outside your workspace.");
+
+      const deal = dealSnapshot.data()!;
+      try { assertDealTransition(deal.stage, parsed.data.toStage); }
+      catch { throw new HttpsError("failed-precondition", "Deal stage transition is invalid."); }
+
+      let listingRef: FirebaseFirestore.DocumentReference | null = null;
+      let listing: DocumentData | null = null;
+      let listingStatus: ListingStatus | null = null;
+      if (parsed.data.toStage === "closed") {
+        listingRef = db.collection("listings").doc(deal.listingId as string);
+        const listingSnapshot = await transaction.get(listingRef);
+        if (!listingSnapshot.exists || !manageable(listingSnapshot.data()!, claims)) throw new HttpsError("permission-denied", "Listing is outside your workspace.");
+        listing = listingSnapshot.data()!;
+
+        const opportunityId = listing.opportunityId;
+        if (typeof opportunityId !== "string" || !opportunityId) throw new HttpsError("failed-precondition", "Listing source opportunity is missing.");
+        const opportunitySnapshot = await transaction.get(db.collection("opportunities").doc(opportunityId));
+        if (!opportunitySnapshot.exists || !manageable(opportunitySnapshot.data()!, claims)) throw new HttpsError("failed-precondition", "Listing source opportunity is unavailable.");
+        const opportunityType = opportunitySnapshot.data()!.type;
+        if (opportunityType !== "seller_listing" && opportunityType !== "landlord_listing") throw new HttpsError("failed-precondition", "Listing source opportunity type is invalid.");
+        listingStatus = opportunityType === "landlord_listing" ? "rented" : "sold";
+
+        if (listing.status !== listingStatus) {
+          try { assertListingTransition(listing.status as ListingStatus, listingStatus); }
+          catch { throw new HttpsError("failed-precondition", `Listing cannot close from ${listing.status}.`); }
+        }
+      }
+
+      const now = Timestamp.now();
+      transaction.update(dealRef, {
+        stage: parsed.data.toStage,
+        offerAmount: parsed.data.offerAmount ?? deal.offerAmount ?? null,
+        currency: parsed.data.currency ?? deal.currency ?? null,
+        lostReason: parsed.data.toStage === "lost" ? parsed.data.lostReason : null,
+        closedAt: parsed.data.toStage === "closed" ? now : null,
+        updatedAt: now,
+      });
+      if (listingRef && listing && listingStatus && listing.status !== listingStatus) {
+        transaction.update(listingRef, { status: listingStatus, updatedAt: now });
+        transaction.create(listingEventRef, {
+          officeId: listing.officeId,
+          ownerUid: listing.ownerUid,
+          entityType: "listing",
+          entityId: listingRef.id,
+          fromStage: listing.status,
+          toStage: listingStatus,
+          reason: "Deal closed",
+          commandId: envelope.commandId,
+          occurredAt: now,
+          createdAt: now,
+        });
+      }
+      transaction.create(commandRef, {
+        officeId: claims.officeId,
+        ownerUid: claims.uid,
+        type: "advanceDeal",
+        dealId: dealRef.id,
+        toStage: parsed.data.toStage,
+        listingStatus,
+        createdAt: now,
+      });
+      return { dealId: dealRef.id, toStage: parsed.data.toStage };
+    });
+  });
 });

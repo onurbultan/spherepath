@@ -43,6 +43,9 @@ not cap usage. Artifact Registry deletes Functions container images older than s
 
 The mobile app uses React Native Firebase and therefore requires a development build; Expo Go is not a supported runtime.
 
+Current product boundaries and the infrastructure required for provider integrations are tracked in
+[`docs/PRODUCT_LIMITS_AND_NEXT_INFRA.md`](docs/PRODUCT_LIMITS_AND_NEXT_INFRA.md).
+
 Spherepath is API-first: client applications use Firebase Auth for identity and callable Functions as the only domain-data transport. Firestore client reads and writes are denied. Web and mobile share request metadata, normalized errors, retry rules, command idempotency, and query keys through `@spherepath/shared`.
 
 Firebase app registrations:
