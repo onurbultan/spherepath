@@ -167,6 +167,33 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   for (const gap of workspaceGaps) expect(gap).toBeGreaterThanOrEqual(19);
   await page.getByRole("main").getByRole("link", { name: "Temas kaydet" }).click();
   await expect(page).toHaveURL(/\/capture\/?\?contactId=/);
+  const captureModeTabs = page.getByRole("tablist", { name: "Kayıt yöntemi" });
+  const voiceModeTab = captureModeTabs.getByRole("tab", { name: "Sesli anlat" });
+  const manualModeTab = captureModeTabs.getByRole("tab", { name: "Manuel yaz" });
+  const modeTabRects = await Promise.all([voiceModeTab, manualModeTab].map((tab) => tab.boundingBox()));
+  expect(modeTabRects.every(Boolean)).toBe(true);
+  expect(Math.abs(modeTabRects[0]!.height - modeTabRects[1]!.height)).toBeLessThanOrEqual(1);
+  expect(modeTabRects[0]!.height).toBeLessThanOrEqual(46);
+  if ((page.viewportSize()?.width ?? 1_000) <= 620) {
+    const tabsWidth = (await captureModeTabs.boundingBox())!.width;
+    const voiceCardWidth = (await page.locator(".voice-card").boundingBox())!.width;
+    expect(Math.abs(tabsWidth - voiceCardWidth)).toBeLessThanOrEqual(1);
+  }
+  const writtenNoteToggle = page.getByText("Ses yerine yazılı not kullan", { exact: true });
+  const writtenNoteToggleMetrics = await writtenNoteToggle.evaluate((summary) => {
+    const summaryRect = summary.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(summary);
+    const textRect = range.getBoundingClientRect();
+    return {
+      height: summaryRect.height,
+      horizontalCenterDifference: Math.abs((summaryRect.left + summaryRect.width / 2) - (textRect.left + textRect.width / 2)),
+      verticalCenterDifference: Math.abs((summaryRect.top + summaryRect.height / 2) - (textRect.top + textRect.height / 2)),
+    };
+  });
+  expect(writtenNoteToggleMetrics.height).toBeLessThanOrEqual(54);
+  expect(writtenNoteToggleMetrics.horizontalCenterDifference).toBeLessThanOrEqual(1.5);
+  expect(writtenNoteToggleMetrics.verticalCenterDifference).toBeLessThanOrEqual(1.5);
   const voiceSetupHeights = await page.locator(".voice-setup .contact-combobox, .voice-setup .voice-confirm, .voice-setup .voice-start").evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
   expect(voiceSetupHeights).toHaveLength(3);
   if ((page.viewportSize()?.width ?? 0) > 620) {
