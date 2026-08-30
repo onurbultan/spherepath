@@ -1015,7 +1015,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
   .contact-segments { overflow-x: auto; align-items: stretch; }
   .contact-segments button { flex: 0 0 auto; }
   .contact-toolbar .contact-search { flex: 1 1 100%; max-width: none; }
-  .contact-toolbar > label:nth-of-type(4), .contact-toolbar > strong { display: none; }
+  .contact-toolbar > strong { display: none; }
   .opportunity-insights { overflow-x: auto; }
   .opportunity-filterbar { grid-template-columns: minmax(220px, 1fr) minmax(180px, .6fr); }
   .opportunity-filterbar > strong { display: none; }
@@ -1039,8 +1039,6 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
   .contacts-header { display: grid; }
   .header-actions { width: 100%; justify-content: stretch; }
   .header-actions > .primary-action, .header-actions > .secondary-action { flex: 1; }
-  .contact-toolbar { grid-template-columns: 1fr; }
-  .contact-toolbar > label:nth-of-type(4) { display: grid; }
   .referral-strip { grid-template-columns: 1fr; }
   .form-sheet { padding: var(--space-3xl) var(--space-2xl); }
   .form-row { grid-template-columns: 1fr; }
@@ -1138,7 +1136,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .funnel-panel-heading h2, .funnel-panel-heading p { margin: 0; }
 .funnel-panel-heading > span { padding: 6px 10px; border-radius: 999px; background: var(--background); color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
 .funnel-stage-list { display: grid; }
-.funnel-stage { position: relative; min-height: 72px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto 48px; align-items: center; gap: var(--space-md); padding: var(--space-md) 0; border-top: 1px solid var(--line); color: var(--text-primary); }
+.funnel-stage { position: relative; min-height: 72px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto 48px; align-items: center; gap: var(--space-md); padding: var(--space-md) var(--space-md); border-top: 1px solid var(--line); color: var(--text-primary); }
 .funnel-step { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: var(--background); color: var(--text-secondary); font-size: 12px; font-weight: 800; }
 .funnel-stage-copy { min-width: 0; display: grid; gap: 3px; }
 .funnel-stage-copy > strong { font-size: 16px; }
@@ -1150,7 +1148,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .funnel-stage.tone-green .funnel-value { color: var(--good); }
 .funnel-stage.tone-warm .funnel-value { color: var(--warm); }
 .funnel-stage.tone-red .funnel-value { color: var(--ask); }
-.funnel-stage.is-bottleneck { margin: 4px calc(var(--space-md) * -1); padding-right: var(--space-md); padding-left: var(--space-md); border: 1px solid var(--warm); border-radius: var(--radius-lg); background: var(--warm-bg); }
+.funnel-stage.is-bottleneck { margin: 4px 0; border: 1px solid var(--warm); border-radius: var(--radius-lg); background: var(--warm-bg); }
 .funnel-stage.is-bottleneck .funnel-step { background: var(--warm); color: var(--background); }
 .bottleneck-label { position: absolute; top: -11px; right: 12px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid var(--warm); border-radius: 999px; background: var(--warm-bg); color: var(--text-primary); font-size: 10px; font-weight: 800; }
 .coaching-card { position: sticky; top: calc(var(--space-xl) + 64px); display: grid; justify-items: stretch; gap: var(--space-lg); }
@@ -1209,10 +1207,10 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
   .funnel-header { align-items: stretch; flex-direction: column; }
   .funnel-periods { width: 100%; }
   .funnel-periods button { flex: 1; padding: 0 8px; }
-  .funnel-stage { min-height: 68px; grid-template-columns: 30px minmax(0, 1fr) 42px; gap: var(--space-sm); }
+  .funnel-stage { min-height: 68px; grid-template-columns: 30px minmax(0, 1fr) 42px; gap: var(--space-sm); padding: var(--space-md) var(--space-sm); }
   .funnel-conversion { display: none; }
   .funnel-value { font-size: 26px; }
-  .funnel-stage.is-bottleneck { margin-right: calc(var(--space-sm) * -1); margin-left: calc(var(--space-sm) * -1); padding-right: var(--space-sm); padding-left: var(--space-sm); }
+  .funnel-stage.is-bottleneck { margin-right: 0; margin-left: 0; }
   .bottleneck-label { top: -9px; right: 8px; }
   .form-sheet { width: 100%; max-width: 100%; height: 100dvh; padding: calc(var(--space-xl) + env(safe-area-inset-top)) var(--space-lg) calc(var(--space-2xl) + env(safe-area-inset-bottom)); overscroll-behavior: contain; }
   .sheet-heading { gap: var(--space-md); margin-bottom: var(--space-xl); }
@@ -1258,3 +1256,54 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .mirror-lists li > span { min-width: 0; overflow-wrap: anywhere; }
 .mirror-lists li > strong { font-variant-numeric: tabular-nums; }
 .mirror-lists li > small { grid-column: 1 / -1; color: var(--text-secondary); }
+
+/* --- layout repairs: touch targets, filter rail, stacked auth actions ------ */
+
+/* The two auth links sat side by side with no separator because .auth-panel is a
+   plain block and both buttons are inline-level. Stacking them also gives each a
+   full-width tap target on a phone. */
+.auth-panel > .text-action { display: block; width: 100%; text-align: left; }
+
+/* The top bar sat outside the coarse-pointer rules, so its search and icon
+   buttons stayed at 32px on a phone -- under the 44px minimum the rest of the
+   product already honours. */
+@media (pointer: coarse) {
+  .topbar-search, .topbar-icon-button { min-height: var(--hit-min); }
+  .topbar-icon-button { width: var(--hit-min); }
+  .closing-card button, .opportunity-insights button { min-height: var(--hit-min); }
+  .quick-date-options button { min-height: var(--hit-min); padding-inline: var(--space-lg); }
+  /* Bare text links were 15px tall -- readable, but not reliably tappable. */
+  .text-link, .text-button { min-height: var(--hit-min); display: inline-flex; align-items: center; }
+  /* The select is visually borderless inside its pill, so the pill carries the
+     tap target -- and the select must fill it, or only a 17px strip opens it. */
+  .contact-toolbar > label:not(.contact-search) { height: var(--hit-min); }
+  .contact-toolbar > label:not(.contact-search) select { align-self: stretch; min-height: 0; height: 100%; }
+}
+
+@media (min-width: 1200px) {
+  /* At desktop widths the placeholder was being ellipsised mid-word. */
+  .topbar-search { width: min(360px, 30vw); }
+}
+
+/* Below 620px the filter labels each sized to their own content -- 200px, 202px,
+   127px, 187px -- and wrapped into a ragged two-then-one arrangement. A real grid
+   gives them equal columns and one consistent internal layout. */
+@media (max-width: 620px) {
+  .contact-toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+  .contact-toolbar .contact-search { grid-column: 1 / -1; }
+  .contact-toolbar > label:not(.contact-search) { justify-content: space-between; width: 100%; min-width: 0; }
+  .contact-toolbar > label:not(.contact-search) > span { flex: 0 0 auto; }
+  .contact-toolbar > label:not(.contact-search) select { flex: 1 1 auto; min-width: 0; text-align: right; text-align-last: right; }
+}
+
+@media (max-width: 900px) {
+  /* Five empty 430px columns turned the board into a wall of nothing on a phone.
+     The column still scrolls; it just no longer reserves a screenful per stage. */
+  .opportunity-column-list { min-height: 200px; }
+}
+
+@media (max-width: 620px) {
+  /* A one-line address truncates to "Bornova, İzmir · Kazımdi…", which does not
+     tell the advisor which property the row is. Two lines almost always do. */
+  .listing-property strong { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+}

@@ -45,6 +45,7 @@ export function FunnelView() {
         const previous = stages[index - 1]; const isBottleneck = index === bottleneckIndex;
         return <article key={stage.label} className={`funnel-stage tone-${stage.tone}${isBottleneck ? " is-bottleneck" : ""}`}><span className="funnel-step">{index + 1}</span><span className="funnel-stage-copy"><strong>{stage.label}</strong><small>{stage.detail}</small></span>{previous ? <span className="funnel-conversion"><small>Önceki adımdan</small><strong>{conversion(stage.value, previous.value)}</strong></span> : null}<span className="funnel-value">{stage.value}</span>{isBottleneck ? <span className="bottleneck-label"><TrendingDown size={15} /> Burada duruyor</span> : null}</article>;
       })}</div></section>
+      <section className="sp-card coaching-card"><div className="coaching-heading"><span className="coaching-icon"><Target size={21} /></span><div><p className="eyebrow">ŞİMDİKİ DARBOĞAZ</p><h2>{query.data?.coaching.title}</h2></div></div><p>{query.data?.coaching.explanation}</p><blockquote><small>Bir sonraki görüşmede söyle</small><strong>“{query.data?.coaching.script}”</strong></blockquote>{query.data ? <Link className="primary-action" href={routes[query.data.coaching.target]}>Şimdi harekete geç <ArrowRight size={17} /></Link> : null}</section>
       <section className="sp-card mirror-card" aria-label="Kendi aynan">
         <div className="feed-section-heading"><div><p className="eyebrow">KENDİ AYNAN</p><h2>Rakamların sana ne diyor</h2></div></div>
         {!metrics ? null : !metrics.sampleSufficient ? <p className="context-sentence">Henüz güvenilir bir sonuç çıkaracak kadar kayıt yok. Birkaç görüşme daha kaydettiğinde buradaki oranlar anlamlı olmaya başlar.</p> : <>
@@ -62,7 +63,6 @@ export function FunnelView() {
           </div>
         </>}
       </section>
-      <section className="sp-card coaching-card"><div className="coaching-heading"><span className="coaching-icon"><Target size={21} /></span><div><p className="eyebrow">ŞİMDİKİ DARBOĞAZ</p><h2>{query.data?.coaching.title}</h2></div></div><p>{query.data?.coaching.explanation}</p><blockquote><small>Bir sonraki görüşmede söyle</small><strong>“{query.data?.coaching.script}”</strong></blockquote>{query.data ? <Link className="primary-action" href={routes[query.data.coaching.target]}>Şimdi harekete geç <ArrowRight size={17} /></Link> : null}</section>
     </div>}
   </div></AppShell>;
 }
