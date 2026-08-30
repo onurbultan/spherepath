@@ -234,6 +234,27 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   expect(writtenNoteToggleMetrics.height).toBeLessThanOrEqual(54);
   expect(writtenNoteToggleMetrics.horizontalCenterDifference).toBeLessThanOrEqual(1.5);
   expect(writtenNoteToggleMetrics.verticalCenterDifference).toBeLessThanOrEqual(1.5);
+  await writtenNoteToggle.click();
+  const writtenNotePanel = page.locator(".voice-text-test");
+  await expect(writtenNotePanel).toHaveAttribute("open", "");
+  const writtenNotePanelMetrics = await writtenNotePanel.evaluate((panel) => {
+    const children = Array.from(panel.children).map((child) => child.getBoundingClientRect());
+    const panelRect = panel.getBoundingClientRect();
+    return {
+      height: panelRect.height,
+      leftOffsets: children.map((child) => child.left - panelRect.left),
+      verticalGaps: children.slice(1).map((child, index) => child.top - children[index]!.bottom),
+      textareaHeight: children[2]!.height,
+    };
+  });
+  expect(writtenNotePanelMetrics.height).toBeLessThanOrEqual(300);
+  expect(Math.max(...writtenNotePanelMetrics.leftOffsets) - Math.min(...writtenNotePanelMetrics.leftOffsets)).toBeLessThanOrEqual(1);
+  for (const gap of writtenNotePanelMetrics.verticalGaps) {
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThanOrEqual(9);
+  }
+  expect(writtenNotePanelMetrics.textareaHeight).toBeLessThanOrEqual(94);
+  await writtenNoteToggle.click();
   const voiceSetupHeights = await page.locator(".voice-setup .contact-combobox, .voice-setup .voice-confirm, .voice-setup .voice-start").evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
   expect(voiceSetupHeights).toHaveLength(3);
   if ((page.viewportSize()?.width ?? 0) > 620) {

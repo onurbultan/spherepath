@@ -723,12 +723,15 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .voice-review-subject strong { color: var(--text-primary); font-size: 13px; }
 .voice-review-subject em { color: var(--text-secondary); font-size: 11px; font-style: normal; text-align: right; }
 
-.voice-text-test { display: grid; gap: var(--space-lg); margin-top: var(--space-xl); padding: var(--space-xl); border: 1px dashed color-mix(in srgb, var(--deed) 45%, var(--line)); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--deed-bg) 48%, var(--card)); }
+.voice-text-test { display: grid; gap: var(--space-md); margin-top: var(--space-xl); padding: var(--space-lg); border: 1px dashed color-mix(in srgb, var(--deed) 45%, var(--line)); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--deed-bg) 48%, var(--card)); }
 .voice-text-test:not([open]) { display: block; padding: 0; }
 .voice-text-test:not([open]) > summary { min-height: var(--hit-comfortable); justify-content: center; padding: 0 var(--space-xl); text-align: center; }
-.voice-text-test h3 { margin: 2px 0 3px; font-size: 15px; }
+.voice-text-test[open] > summary { min-height: 0; justify-content: flex-start; padding: 0; line-height: 1.4; text-align: left; }
+.voice-text-test > div { display: grid; gap: 2px; }
+.voice-text-test > div > .eyebrow { margin-bottom: 0; }
+.voice-text-test h3 { margin: 0; font-size: 15px; }
 .voice-text-test > div > span { color: var(--text-secondary); font-size: 12.5px; }
-.voice-text-test textarea { width: 100%; min-height: 104px; padding: 10px 11px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--card); color: var(--text-primary); font: inherit; font-size: 13px; resize: vertical; }
+.voice-text-test textarea { width: 100%; min-height: 92px; padding: 10px 11px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--card); color: var(--text-primary); font: inherit; font-size: 13px; resize: vertical; }
 .voice-text-test-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-lg); }
 .voice-text-test-footer small { color: var(--text-tertiary); }
 
