@@ -5,6 +5,7 @@ import {
   createContact as createContactEntity,
   createInboxItemSchema,
   inboxItemIdSchema,
+  inboxItemKinds,
   inboxPageQuerySchema,
   updateInboxItemSchema,
   type InboxAppliedAction,
@@ -165,10 +166,23 @@ export const updateInboxItem = onCall(callableOptions, async (request): Promise<
       if (receipt.exists) return;
       if (!snapshot.exists || !canManage(snapshot.data()!, claims)) throw new HttpsError("not-found", "Inbox item was not found.");
       const now = Timestamp.now();
+      // Adding the location rewrites the note and reclassifies it, so the card's own
+      // "Nerede? Konumu ekleyince eşleştirebilirim." prompt actually leads somewhere.
+      const located = parsed.data.location === undefined
+        ? null
+        : classifyInboxText(`${snapshot.data()!.safeText as string} Konum: ${parsed.data.location}.`, (parsed.data.kind ?? snapshot.data()!.kind) as typeof inboxItemKinds[number]);
+      const locationAction: InboxAppliedAction | null = located
+        ? { type: "location_added", entityId: null, label: `Konum eklendi: ${parsed.data.location}`, appliedAt: now.toMillis(), undoneAt: null }
+        : null;
       transaction.update(ref, {
         ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind, needsLocation: parsed.data.kind === "property" ? snapshot.data()!.needsLocation : false }),
         ...(parsed.data.pinned === undefined ? {} : { pinned: parsed.data.pinned }),
         ...(parsed.data.archived === undefined ? {} : { status: parsed.data.archived ? "archived" : "applied", archivedAt: parsed.data.archived ? now : null }),
+        ...(located === null ? {} : {
+          safeText: located.safeText, summary: located.summary, confidence: located.confidence,
+          needsLocation: located.needsLocation, errorCode: null,
+          appliedActions: [...((snapshot.data()!.appliedActions ?? []) as DocumentData[]), { ...locationAction!, appliedAt: now }],
+        }),
         updatedAt: now,
       });
       transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "updateInboxItem", inboxItemId: ref.id, createdAt: now });

@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "reac
 import { ArrowRight, Target, TrendingDown } from "lucide-react-native";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { apiQueryKeys, reportingPeriodLabels, reportingPeriods, type CurrencyCode, type ReportingPeriod } from "@spherepath/shared";
+import { apiQueryKeys, opportunityStageLabels, reportingPeriodLabels, reportingPeriods, type CurrencyCode, type ReportingPeriod } from "@spherepath/shared";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { loadFunnelOverview } from "../resources/funnel";
 import { SpCard } from "@/shared/ui/SpCard";
@@ -12,18 +12,19 @@ import { radius, space } from "@/shared/ui/tokens.generated";
 import { useSpTheme } from "@/shared/ui/theme";
 
 const messageFrom = (error: unknown) => error instanceof Error ? error.message : "Huni yüklenemedi.";
+const stageName = (stage: string): string => (opportunityStageLabels as Record<string, string>)[stage] ?? stage;
 const money = (amount: number, currency: CurrencyCode) => new Intl.NumberFormat("tr-TR", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
 
 export default function FunnelView() {
-  const theme = useSpTheme(); const [period, setPeriod] = useState<ReportingPeriod>("30d");
+  const theme = useSpTheme(); const [period, setPeriod] = useState<ReportingPeriod>("90d");
   const query = useQuery({ queryKey: apiQueryKeys.funnelOverview(period), queryFn: () => loadFunnelOverview(period) });
   const routes = { capture: "/(tabs)/capture", contacts: "/(tabs)/contacts", opportunities: "/(tabs)/opportunities", listings: "/(tabs)/listings" } as const;
   const counts = query.data?.counts; const earnings = query.data?.earnings; const target = query.data?.target; const metrics = query.data?.metrics;
   const stages = counts ? [
     { label: "Yeni insanlar", detail: "Tanıştığın kişiler", value: counts.newPeople, color: theme.deed },
     { label: "Talepler", detail: "Gayrimenkul ihtiyacı", value: counts.leads, color: theme.good },
-    { label: "Randevular", detail: `${counts.portfolioMeetings} portföy görüşmesi`, value: counts.appointments, color: theme.warm },
-    { label: "Yetkili portföy", detail: `${counts.negotiations} pazarlıkta`, value: counts.authorizedListings, color: theme.ask },
+    { label: "Randevular", detail: counts.appointments ? `${counts.portfolioMeetings} portföy görüşmesi` : "Henüz randevu yok", value: counts.appointments, color: theme.warm },
+    { label: "Yetkili portföy", detail: counts.authorizedListings ? `${counts.negotiations} pazarlıkta` : "Henüz yetki alınmamış", value: counts.authorizedListings, color: theme.ask },
     { label: "Kapanışlar", detail: "Tamamlanan işlemler", value: counts.closings, color: theme.good },
   ] : [];
   const bottleneckIndex = counts
@@ -42,12 +43,12 @@ export default function FunnelView() {
       {earnings?.totals.length ? earnings.totals.map((total) => <View key={total.currency} style={styles.earningsTotal}><SpText variant="figure" style={{ color: theme.good }}>{money(total.commission, total.currency)}</SpText><SpText variant="caption" color="secondary">{total.closedCount} kapanan işlem · {money(total.volume, total.currency)} hacim{total.commissionRate !== null ? ` · %${(total.commissionRate * 100).toFixed(1)} komisyon` : ""}</SpText></View>) : <SpText color="secondary">Bu dönemde kapanan işlem yok. Bir işlemi kapattığında komisyonun burada toplanır.</SpText>}
       {target?.periodTarget ? <View style={[styles.bar, { backgroundColor: theme.sunk }]}><View style={{ width: `${Math.min(100, Math.round((target.ratio ?? 0) * 100))}%`, height: "100%", borderRadius: 999, backgroundColor: theme.deed }} /></View> : null}
       {earnings && earnings.incompleteCount > 0 ? <SpText variant="caption" color="ask">{earnings.incompleteCount} kapanan işlemde tutar veya para birimi eksik; toplamlara katılmadı.</SpText> : null}</SpCard>
-      <SpCard style={styles.funnel}>{stages.map((stage, index) => { const active = index === bottleneckIndex; return <View key={stage.label} style={[styles.stage, { borderColor: active ? theme.warm : theme.line, backgroundColor: active ? theme.warmBg : theme.card }]}><View style={[styles.step, { backgroundColor: active ? theme.warm : theme.background }]}><SpText variant="caption" style={{ color: active ? theme.background : theme.textSecondary }}>{index + 1}</SpText></View><View style={styles.stageCopy}><SpText variant="bodySmall">{stage.label}</SpText><SpText variant="caption" color="secondary">{stage.detail}</SpText></View><SpText variant="figure" style={{ color: stage.color }}>{stage.value}</SpText>{active ? <View style={[styles.bottleneck, { backgroundColor: theme.warm }]}><TrendingDown size={13} color={theme.background} /><SpText variant="caption" style={{ color: theme.background }}>Burada duruyor</SpText></View> : null}</View>; })}</SpCard>
+      <SpCard style={styles.funnel}>{stages.map((stage, index) => { const active = index === bottleneckIndex; return <View key={stage.label} style={[styles.stage, { borderColor: active ? theme.warm : theme.line, backgroundColor: active ? theme.warmBg : theme.card }]}><View style={[styles.step, { backgroundColor: active ? theme.warm : theme.background }]}><SpText variant="caption" style={{ color: active ? theme.background : theme.textSecondary }}>{index + 1}</SpText></View><View style={styles.stageCopy}><SpText variant="bodySmall">{stage.label}</SpText><SpText variant="caption" color="secondary">{stage.detail}</SpText></View><SpText variant="figure" style={{ color: stage.color }}>{stage.value}</SpText>{active ? <View style={[styles.bottleneck, { backgroundColor: theme.warm }]}><TrendingDown size={13} color={theme.background} /><SpText variant="caption" style={{ color: theme.background }}>Buraya geçemiyor</SpText></View> : null}</View>; })}</SpCard>
       <SpCard style={styles.earnings}><SpText variant="eyebrow" color="deed">KENDİ AYNAN</SpText><SpText variant="title">Rakamların sana ne diyor</SpText>
       {!metrics ? null : !metrics.sampleSufficient ? <SpText color="secondary">Henüz güvenilir bir sonuç çıkaracak kadar kayıt yok. Birkaç görüşme daha kaydettiğinde buradaki oranlar anlamlı olmaya başlar.</SpText> : <View style={styles.mirrorTiles}>
         {metrics.keptPromiseRate ? <View style={[styles.mirrorTile, { borderColor: theme.line, backgroundColor: theme.background }]}><SpText variant="figure" style={{ color: theme.deed }}>%{Math.round(metrics.keptPromiseRate.rate * 100)}</SpText><SpText variant="caption" color="secondary">Tuttuğun söz · {metrics.keptPromiseRate.kept}/{metrics.keptPromiseRate.promised}</SpText></View> : null}
         {metrics.timeToWonDays !== null ? <View style={[styles.mirrorTile, { borderColor: theme.line, backgroundColor: theme.background }]}><SpText variant="figure" style={{ color: theme.deed }}>{metrics.timeToWonDays}</SpText><SpText variant="caption" color="secondary">Kazanmaya kadar gün</SpText></View> : null}
-        {metrics.stageDurations[0] ? <View style={[styles.mirrorTile, { borderColor: theme.line, backgroundColor: theme.background }]}><SpText variant="figure" style={{ color: theme.warm }}>{metrics.stageDurations[0].medianDays}</SpText><SpText variant="caption" color="secondary">En yavaş aşama: {metrics.stageDurations[0].stage}</SpText></View> : null}
+        {metrics.stageDurations[0] ? <View style={[styles.mirrorTile, { borderColor: theme.line, backgroundColor: theme.background }]}><SpText variant="figure" style={{ color: theme.warm }}>{metrics.stageDurations[0].medianDays}</SpText><SpText variant="caption" color="secondary">En yavaş aşama: {stageName(metrics.stageDurations[0].stage)}</SpText></View> : null}
         {metrics.askByObjective[0] ? <View style={[styles.mirrorTile, { borderColor: theme.line, backgroundColor: theme.background }]}><SpText variant="figure" style={{ color: theme.good }}>%{Math.round(metrics.askByObjective[0].rate * 100)}</SpText><SpText variant="caption" color="secondary">En çok tutan talep: {metrics.askByObjective[0].label}</SpText></View> : null}
       </View>}</SpCard>
       <SpCard style={styles.coaching}><View style={[styles.target, { backgroundColor: theme.askBg }]}><Target size={21} color={theme.ask} /></View><SpText variant="eyebrow" color="ask">ŞİMDİKİ DARBOĞAZ</SpText><SpText variant="title">{query.data?.coaching.title}</SpText><SpText color="secondary">{query.data?.coaching.explanation}</SpText><View style={[styles.script, { backgroundColor: theme.background, borderColor: theme.line }]}><SpText variant="bodySmall" color="secondary">Söyleyebileceğin cümle</SpText><SpText>“{query.data?.coaching.script}”</SpText></View><Pressable onPress={() => query.data && router.push(routes[query.data.coaching.target])} style={[styles.primary, { backgroundColor: theme.deed }]}><SpText style={{ color: theme.onDeed }}>İlgili kayıtları aç</SpText><ArrowRight size={19} color={theme.onDeed} /></Pressable></SpCard>

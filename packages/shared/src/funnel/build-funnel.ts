@@ -12,11 +12,39 @@ export interface FunnelCounts {
   closings: number;
 }
 
+/** The actual record the advice is about, so the advisor is not left asking "which one?". */
+export interface FunnelCoachingSubject {
+  kind: "contact" | "opportunity" | "listing";
+  id: string;
+  name: string;
+  /** Why this record was picked, e.g. "24 gündür randevu aşamasında". */
+  detail: string;
+}
+
+/**
+ * Candidates the caller resolves once; each branch of the advice picks the one that
+ * answers its own question. Passing them in keeps the branch logic in one place.
+ */
+export interface FunnelSubjects {
+  newestUncontactedContact: FunnelCoachingSubject | null;
+  oldestOpportunityWithoutAppointment: FunnelCoachingSubject | null;
+  oldestAppointmentWithoutMandate: FunnelCoachingSubject | null;
+  oldestActiveListing: FunnelCoachingSubject | null;
+}
+
+export const emptyFunnelSubjects: FunnelSubjects = {
+  newestUncontactedContact: null,
+  oldestOpportunityWithoutAppointment: null,
+  oldestAppointmentWithoutMandate: null,
+  oldestActiveListing: null,
+};
+
 export interface FunnelCoaching {
   title: string;
   explanation: string;
   script: string;
   target: "capture" | "contacts" | "opportunities" | "listings";
+  subject: FunnelCoachingSubject | null;
 }
 
 export interface FunnelTargetProgress {
@@ -52,21 +80,28 @@ export function buildFunnelTargetProgress(
   return { monthlyTarget, periodTarget, achieved, ratio: achieved / periodTarget };
 }
 
-export function buildFunnelCoaching(counts: FunnelCounts): FunnelCoaching {
+const named = (subject: FunnelCoachingSubject | null, fallback: string): string =>
+  subject ? `${subject.name} (${subject.detail}) ile` : fallback;
+
+export function buildFunnelCoaching(counts: FunnelCounts, subjects: FunnelSubjects = emptyFunnelSubjects): FunnelCoaching {
   if (counts.newPeople < 5 && counts.leads === 0) {
-    return { title: "Önce birkaç gerçek kayıt topla", explanation: "Sağlıklı bir yönlendirme için en az beş yeni kişi veya görüşme kaydı gerekli.", script: "Bugün tanıştığın kişileri tek cümleyle Akış'a kaydet.", target: "capture" };
+    return { title: "Önce birkaç gerçek kayıt topla", explanation: "Sağlıklı bir yönlendirme için en az beş yeni kişi veya görüşme kaydı gerekli.", script: "Bugün tanıştığın kişileri tek cümleyle Akış'a kaydet.", target: "capture", subject: null };
   }
   if (counts.newPeople > 0 && counts.leads === 0) {
-    return { title: "Tanışmayı gayrimenkul konuşmasına çevir", explanation: `${counts.newPeople} yeni kişi var; henüz talep oluşmamış. Görüşmede ihtiyacı ve çevresindeki fırsatları sormayı dene.`, script: "Çevrenizde evini satmayı düşünen veya yeni bir yer arayan biri var mı?", target: "contacts" };
+    const subject = subjects.newestUncontactedContact;
+    return { title: "Tanışmayı gayrimenkul konuşmasına çevir", explanation: `${counts.newPeople} yeni kişi var; henüz talep oluşmamış. ${named(subject, "En yeni kişiyle")} başla ve ihtiyacını sor.`, script: "Çevrenizde evini satmayı düşünen veya yeni bir yer arayan biri var mı?", target: "contacts", subject };
   }
   if (counts.leads > 0 && counts.appointments === 0) {
-    return { title: "Talebi randevuya taşı", explanation: `${counts.leads} talep var; randevu yok. Tanıştırma veya doğrudan görüşme izni iste.`, script: "Beni kendisiyle tanıştırabilir misin? Kısa bir görüşme yapmam ikimiz için de çok faydalı olur.", target: "opportunities" };
+    const subject = subjects.oldestOpportunityWithoutAppointment;
+    return { title: "Talebi randevuya taşı", explanation: `${counts.leads} talep var; randevu yok. ${named(subject, "En eski talep için")} tanıştırma veya doğrudan görüşme izni iste.`, script: "Beni kendisiyle tanıştırabilir misin? Kısa bir görüşme yapmam ikimiz için de çok faydalı olur.", target: "opportunities", subject };
   }
   if (counts.appointments > 0 && counts.authorizedListings === 0) {
-    return { title: "Randevuda değer ve yetkiyi netleştir", explanation: `${counts.appointments} randevuya rağmen yetkili portföy oluşmamış. Değerleme ve çalışma biçimini açıkça konuş.`, script: "Doğru fiyat ve pazarlama planını birlikte netleştirelim; yetkiyle çalışırsak süreci tek elden yönetebilirim.", target: "opportunities" };
+    const subject = subjects.oldestAppointmentWithoutMandate;
+    return { title: "Randevuda değer ve yetkiyi netleştir", explanation: `${counts.appointments} randevuya rağmen yetkili portföy oluşmamış. ${named(subject, "Randevu aşamasındaki kayıt için")} değerleme ve çalışma biçimini açıkça konuş.`, script: "Doğru fiyat ve pazarlama planını birlikte netleştirelim; yetkiyle çalışırsak süreci tek elden yönetebilirim.", target: "opportunities", subject };
   }
   if (counts.authorizedListings > 0 && counts.closings === 0) {
-    return { title: "Portföyü görüşmeye ve teklife taşı", explanation: `${counts.authorizedListings} yetkili portföy var; kapanış yok. Eşleşmeleri, sunumları ve teklif takibini sırala.`, script: "Bu portföy için en uygun üç kişiyi bugün arayıp gösterim zamanını netleştirelim.", target: "listings" };
+    const subject = subjects.oldestActiveListing;
+    return { title: "Portföyü görüşmeye ve teklife taşı", explanation: `${counts.authorizedListings} yetkili portföy var; kapanış yok. ${named(subject, "En eski portföy için")} eşleşmeleri, sunumları ve teklif takibini sırala.`, script: "Bu portföy için en uygun üç kişiyi bugün arayıp gösterim zamanını netleştirelim.", target: "listings", subject };
   }
-  return { title: "Akış çalışıyor; ritmi koru", explanation: `${counts.closings} kapanışa ulaştın. Yeni kişi ve takip kayıtlarını aksatmadan aynı döngüyü sürdür.`, script: "Bugünün beşini tamamla, sonra yeni fırsatları Akış'a ekle.", target: "capture" };
+  return { title: "Akış çalışıyor; ritmi koru", explanation: `${counts.closings} kapanışa ulaştın. Yeni kişi ve takip kayıtlarını aksatmadan aynı döngüyü sürdür.`, script: "Bugünün beşini tamamla, sonra yeni fırsatları Akış'a ekle.", target: "capture", subject: null };
 }

@@ -10,7 +10,7 @@ export type InboxItemKind = (typeof inboxItemKinds)[number];
 export type InboxItemStatus = (typeof inboxItemStatuses)[number];
 
 export interface InboxAppliedAction {
-  type: "classification" | "contact_created";
+  type: "classification" | "contact_created" | "location_added";
   entityId: string | null;
   label: string;
   appliedAt: Instant;
@@ -48,7 +48,12 @@ export const updateInboxItemSchema = z.object({
   kind: z.enum(inboxItemKinds).optional(),
   pinned: z.boolean().optional(),
   archived: z.boolean().optional(),
-}).strict().refine((value) => value.kind !== undefined || value.pinned !== undefined || value.archived !== undefined, "En az bir değişiklik gerekli.");
+  /** Answers the card's own "Nerede?" prompt; appended to the note and reclassified. */
+  location: z.string().trim().min(2, "Konum en az 2 karakter olmalı.").max(120).optional(),
+}).strict().refine(
+  (value) => value.kind !== undefined || value.pinned !== undefined || value.archived !== undefined || value.location !== undefined,
+  "En az bir değişiklik gerekli.",
+);
 export type UpdateInboxItemInput = z.infer<typeof updateInboxItemSchema>;
 
 export const inboxPageQuerySchema = z.preprocess(

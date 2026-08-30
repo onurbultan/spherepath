@@ -4,7 +4,7 @@ import { buildEarningsSummary, type EarningsDeal } from "./earnings";
 const day = 86_400_000;
 const now = 1_700_000_000_000;
 const closed = (overrides: Partial<EarningsDeal>): EarningsDeal => ({
-  stage: "closed", actualAmount: 1_000_000, commissionAmount: 20_000, currency: "TRY", closedAt: now - day, ...overrides,
+  stage: "closed", offerAmount: null, actualAmount: 1_000_000, commissionAmount: 20_000, currency: "TRY", closedAt: now - day, ...overrides,
 });
 
 describe("buildEarningsSummary", () => {
@@ -45,5 +45,25 @@ describe("buildEarningsSummary", () => {
     const deals = [closed({ closedAt: now - 200 * day })];
     expect(buildEarningsSummary(deals, "90d", now).closedCount).toBe(0);
     expect(buildEarningsSummary(deals, "1y", now).closedCount).toBe(1);
+  });
+});
+
+describe("open pipeline", () => {
+  it("totals offers and contracts still in flight, per currency", () => {
+    const summary = buildEarningsSummary([
+      closed({ stage: "offer", offerAmount: 6_900_000, closedAt: null }),
+      closed({ stage: "contract", offerAmount: 2_100_000, closedAt: null }),
+      closed({ stage: "offer", offerAmount: 400_000, currency: "GBP", closedAt: null }),
+    ], "30d", now);
+    expect(summary.closedCount).toBe(0);
+    expect(summary.pipeline).toEqual([
+      { currency: "TRY", amount: 9_000_000, count: 2 },
+      { currency: "GBP", amount: 400_000, count: 1 },
+    ]);
+  });
+
+  it("leaves closed and lost deals out of the pipeline", () => {
+    const summary = buildEarningsSummary([closed({}), closed({ stage: "lost", offerAmount: 500_000, closedAt: null })], "30d", now);
+    expect(summary.pipeline).toEqual([]);
   });
 });

@@ -3,6 +3,7 @@ import { reportingPeriodDays, type ReportingPeriod } from "../today/build-overvi
 
 export interface EarningsDeal {
   stage: DealStage;
+  offerAmount: number | null;
   actualAmount: number | null;
   commissionAmount: number | null;
   currency: CurrencyCode | null;
@@ -18,12 +19,19 @@ export interface EarningsCurrencyTotal {
   commissionRate: number | null;
 }
 
+export interface PipelineTotal { currency: CurrencyCode; amount: number; count: number }
+
 export interface EarningsSummary {
   period: ReportingPeriod;
   closedCount: number;
   totals: EarningsCurrencyTotal[];
   /** Closed deals whose amount or currency is missing, so they sit outside every total. */
   incompleteCount: number;
+  /**
+   * Offers and contracts still open. Closing nothing in a thirty-day window is normal
+   * in this business, so the card shows what is in flight rather than staying blank.
+   */
+  pipeline: PipelineTotal[];
 }
 
 /**
@@ -63,5 +71,18 @@ export function buildEarningsSummary(
     }))
     .sort((left, right) => right.commission - left.commission || left.currency.localeCompare(right.currency));
 
-  return { period, closedCount: closed.length, totals, incompleteCount };
+  const openBuckets = new Map<CurrencyCode, { amount: number; count: number }>();
+  for (const deal of deals) {
+    if (deal.stage !== "offer" && deal.stage !== "contract") continue;
+    if (deal.currency === null || deal.offerAmount === null) continue;
+    const bucket = openBuckets.get(deal.currency) ?? { amount: 0, count: 0 };
+    bucket.amount += deal.offerAmount;
+    bucket.count += 1;
+    openBuckets.set(deal.currency, bucket);
+  }
+  const pipeline = [...openBuckets.entries()]
+    .map(([currency, bucket]) => ({ currency, amount: bucket.amount, count: bucket.count }))
+    .sort((left, right) => right.amount - left.amount);
+
+  return { period, closedCount: closed.length, totals, incompleteCount, pipeline };
 }

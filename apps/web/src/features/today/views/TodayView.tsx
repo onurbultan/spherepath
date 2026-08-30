@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowRight, CalendarCheck, CalendarClock, Check, CircleSlash, MessagesSquare, RefreshCw, Target, X } from "lucide-react";
+import { ArrowRight, CalendarCheck, Check, MessagesSquare, RefreshCw, Target } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiQueryKeys, dailyTaskOutcomeSchema, nextActionTypeLabels, nextActionTypes, reportingPeriodLabels, reportingPeriods, type DailyTaskOutcome, type ReportingPeriod, type TodayTask } from "@spherepath/shared";
+import { apiQueryKeys, reportingPeriodLabels, reportingPeriods, type DailyTaskOutcome, type ReportingPeriod, type TodayTask } from "@spherepath/shared";
 import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
-import { useSheetDismiss } from "@/shared/ui/useSheetDismiss";
-import { QuickDateField } from "@/shared/ui/QuickDateField";
+import { TaskResolutionSheet, taskDueLabel as dueLabel } from "../components/TaskResolutionSheet";
 import { finishDailyTask, loadTodayOverview } from "../resources/today";
 import { useSession } from "@/features/auth/resources/session";
 
@@ -18,24 +17,6 @@ function messageFrom(error: unknown) {
 
 function percent(value: number, previous: number): number {
   return previous > 0 ? Math.min(100, Math.round((value / previous) * 100)) : value > 0 ? 100 : 0;
-}
-
-function dueLabel(value: number | null): string {
-  if (value === null) return "Tarihsiz";
-  const due = new Date(value);
-  const now = new Date();
-  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
-  if (due.toDateString() === yesterday.toDateString()) return `Gecikti · dün ${new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(due)}`;
-  if (due.toDateString() === now.toDateString()) return `Bugün ${new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(due)}`;
-  return new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(due);
-}
-
-function tomorrowAtTen(): string {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  date.setHours(10, 0, 0, 0);
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
 export function TodayView() {
@@ -50,12 +31,6 @@ export function TodayView() {
   const [taskError, setTaskError] = useState<string | null>(null);
   const [taskSuccess, setTaskSuccess] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<TodayTask | null>(null);
-  const [taskResolution, setTaskResolution] = useState<DailyTaskOutcome["status"]>("completed");
-  const [resolutionNote, setResolutionNote] = useState("");
-  const [rescheduledAt, setRescheduledAt] = useState(tomorrowAtTen);
-  const [rescheduledActionType, setRescheduledActionType] = useState<NonNullable<DailyTaskOutcome["rescheduledActionType"]>>("call");
-
-  useSheetDismiss(Boolean(activeTask), () => { if (!completingTaskId) setActiveTask(null); });
 
   const stages = overview ? [
     { label: "Tanışma", value: overview.stages.acquaintance, detail: `Son ${reportingPeriodLabels[period].toLocaleLowerCase("tr-TR")} içinde eklenen kişi`, tone: "cool", progress: 100 },
@@ -77,34 +52,18 @@ export function TodayView() {
 
   function openTaskResolution(task: TodayTask) {
     setActiveTask(task);
-    setTaskResolution("completed");
-    setResolutionNote("");
-    setRescheduledAt(tomorrowAtTen());
-    setRescheduledActionType("call");
     setTaskError(null);
     setTaskSuccess(null);
   }
 
-  async function resolveTask() {
+  async function resolveTask(outcome: DailyTaskOutcome) {
     if (!session || !activeTask || completingTaskId) return;
-    const parsed = dailyTaskOutcomeSchema.safeParse({
-      taskId: activeTask.id,
-      status: taskResolution,
-      outcomeNote: taskResolution === "completed" ? resolutionNote.trim() || null : null,
-      skippedReason: taskResolution === "skipped" ? resolutionNote.trim() || null : null,
-      rescheduledAt: taskResolution === "rescheduled" && rescheduledAt ? new Date(rescheduledAt).getTime() : null,
-      rescheduledActionType: taskResolution === "rescheduled" ? rescheduledActionType : null,
-    });
-    if (!parsed.success) {
-      setTaskError(parsed.error.issues[0]?.message ?? "Görev sonucunu kontrol edin.");
-      return;
-    }
     setCompletingTaskId(activeTask.id);
     setTaskError(null);
     try {
-      await finishDailyTask(session, parsed.data);
+      await finishDailyTask(session, outcome);
       await queryClient.refetchQueries({ queryKey: apiQueryKeys.todayOverview, type: "active" });
-      setTaskSuccess(taskResolution === "rescheduled" ? "Görev yeni tarihe ertelendi." : taskResolution === "skipped" ? "Görev atlandı ve nedeni kaydedildi." : "Görev tamamlandı.");
+      setTaskSuccess(outcome.status === "rescheduled" ? "Görev yeni tarihe ertelendi." : outcome.status === "skipped" ? "Görev atlandı ve nedeni kaydedildi." : "Görev tamamlandı.");
       setActiveTask(null);
     } catch (error) {
       setTaskError(messageFrom(error));
@@ -155,31 +114,7 @@ export function TodayView() {
           </section>
         </> : null}
       </div>
-      {activeTask ? (
-        <div className="sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target && !completingTaskId) setActiveTask(null); }}>
-          <form className="form-sheet task-resolution-sheet" role="dialog" aria-modal="true" aria-labelledby="task-resolution-title" onSubmit={(event) => { event.preventDefault(); void resolveTask(); }}>
-            <div className="sheet-heading">
-              <div><p className="eyebrow">GÖREV SONUCU</p><h2 id="task-resolution-title">{activeTask.title}</h2><span className="sheet-subtitle">{activeTask.reason} · {dueLabel(activeTask.dueAt)}</span></div>
-              <button className="icon-action" aria-label="Kapat" disabled={Boolean(completingTaskId)} onClick={() => setActiveTask(null)} type="button"><X size={20} /></button>
-            </div>
-            <div className="task-resolution-choices" role="group" aria-label="Görev sonucu">
-              <button className={taskResolution === "completed" ? "selected" : ""} onClick={() => { setTaskResolution("completed"); setResolutionNote(""); }} type="button"><Check size={17} /><span><strong>Tamamlandı</strong><small>Bu aksiyonu kapat</small></span></button>
-              <button className={taskResolution === "rescheduled" ? "selected" : ""} onClick={() => { setTaskResolution("rescheduled"); setResolutionNote(""); }} type="button"><CalendarClock size={17} /><span><strong>Ertele</strong><small>Yeni tarih ve aksiyon belirle</small></span></button>
-              <button className={taskResolution === "skipped" ? "selected" : ""} onClick={() => { setTaskResolution("skipped"); setResolutionNote(""); }} type="button"><CircleSlash size={17} /><span><strong>Atla</strong><small>Nedenini kaydet</small></span></button>
-            </div>
-            {taskResolution === "rescheduled" ? (
-              <div className="form-stack"><label>Yeni aksiyon<select value={rescheduledActionType} onChange={(event) => setRescheduledActionType(event.target.value as NonNullable<DailyTaskOutcome["rescheduledActionType"]>)}>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</select></label><QuickDateField label="Yeni tarih" value={rescheduledAt} onChange={setRescheduledAt} /></div>
-            ) : (
-              <label>{taskResolution === "skipped" ? "Neden atlanıyor?" : "Kısa sonuç"} <span className="optional">{taskResolution === "completed" ? "isteğe bağlı" : ""}</span><textarea required={taskResolution === "skipped"} value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder={taskResolution === "skipped" ? "Örn. Kişi artık aranmamasını istedi." : "Örn. Görüşüldü, teklif cuma günü paylaşılacak."} /></label>
-            )}
-            {taskError ? <p className="form-error" role="alert">{taskError}</p> : null}
-            <div className="task-resolution-actions">
-              <Link className="secondary-action inline-link" href={`/capture?contactId=${encodeURIComponent(activeTask.contactId)}`}>Teması ayrıntılı kaydet</Link>
-              <button className="primary-action inline-action" disabled={Boolean(completingTaskId)} type="submit">{completingTaskId ? "Kaydediliyor…" : taskResolution === "rescheduled" ? "Yeni tarihe ertele" : "Sonucu kaydet"}</button>
-            </div>
-          </form>
-        </div>
-      ) : null}
+      {activeTask ? <TaskResolutionSheet task={activeTask} pending={Boolean(completingTaskId)} error={taskError} onClose={() => setActiveTask(null)} onResolve={(outcome) => void resolveTask(outcome)} /> : null}
     </AppShell>
   );
 }

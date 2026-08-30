@@ -44,3 +44,6 @@ export async function changeInboxItem(session: WorkspaceSession, input: UpdateIn
 export async function undoInboxItem(session: WorkspaceSession, inboxItemId: string): Promise<InboxItemRecord> {
   return (await apiClient.command<{ inboxItemId: string }, { item: InboxItemRecord }>("undoInboxApplication", { inboxItemId }, createCommandId(session.uid))).item;
 }
+export async function retryInboxItem(session: WorkspaceSession, inboxItemId: string): Promise<InboxItemRecord> {
+  return (await apiClient.command<{ inboxItemId: string }, { item: InboxItemRecord }>("retryInboxItem", { inboxItemId }, createCommandId(session.uid))).item;
+}
