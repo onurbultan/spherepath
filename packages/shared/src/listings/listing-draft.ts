@@ -50,6 +50,7 @@ export type ListingDraft = z.infer<typeof listingDraftSchema>;
 export const existingListingDraftSchema = listingDraftSchema.omit({ opportunityId: true }).extend({
   ownerContactId: z.string().trim().min(1).max(160),
   opportunityType: z.enum(["seller_listing", "landlord_listing"]),
+  sourceInboxItemId: z.string().trim().min(1).max(160).nullable().default(null),
 }).strict();
 
 export type ExistingListingDraft = z.infer<typeof existingListingDraftSchema>;

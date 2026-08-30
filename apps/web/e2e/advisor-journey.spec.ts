@@ -131,6 +131,8 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   const savedNote = page.locator("article.keep-card").filter({ hasText: "Bahçeli satılık bir ev duydum." });
   await savedNote.getByRole("button", { name: "Düzenle ve işle" }).click();
   const noteDialog = page.getByRole("dialog", { name: "Bu not neye dönüşsün?" });
+  await expect(noteDialog.getByRole("button", { name: "Ofis havuzuna ekle" })).toBeVisible();
+  await expect(noteDialog.getByRole("button", { name: "Yetkili portföye dönüştür" })).toBeVisible();
   await noteDialog.getByLabel("Not metni").fill("Ayşe Urla'da bahçeli satılık ev arıyor.");
   await noteDialog.getByLabel("Not türü").selectOption("requirement");
   await noteDialog.getByRole("combobox", { name: "İlgili kişi ara" }).fill(contactName);
@@ -294,6 +296,11 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await page.getByRole("button", { name: "Yarın sabah" }).click();
   await page.getByRole("button", { name: "Teması kaydet" }).click();
   await expect(page.getByRole("heading", { name: "Temas ve sonraki aksiyon hazır" })).toBeVisible();
+  await page.getByRole("link", { name: "Yetkili portföy ekle" }).click();
+  await expect(page).toHaveURL(/\/listings\/?\?action=add-listing&ownerContactId=/);
+  const contactListingDialog = page.getByRole("dialog");
+  await expect(contactListingDialog.locator(".contact-combobox-value")).toHaveText(contactName);
+  await contactListingDialog.getByRole("button", { name: "Kapat" }).click();
 
   await page.goto("/opportunities");
   await page.getByRole("button", { name: /Yeni fırsat|Fırsat oluştur/ }).first().click();
@@ -304,12 +311,40 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await opportunityDialog.getByRole("button", { name: "Fırsatı oluştur" }).click();
   await expect(page.getByRole("button", { name: new RegExp(contactName) }).first()).toBeVisible();
 
-  await page.locator(".kanban-card").filter({ hasText: contactName }).click();
+  const sellerOpportunityCard = page.locator(".kanban-card").filter({ hasText: "Satılık portföy" }).filter({ hasText: contactName });
+  await sellerOpportunityCard.click();
   await page.getByRole("dialog").getByRole("button", { name: "Aşamayı düzelt" }).click();
   const correctionDialog = page.getByRole("dialog");
   await correctionDialog.getByLabel("Düzeltme nedeni").fill("İlk görüşme zaten yapılmıştı.");
   await correctionDialog.getByRole("button", { name: "Aşamayı düzelt" }).click();
   await expect(page.getByText("Görüşüldü").first()).toBeVisible();
+
+  await sellerOpportunityCard.click();
+  await page.getByRole("dialog").getByRole("button", { name: "Aşamayı düzelt" }).click();
+  const wonCorrectionDialog = page.getByRole("dialog");
+  await wonCorrectionDialog.getByLabel("Doğru aşama").selectOption("won");
+  await wonCorrectionDialog.getByLabel("Düzeltme nedeni").fill("Yetki sözleşmesi daha önce imzalanmıştı.");
+  await wonCorrectionDialog.getByRole("button", { name: "Aşamayı düzelt" }).click();
+  await expect(page).toHaveURL(/\/listings\/?\?action=complete-won&opportunityId=/);
+  const wonListingDialog = page.getByRole("dialog");
+  await expect(wonListingDialog.getByText("Yetki kazanıldı.")).toBeVisible();
+  await wonListingDialog.getByRole("button", { name: "Kapat" }).click();
+  await expect(page.getByText(new RegExp(`${contactName} için kazanılan yetki bekliyor`))).toBeVisible();
+  await page.goto("/opportunities");
+  await page.locator(".opportunity-outcome-filter").getByRole("button", { name: /Kazanılan/ }).click();
+  const wonOpportunityRow = page.locator(".opportunity-list-table > button").filter({ hasText: contactName }).filter({ hasText: "Satılık portföy" });
+  await expect(wonOpportunityRow).toContainText("Portföy bilgileri bekliyor");
+  await wonOpportunityRow.click();
+  const wonOpportunityDetail = page.getByRole("dialog");
+  await expect(wonOpportunityDetail.getByText("Yetki alındı").first()).toBeVisible();
+  await wonOpportunityDetail.getByRole("link", { name: /Portföyü tamamla/ }).click();
+  await expect(page).toHaveURL(/\/listings\/?\?action=complete-won&opportunityId=/);
+  const wonListingAddress = `E2E Kazanılan Yetki ${runId.slice(-6)}`;
+  await page.getByRole("dialog").getByLabel("Adres").fill(wonListingAddress);
+  await page.getByRole("dialog").getByLabel("Bölge").fill("Urla İskele");
+  await page.getByRole("dialog").getByLabel("Fiyat").fill("13250000");
+  await page.getByRole("dialog").getByRole("button", { name: "Portföyü oluştur" }).click();
+  await expect(page.getByText(wonListingAddress)).toBeVisible();
 
   const listingAddress = `E2E Urla ${runId.slice(-6)}`;
   await page.goto("/listings");
@@ -328,6 +363,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await page.getByRole("dialog", { name: "Hızlı arama" }).getByRole("button", { name: new RegExp(contactName) }).first().click();
   await expect(page).toHaveURL(/\/contacts\//);
   await expect(page.getByRole("heading", { name: contactName })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Yetkili portföy ekle" })).toHaveAttribute("href", /\/listings\/?\?action=add-listing&ownerContactId=/);
   await expect(page.getByText("Bu kişiyi arşivlemek istediğinden emin misin?")).toHaveCount(0);
 
   await page.goto("/");

@@ -22,6 +22,16 @@ export const opportunityStageLabels: Record<OpportunityStage, string> = {
   lost: "Sonuçlanmadı",
 };
 
+/** Owner opportunities acquire a mandate; buyer and tenant opportunities acquire a client. */
+export function opportunityStageLabel(stage: OpportunityStage, type: OpportunityType): string {
+  if (type === "buyer_requirement" || type === "tenant_requirement") {
+    if (stage === "valuation") return "Talep netleşti";
+    if (stage === "mandate_offer") return "Hizmet konuşuluyor";
+    if (stage === "won") return "Müşteri kazanıldı";
+  }
+  return opportunityStageLabels[stage];
+}
+
 export const opportunityDraftSchema = z.object({
   subjectContactId: z.string().min(1).max(160),
   type: z.enum(opportunityTypes),

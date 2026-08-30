@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createOpportunity, opportunityDraftSchema } from "./opportunity-draft.js";
+import { createOpportunity, opportunityDraftSchema, opportunityStageLabel } from "./opportunity-draft.js";
 
 describe("opportunity draft", () => {
   it("creates a new lead with a required next action", () => {
@@ -14,5 +14,11 @@ describe("opportunity draft", () => {
 
   it("rejects a lead without its next action", () => {
     expect(opportunityDraftSchema.safeParse({ subjectContactId: "contact-1", type: "seller_listing" }).success).toBe(false);
+  });
+
+  it("uses client language for buyer and tenant outcomes", () => {
+    expect(opportunityStageLabel("won", "buyer_requirement")).toBe("Müşteri kazanıldı");
+    expect(opportunityStageLabel("mandate_offer", "tenant_requirement")).toBe("Hizmet konuşuluyor");
+    expect(opportunityStageLabel("won", "seller_listing")).toBe("Yetki alındı");
   });
 });

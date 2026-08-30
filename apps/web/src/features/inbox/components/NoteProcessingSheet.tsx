@@ -5,6 +5,7 @@ import { BriefcaseBusiness, Building2, CalendarPlus, Save, UserRoundPlus, X } fr
 import {
   classifyInboxText,
   contactDraftSchema,
+  existingListingDraftSchema,
   inboxItemKinds,
   emptyVoiceInsights,
   nextActionTypeLabels,
@@ -28,6 +29,7 @@ import type { ContactRecord } from "@/features/contacts/resources/contacts";
 import { ContactCombobox } from "@/shared/ui/ContactCombobox";
 import { QuickDateField } from "@/shared/ui/QuickDateField";
 import { analyzePortfolioText } from "@/features/matching/resources/portfolio";
+import { saveExistingListing } from "@/features/listings/resources/listings";
 import { analyzeInboxItem, changeInboxItem, processInboxItem as processItem } from "../resources/inbox";
 
 const kindLabels: Record<InboxItemKind, string> = { note: "Not", person: "Kişi", property: "Mülk", requirement: "Talep", follow_up: "Takip" };
@@ -58,10 +60,11 @@ export function NoteProcessingSheet({ item, contacts, onClose, onChanged }: { it
   const [actionAt, setActionAt] = useState(tomorrowMorning);
   const [portfolio, setPortfolio] = useState<PortfolioItemDraft | null>(null);
   const [analysis, setAnalysis] = useState<InboxItemAnalysis | null>(null);
-  const [pending, setPending] = useState<"save" | "analyze" | "process" | null>(null);
+  const [pending, setPending] = useState<"save" | "analyze" | "process" | "listing" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const expectedAction = kind === "person" ? "contact_created" : kind === "property" ? "portfolio_created" : kind === "requirement" ? "opportunity_created" : kind === "follow_up" ? "follow_up_scheduled" : null;
   const alreadyProcessed = expectedAction !== null && item.appliedActions.some((action) => action.type === expectedAction && action.undoneAt === null);
+  const listingAlreadyCreated = item.appliedActions.some((action) => action.type === "listing_created" && action.undoneAt === null);
 
   async function saveEdits(): Promise<void> {
     if (!session) return;
@@ -120,19 +123,50 @@ export function NoteProcessingSheet({ item, contacts, onClose, onChanged }: { it
     finally { setPending(null); }
   }
 
+  async function createAuthorizedListing() {
+    if (!session || !portfolio) return;
+    setPending("listing"); setError(null);
+    try {
+      await saveEdits();
+      if (!contactId) throw new Error("Yetkili portföy için mülk sahibini seç.");
+      if (portfolio.authorizationType === "none") throw new Error("Yetkili portföy için geçerli bir yetki türü seç.");
+      if (!portfolio.askingPrice) throw new Error("Yetkili portföy için fiyat ve para birimi gerekli.");
+      const parsed = existingListingDraftSchema.safeParse({
+        ownerContactId: contactId,
+        opportunityType: portfolio.transactionType === "sell" ? "seller_listing" : "landlord_listing",
+        address: portfolio.location.length >= 3 ? portfolio.location : portfolio.headline,
+        regionSlug: portfolio.location,
+        propertyType: portfolio.propertyType,
+        roomCount: portfolio.bedroomCount,
+        areaM2: portfolio.propertyType === "land" ? portfolio.landAreaM2 : portfolio.areaM2,
+        features: portfolio.features,
+        authorizationType: portfolio.authorizationType,
+        askingPrice: portfolio.askingPrice.amount,
+        currency: portfolio.askingPrice.currency,
+        expiresAt: null,
+        sourceInboxItemId: item.id,
+      });
+      if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Yetkili portföy bilgilerini kontrol et.");
+      await saveExistingListing(session, parsed.data);
+      await onChanged(); onClose();
+    } catch (next) { setError(messageFrom(next)); }
+    finally { setPending(null); }
+  }
+
   return <div className="sheet-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section className="form-sheet note-processing-sheet" role="dialog" aria-modal="true" aria-labelledby="note-processing-title">
     <div className="sheet-heading"><div><p className="eyebrow">NOTU DÜZENLE VE İŞLE</p><h2 id="note-processing-title">Bu not neye dönüşsün?</h2><p className="privacy-copy">Önce metni ve türü düzelt; sonra gerçek kaydı oluştur.</p></div><button className="icon-action" aria-label="Kapat" onClick={onClose} type="button"><X size={20} /></button></div>
     <div className="form-stack">
       <label>Not metni<textarea autoFocus value={text} onChange={(event) => setText(event.target.value)} /></label>
       <label>Not türü<select value={kind} onChange={(event) => { setKind(event.target.value as InboxItemKind); setPortfolio(null); }}>{inboxItemKinds.map((value) => <option key={value} value={value}>{kindLabels[value]}</option>)}</select></label>
-      {kind !== "person" ? <ContactCombobox contacts={contacts} label={kind === "property" ? "İlgili kişi (isteğe bağlı)" : "İlgili kişi"} required={kind !== "property" && kind !== "note"} value={contactId} onChange={setContactId} /> : null}
+      {kind !== "person" ? <ContactCombobox contacts={contacts} label={kind === "property" ? "Mülk sahibi / ilgili kişi" : "İlgili kişi"} required={kind !== "property" && kind !== "note"} value={contactId} onChange={setContactId} /> : null}
       {kind === "person" ? <div className="form-row"><label>Adı<input value={personName} onChange={(event) => setPersonName(event.target.value)} /></label><label>Telefon <span className="optional">isteğe bağlı</span><input inputMode="tel" value={personPhone} onChange={(event) => setPersonPhone(event.target.value)} /></label></div> : null}
       {kind === "requirement" ? <>{analysis ? <div className="note-extraction-review"><div className="review-banner"><BriefcaseBusiness size={18} /><div><strong>Talep bilgileri çıkarıldı</strong><p>Onayladığınız bilgiler kişi hafızasına ve eşleştirmeye aktarılır.</p></div></div><label>Aranan bölgeler<input value={analysis.insights.propertyPreferences.preferredLocations.join(", ")} onChange={(event) => setAnalysis({ ...analysis, insights: { ...analysis.insights, propertyPreferences: { ...analysis.insights.propertyPreferences, preferredLocations: event.target.value.split(",").map((value) => value.trim()).filter(Boolean).slice(0, 8) } } })} placeholder="Urla, Kuşçular" /></label><div className="form-row"><label>Azami bütçe<input min="0" type="number" value={analysis.insights.propertyPreferences.budgetRange?.max ?? ""} onChange={(event) => setAnalysis({ ...analysis, insights: { ...analysis.insights, propertyPreferences: { ...analysis.insights.propertyPreferences, budgetRange: event.target.value ? { min: analysis.insights.propertyPreferences.budgetRange?.min ?? null, max: Number(event.target.value), currency: analysis.insights.propertyPreferences.budgetRange?.currency ?? "TRY" } : null } } })} /></label><label>Oda<input min="0" type="number" value={analysis.insights.propertyPreferences.bedroomCountMin ?? ""} onChange={(event) => setAnalysis({ ...analysis, insights: { ...analysis.insights, propertyPreferences: { ...analysis.insights.propertyPreferences, bedroomCountMin: numberOrNull(event.target.value) } } })} /></label><label>Salon<input min="0" type="number" value={analysis.insights.propertyPreferences.livingRoomCountMin ?? ""} onChange={(event) => setAnalysis({ ...analysis, insights: { ...analysis.insights, propertyPreferences: { ...analysis.insights.propertyPreferences, livingRoomCountMin: numberOrNull(event.target.value) } } })} /></label></div><label>Olmazsa olmazlar<input value={analysis.insights.propertyPreferences.mustHaves.join(", ")} onChange={(event) => setAnalysis({ ...analysis, insights: { ...analysis.insights, propertyPreferences: { ...analysis.insights.propertyPreferences, mustHaves: event.target.value.split(",").map((value) => value.trim()).filter(Boolean).slice(0, 8) } } })} placeholder="Bahçe, denize yürüme mesafesi" /></label><label>Hatırlanacaklar<input value={analysis.insights.keyThingsToRemember.join(", ")} onChange={(event) => setAnalysis({ ...analysis, insights: { ...analysis.insights, keyThingsToRemember: event.target.value.split(",").map((value) => value.trim()).filter((value) => value.length > 1).slice(0, 8) } })} /></label></div> : <button className="secondary-action note-process-action" disabled={pending !== null} onClick={() => void analyzeRequirement()} type="button"><BriefcaseBusiness size={17} /> {pending === "analyze" ? "Talep çözümleniyor…" : "Talep bilgilerini ve tarihi çıkar"}</button>}<label>Talep türü<select value={opportunityType} onChange={(event) => setOpportunityType(event.target.value as typeof opportunityType)}><option value="buyer_requirement">{opportunityTypeLabels.buyer_requirement}</option><option value="tenant_requirement">{opportunityTypeLabels.tenant_requirement}</option></select></label></> : null}
       {kind === "requirement" || kind === "follow_up" ? <><label>Sonraki adım<select value={actionType} onChange={(event) => setActionType(event.target.value as NextActionType)}>{nextActionTypes.map((value) => <option key={value} value={value}>{nextActionTypeLabels[value]}</option>)}</select></label><QuickDateField value={actionAt} onChange={setActionAt} /></> : null}
       {kind === "property" ? portfolio ? <div className="note-extraction-review"><strong>Çıkarılan portföyü kontrol et</strong><label>Başlık<input value={portfolio.headline} onChange={(event) => setPortfolio({ ...portfolio, headline: event.target.value })} /></label><label>Konum<input value={portfolio.location} onChange={(event) => setPortfolio({ ...portfolio, location: event.target.value })} /></label><div className="form-row"><label>İşlem<select value={portfolio.transactionType} onChange={(event) => setPortfolio({ ...portfolio, transactionType: event.target.value as "sell" | "let" })}><option value="sell">Satılık</option><option value="let">Kiralık</option></select></label><label>Mülk türü<select value={portfolio.propertyType} onChange={(event) => setPortfolio({ ...portfolio, propertyType: event.target.value as PortfolioItemDraft["propertyType"] })}>{propertyTypes.map((value) => <option key={value} value={value}>{propertyTypeLabels[value]}</option>)}</select></label></div><label>Özet<textarea value={portfolio.summary} onChange={(event) => setPortfolio({ ...portfolio, summary: event.target.value })} /></label><div className="form-row"><label>Fiyat<input min="0" type="number" value={portfolio.askingPrice?.amount ?? ""} onChange={(event) => setPortfolio({ ...portfolio, askingPrice: event.target.value ? { amount: Number(event.target.value), currency: portfolio.askingPrice?.currency ?? "TRY" } : null })} /></label><label>Alan m²<input min="0" type="number" value={(portfolio.propertyType === "land" ? portfolio.landAreaM2 : portfolio.areaM2) ?? ""} onChange={(event) => setPortfolio({ ...portfolio, [portfolio.propertyType === "land" ? "landAreaM2" : "areaM2"]: numberOrNull(event.target.value) })} /></label></div>{portfolio.propertyType !== "land" ? <div className="form-row"><label>Oda<input min="0" type="number" value={portfolio.bedroomCount ?? ""} onChange={(event) => setPortfolio({ ...portfolio, bedroomCount: numberOrNull(event.target.value) })} /></label><label>Salon<input min="0" type="number" value={portfolio.livingRoomCount ?? ""} onChange={(event) => setPortfolio({ ...portfolio, livingRoomCount: numberOrNull(event.target.value) })} /></label></div> : null}<div className="form-row"><label>Yetki<select value={portfolio.authorizationType} onChange={(event) => setPortfolio({ ...portfolio, authorizationType: event.target.value as PortfolioItemDraft["authorizationType"] })}>{portfolioAuthorizationTypes.map((value) => <option key={value} value={value}>{portfolioAuthorizationLabels[value]}</option>)}</select></label><label>Tapu<select value={portfolio.titleDeedType} onChange={(event) => setPortfolio({ ...portfolio, titleDeedType: event.target.value as PortfolioItemDraft["titleDeedType"] })}>{titleDeedTypes.map((value) => <option key={value} value={value}>{titleDeedTypeLabels[value]}</option>)}</select></label><label>Yapılaşma<select value={portfolio.constructionAllowed === null ? "unknown" : String(portfolio.constructionAllowed)} onChange={(event) => setPortfolio({ ...portfolio, constructionAllowed: event.target.value === "unknown" ? null : event.target.value === "true" })}><option value="unknown">Belirsiz</option><option value="true">Uygun</option><option value="false">Uygun değil</option></select></label></div><label>Diğer özellikler<input value={portfolio.attributes.join(", ")} onChange={(event) => setPortfolio({ ...portfolio, attributes: event.target.value.split(",").map((value) => value.trim()).filter(Boolean).slice(0, 20) })} /></label></div> : <button className="secondary-action note-process-action" disabled={pending !== null} onClick={() => void analyzeProperty()} type="button"><Building2 size={17} /> {pending === "analyze" ? "Çözümleniyor…" : "Mülk bilgilerini çıkar"}</button> : null}
-      {alreadyProcessed ? <p className="success-notice">Bu not daha önce gerçek bir kayda dönüştürülmüş.</p> : null}
+      {alreadyProcessed ? <p className="success-notice">Bu not daha önce {kind === "property" ? "ofis havuzuna" : "gerçek bir kayda"} dönüştürülmüş.</p> : null}
+      {listingAlreadyCreated ? <p className="success-notice">Bu not daha önce yetkili portföye dönüştürülmüş.</p> : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
-      <div className="note-sheet-actions"><button className="secondary-action" disabled={pending !== null} onClick={() => void save()} type="button"><Save size={17} /> {pending === "save" ? "Kaydediliyor…" : "Yalnızca kaydet"}</button>{kind !== "note" ? <button className="primary-action" disabled={pending !== null || alreadyProcessed || (kind === "property" && !portfolio)} onClick={() => void process()} type="button">{kind === "person" ? <UserRoundPlus size={17} /> : kind === "property" ? <Building2 size={17} /> : kind === "requirement" ? <BriefcaseBusiness size={17} /> : <CalendarPlus size={17} />}{pending === "process" ? "İşleniyor…" : kind === "person" ? "Kişi oluştur" : kind === "property" ? "Ofis havuzuna ekle" : kind === "requirement" ? "Talep oluştur" : "Takibi oluştur"}</button> : null}</div>
+      <div className="note-sheet-actions"><button className="secondary-action" disabled={pending !== null} onClick={() => void save()} type="button"><Save size={17} /> {pending === "save" ? "Kaydediliyor…" : "Yalnızca kaydet"}</button>{kind === "property" ? <><button className="secondary-action" disabled={pending !== null || alreadyProcessed || !portfolio} onClick={() => void process()} type="button"><Building2 size={17} />{pending === "process" ? "Ekleniyor…" : "Ofis havuzuna ekle"}</button><button className="primary-action" disabled={pending !== null || listingAlreadyCreated || !portfolio} onClick={() => void createAuthorizedListing()} type="button"><Building2 size={17} />{pending === "listing" ? "Portföy oluşturuluyor…" : "Yetkili portföye dönüştür"}</button></> : kind !== "note" ? <button className="primary-action" disabled={pending !== null || alreadyProcessed} onClick={() => void process()} type="button">{kind === "person" ? <UserRoundPlus size={17} /> : kind === "requirement" ? <BriefcaseBusiness size={17} /> : <CalendarPlus size={17} />}{pending === "process" ? "İşleniyor…" : kind === "person" ? "Kişi oluştur" : kind === "requirement" ? "Talep oluştur" : "Takibi oluştur"}</button> : null}</div>
     </div>
   </section></div>;
 }

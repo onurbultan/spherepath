@@ -20,4 +20,15 @@ describe("listing draft", () => {
     expect(existingListingDraftSchema.safeParse({ ...listing, ownerContactId: "contact", opportunityType: "seller_listing" }).success).toBe(true);
     expect(existingListingDraftSchema.safeParse({ ...listing, ownerContactId: "", opportunityType: "seller_listing" }).success).toBe(false);
   });
+
+  it("keeps the source inbox item when an authorization comes from the feed", () => {
+    const listing = Object.fromEntries(Object.entries(draft).filter(([key]) => key !== "opportunityId"));
+    const result = existingListingDraftSchema.parse({
+      ...listing,
+      ownerContactId: "contact",
+      opportunityType: "seller_listing",
+      sourceInboxItemId: "note-1",
+    });
+    expect(result.sourceInboxItemId).toBe("note-1");
+  });
 });

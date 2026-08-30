@@ -113,8 +113,15 @@ export const importExistingListing = onCall(callableOptions, async (request): Pr
     const opportunityEventRef = firestore.collection("stageEvents").doc();
     const listingEventRef = firestore.collection("stageEvents").doc();
     const commandRef = firestore.collection("commands").doc(envelope.commandId!);
+    const inboxRef = parsed.data.sourceInboxItemId
+      ? firestore.collection("inboxItems").doc(parsed.data.sourceInboxItemId)
+      : null;
     const result = await firestore.runTransaction(async (transaction) => {
-      const [receiptSnapshot, contactSnapshot] = await Promise.all([transaction.get(commandRef), transaction.get(contactRef)]);
+      const [receiptSnapshot, contactSnapshot, inboxSnapshot] = await Promise.all([
+        transaction.get(commandRef),
+        transaction.get(contactRef),
+        inboxRef ? transaction.get(inboxRef) : Promise.resolve(null),
+      ]);
       if (receiptSnapshot.exists) {
         const receipt = receiptSnapshot.data()!;
         if (receipt.officeId !== claims.officeId || receipt.ownerUid !== claims.uid || receipt.type !== "importExistingListing") throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
@@ -124,6 +131,15 @@ export const importExistingListing = onCall(callableOptions, async (request): Pr
       const contact = contactSnapshot.data()!;
       const canManage = contact.officeId === claims.officeId && (contact.ownerUid === claims.uid || claims.role === "broker") && contact.deletedAt === null;
       if (!canManage) throw new HttpsError("permission-denied", "Contact is outside your workspace.");
+      const inbox = inboxSnapshot?.data();
+      if (inboxRef && (!inboxSnapshot?.exists || !inbox || inbox.officeId !== claims.officeId || (inbox.ownerUid !== claims.uid && claims.role !== "broker"))) {
+        throw new HttpsError("not-found", "Source inbox item was not found.");
+      }
+      if (inbox?.status === "archived") throw new HttpsError("failed-precondition", "Arşivlenmiş notu önce geri getir.");
+      const inboxActions = (inbox?.appliedActions ?? []) as DocumentData[];
+      if (inboxActions.some((action) => action.type === "listing_created" && action.undoneAt === null)) {
+        throw new HttpsError("already-exists", "Bu not daha önce yetkili portföye dönüştürüldü.");
+      }
 
       const now = Date.now();
       const nowTimestamp = Timestamp.fromMillis(now);
@@ -162,9 +178,18 @@ export const importExistingListing = onCall(callableOptions, async (request): Pr
       });
       transaction.create(propertyRef, { ...entities.property, deletedAt: null, createdAt: nowTimestamp, updatedAt: nowTimestamp });
       transaction.create(listingRef, toStoredListing(entities.listing));
-      transaction.create(opportunityEventRef, { ...tenant, entityType: "opportunity", entityId: opportunityRef.id, fromStage: null, toStage: "won", reason: "Mevcut yetki içe aktarıldı", commandId: envelope.commandId, occurredAt: nowTimestamp, createdAt: nowTimestamp });
-      transaction.create(listingEventRef, { ...tenant, entityType: "listing", entityId: listingRef.id, fromStage: null, toStage: "preparing", reason: "Mevcut yetki içe aktarıldı", commandId: envelope.commandId, occurredAt: nowTimestamp, createdAt: nowTimestamp });
-      transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "importExistingListing", listingId: listingRef.id, opportunityId: opportunityRef.id, propertyId: propertyRef.id, ownerContactId: parsed.data.ownerContactId, createdAt: nowTimestamp });
+      const auditReason = inboxRef ? "Akış notundan yetkili portföy oluşturuldu" : "Mevcut yetki içe aktarıldı";
+      transaction.create(opportunityEventRef, { ...tenant, entityType: "opportunity", entityId: opportunityRef.id, fromStage: null, toStage: "won", reason: auditReason, commandId: envelope.commandId, occurredAt: nowTimestamp, createdAt: nowTimestamp });
+      transaction.create(listingEventRef, { ...tenant, entityType: "listing", entityId: listingRef.id, fromStage: null, toStage: "preparing", reason: auditReason, commandId: envelope.commandId, occurredAt: nowTimestamp, createdAt: nowTimestamp });
+      if (inboxRef) {
+        transaction.update(inboxRef, {
+          linkedContactId: parsed.data.ownerContactId,
+          status: "applied",
+          appliedActions: [...inboxActions, { type: "listing_created", entityId: listingRef.id, label: "Yetkili portföye dönüştürüldü", appliedAt: nowTimestamp, undoneAt: null }],
+          updatedAt: nowTimestamp,
+        });
+      }
+      transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "importExistingListing", listingId: listingRef.id, opportunityId: opportunityRef.id, propertyId: propertyRef.id, ownerContactId: parsed.data.ownerContactId, sourceInboxItemId: parsed.data.sourceInboxItemId, createdAt: nowTimestamp });
       return { listingId: listingRef.id, ownerContactId: parsed.data.ownerContactId };
     });
 

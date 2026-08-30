@@ -157,8 +157,8 @@ export function SettingsView() {
     finally { setPending(false); }
   }
 
+  if (settingsQuery.isError) return <AppShell><div className="content-state" role="alert"><strong>Ayarlar yüklenemedi.</strong><span>{messageFrom(settingsQuery.error)}</span><button className="secondary-action" type="button" onClick={() => void settingsQuery.refetch()}>Yeniden dene</button></div></AppShell>;
   if (settingsQuery.isPending || !draft) return <AppShell><div className="content-state">Ayarlar yükleniyor…</div></AppShell>;
-  if (settingsQuery.error) return <AppShell><p className="form-error notice">{messageFrom(settingsQuery.error)}</p></AppShell>;
   const requests = requestsQuery.data ?? [];
   const pendingRequests = requests.filter((item) => item.status === "pending_verification");
   const iysApprovedCount = contacts.filter((contact) => contact.privacy.iysStatus === "approved").length;

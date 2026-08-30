@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, ContactRound, Save, UserPlus, X } from "lucide-react";
@@ -165,7 +166,7 @@ export function CaptureView() {
           queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
         ]);
       }} /> : saved ? (
-        <SpCard className="success-state"><div className="success-icon"><Check size={24} aria-hidden /></div><p className="eyebrow">{queuedOffline ? "CİHAZDA GÜVENDE" : "KAYDEDİLDİ"}</p><h2>{queuedOffline ? "Temas bağlantı gelince gönderilecek" : "Temas ve sonraki aksiyon hazır"}</h2><p>{queuedOffline ? "Bu sayfada beklemeniz gerekmez; aynı hesapla çevrimiçi olduğunuzda kayıt otomatik eşitlenir." : "Bugün ekranındaki ilişki görünümü birkaç saniye içinde güncellenecek."}</p><div className="capture-actions"><button className="secondary-action" type="button" onClick={() => router.push("/")}>Bugün ekranına dön</button><button className="primary-action" type="button" onClick={resetManualInteraction}>Başka temas kaydet</button></div></SpCard>
+        <SpCard className="success-state"><div className="success-icon"><Check size={24} aria-hidden /></div><p className="eyebrow">{queuedOffline ? "CİHAZDA GÜVENDE" : "KAYDEDİLDİ"}</p><h2>{queuedOffline ? "Temas bağlantı gelince gönderilecek" : "Temas ve sonraki aksiyon hazır"}</h2><p>{queuedOffline ? "Bu sayfada beklemeniz gerekmez; aynı hesapla çevrimiçi olduğunuzda kayıt otomatik eşitlenir." : "Bugün ekranındaki ilişki görünümü birkaç saniye içinde güncellenecek."}</p><div className="capture-actions"><button className="secondary-action" type="button" onClick={() => router.push("/")}>Bugün ekranına dön</button>{!queuedOffline ? <Link className="secondary-action inline-link" href={`/listings?action=add-listing&ownerContactId=${encodeURIComponent(selectedContactId)}`}>Yetkili portföy ekle</Link> : null}<button className="primary-action" type="button" onClick={resetManualInteraction}>Başka temas kaydet</button></div></SpCard>
       ) : (
         <form className="capture-form" onSubmit={submit}>
           <SpCard className="form-section"><div className="section-heading compact"><div><p className="eyebrow">1 · KİM</p><h2>Görüşülen kişi</h2></div></div><div className="form-row"><ContactCombobox contacts={contacts} value={selectedContactId} onChange={setContactId} /><label>Kanal<select value={channel} onChange={(event) => setChannel(event.target.value as ManualInteractionDraft["channel"])}>{interactionChannels.map((item) => <option key={item} value={item}>{interactionChannelLabels[item]}</option>)}</select></label></div></SpCard>

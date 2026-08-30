@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ChevronLeft, ChevronRight, ContactRound, Download, MessageSquarePlus, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, UserRoundPlus, X } from "lucide-react";
+import { Archive, Building2, ChevronLeft, ChevronRight, ContactRound, Download, MessageSquarePlus, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, UserRoundPlus, X } from "lucide-react";
 import {
   apiQueryKeys,
   contactDraftSchema,
@@ -341,6 +341,7 @@ export function ContactsView() {
             </div>
             <div className="contact-detail-actions">
               <button className="primary-action inline-action" type="button" onClick={() => router.push(`/capture?contactId=${encodeURIComponent(activeSelectedContact.id)}`)}><MessageSquarePlus size={16} /> Temas kaydet</button>
+              <button className="secondary-action inline-action" type="button" onClick={() => router.push(`/listings?action=add-listing&ownerContactId=${encodeURIComponent(activeSelectedContact.id)}`)}><Building2 size={16} /> Yetkili portföy</button>
               <button className="secondary-action inline-action" type="button" onClick={() => { closeContactDetail(); setReferralSource(activeSelectedContact); }}><UserRoundPlus size={16} /> Referans</button>
             </div>
             <div className="contact-detail-facts"><div><span>Telefon</span><strong>{activeSelectedContact.phone ?? "Eklenmedi"}</strong></div><div><span>Tanışma yeri</span><strong>{activeSelectedContact.metAtPlace || "Belirtilmedi"}</strong></div><div><span>Son temas</span><strong>{relativeDate(activeSelectedContact.relationship.lastTouchAt)}</strong></div><div><span>Sonraki adım</span><strong>{nextActionLabel(activeSelectedContact)}</strong></div></div>

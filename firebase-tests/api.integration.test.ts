@@ -473,6 +473,17 @@ describe("callable API vertical slice", () => {
     const portfolioNote = (await createInboxItem(envelope({ source: "typed", text: "Urla'da satılık bahçeli villa", linkedContactId: null, requestedKind: "property" }, "request-inbox-portfolio-create", "command-inbox-portfolio-create"))).data as { item: { id: string } };
     const portfolioFromNote = (await processInboxItem(envelope({ inboxItemId: portfolioNote.item.id, action: "portfolio", contactId: null, portfolio: { source: "manual", sourceAuthorName: null, headline: "Urla bahçeli villa", summary: "Akış notundan oluşturulan satılık bahçeli villa", transactionType: "sell", propertyType: "villa", location: "Urla", askingPrice: { amount: 15_000_000, currency: "TRY" }, bedroomCount: 3, livingRoomCount: 1, areaM2: 180, landAreaM2: null, features: ["garden"], attributes: [], authorizationType: "unknown", titleDeedType: "unknown", constructionAllowed: null, listingUrl: null } }, "request-inbox-portfolio", "command-inbox-portfolio"))).data as { item: { appliedActions: Array<{ type: string }> }; entityId: string };
     expect(portfolioFromNote.item.appliedActions).toContainEqual(expect.objectContaining({ type: "portfolio_created", entityId: portfolioFromNote.entityId }));
+    const importExistingListing = httpsCallable(functions, "importExistingListing");
+    const listingFromNoteRequest = envelope({ ownerContactId: created.contact.id, opportunityType: "seller_listing", address: "Urla bahçeli villa", regionSlug: "Urla", propertyType: "villa", roomCount: 3, areaM2: 180, features: ["garden"], authorizationType: "exclusive", askingPrice: 15_000_000, currency: "TRY", expiresAt: null, sourceInboxItemId: portfolioNote.item.id }, "request-inbox-listing", "command-inbox-listing");
+    const listingFromNote = (await importExistingListing(listingFromNoteRequest)).data as { listing: { id: string; status: string } };
+    const listingFromNoteReplay = (await importExistingListing({ ...listingFromNoteRequest, requestId: `request-inbox-listing-replay-${runId}` })).data as { listing: { id: string } };
+    expect(listingFromNote.listing.status).toBe("preparing");
+    expect(listingFromNoteReplay.listing.id).toBe(listingFromNote.listing.id);
+    const inboxAfterListing = (await listWhatsAppInbox(envelope({ cursor: null, limit: 50 }, "request-inbox-after-listing"))).data as { items: Array<{ id: string; appliedActions: Array<{ type: string; entityId: string | null }> }> };
+    expect(inboxAfterListing.items.find((item) => item.id === portfolioNote.item.id)?.appliedActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "portfolio_created", entityId: portfolioFromNote.entityId }),
+      expect.objectContaining({ type: "listing_created", entityId: listingFromNote.listing.id }),
+    ]));
 
     const createDataSubjectRequest = httpsCallable(functions, "createDataSubjectRequest");
     const accessRequest = (await createDataSubjectRequest(envelope({

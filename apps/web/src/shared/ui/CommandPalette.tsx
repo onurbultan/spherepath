@@ -16,7 +16,7 @@ import {
   apiQueryKeys,
   contactRoleLabels,
   listingStatusLabels,
-  opportunityStageLabels,
+  opportunityStageLabel,
   opportunityTypeLabels,
 } from "@spherepath/shared";
 import { listContacts } from "@/features/contacts/resources/contacts";
@@ -80,7 +80,7 @@ function PaletteDialog({ onClose }: { onClose(): void }) {
       id: `opportunity-${opportunity.id}`,
       group: "Fırsatlar",
       title: opportunity.subjectContactName,
-      subtitle: `${opportunityStageLabels[opportunity.stage]} · ${opportunityTypeLabels[opportunity.type]}`,
+      subtitle: `${opportunityStageLabel(opportunity.stage, opportunity.type)} · ${opportunityTypeLabels[opportunity.type]}`,
       href: `/opportunities?opportunityId=${encodeURIComponent(opportunity.id)}`,
       icon: BriefcaseBusiness,
     }));

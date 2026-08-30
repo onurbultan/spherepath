@@ -9,6 +9,7 @@ import { useSession } from "@/features/auth/resources/session";
 import { finishDailyTask, loadTodayOverview, replaceDailyTask } from "@/features/today/resources/today";
 import { TaskResolutionSheet, taskDueLabel, taskRecordHref } from "@/features/today/components/TaskResolutionSheet";
 import { changeInboxItem, createInboxNote, listInboxItems, retryInboxItem, undoInboxItem } from "../resources/inbox";
+import { noteViewModes, useNoteViewMode } from "../resources/note-view";
 import { AppShell } from "@/shared/ui/AppShell";
 import { listContacts } from "@/features/contacts/resources/contacts";
 import { NoteProcessingSheet } from "../components/NoteProcessingSheet";
@@ -26,15 +27,95 @@ function statusLabel(item: InboxItemRecord): string {
   return created ? created.label : "Sınıflandırıldı";
 }
 
+/** Grouping follows the order the kind selector uses, so the two never disagree. */
+const noteGroupOrder: InboxItemKind[] = ["property", "requirement", "follow_up", "person", "note"];
+
+interface NoteView {
+  showArchived: boolean;
+  expanded: Set<string>;
+  locationFor: string | null;
+  locationText: string;
+  setLocationText(value: string): void;
+  onToggleExpanded(id: string): void;
+  onUpdate(id: string, values: { kind?: InboxItemKind; pinned?: boolean; archived?: boolean }): void;
+  onRetry(id: string): void;
+  onUndo(id: string): void;
+  onProcess(item: InboxItemRecord): void;
+  onLocationOpen(id: string): void;
+  onLocationCancel(): void;
+  onLocationSubmit(id: string): void;
+}
+
+function NoteKind({ item, view }: { item: InboxItemRecord; view: NoteView }) {
+  return <span className="keep-kind">
+    <span className="keep-dot" aria-hidden />
+    <select aria-label="Not türü" disabled={item.id.startsWith("queued-") || view.showArchived} value={item.kind} onChange={(event) => view.onUpdate(item.id, { kind: event.target.value as InboxItemKind })}>
+      {inboxItemKinds.map((kind) => <option key={kind} value={kind}>{kindLabels[kind]}</option>)}
+    </select>
+  </span>;
+}
+
+function NoteLocation({ item, view }: { item: InboxItemRecord; view: NoteView }) {
+  if (!item.needsLocation || view.showArchived) return null;
+  if (view.locationFor === item.id) {
+    return <form className="location-form" onSubmit={(event) => { event.preventDefault(); view.onLocationSubmit(item.id); }}>
+      <input aria-label="Konum" autoFocus placeholder="Örn. Urla İskele" value={view.locationText} onChange={(event) => view.setLocationText(event.target.value)} />
+      <button className="primary-action compact-action" disabled={view.locationText.trim().length < 2} type="submit">Ekle</button>
+      <button className="text-button" onClick={view.onLocationCancel} type="button">Vazgeç</button>
+    </form>;
+  }
+  return <button className="location-prompt" onClick={() => view.onLocationOpen(item.id)} type="button"><MapPin size={16} /><span>Nerede? Konumu ekleyince eşleştirebilirim.</span></button>;
+}
+
+function NoteActions({ item, view, compact = false }: { item: InboxItemRecord; view: NoteView; compact?: boolean }) {
+  if (item.id.startsWith("queued-")) return null;
+  if (view.showArchived) {
+    return <button className="keep-edit-action" onClick={() => view.onUpdate(item.id, { archived: false })} type="button"><ArchiveRestore size={16} /> Geri getir</button>;
+  }
+  return <>
+    <button className="keep-edit-action" onClick={() => view.onProcess(item)} type="button"><Pencil size={16} /> {compact ? "İşle" : "Düzenle ve işle"}</button>
+    <button title={item.pinned ? "Sabitlemeyi kaldır" : "Sabitle"} aria-label={item.pinned ? "Sabitlemeyi kaldır" : "Sabitle"} onClick={() => view.onUpdate(item.id, { pinned: !item.pinned })} type="button"><Pin size={16} fill={item.pinned ? "currentColor" : "none"} /></button>
+    {item.status === "needs_review" || item.status === "failed" ? <button title="Tekrar dene" aria-label="Sınıflandırmayı tekrar dene" onClick={() => view.onRetry(item.id)} type="button"><RefreshCw size={16} /></button> : null}
+    {item.appliedActions.some((action) => action.type === "contact_created" && action.undoneAt === null) ? <button title="Oluşturulan kişiyi geri al" aria-label="Oluşturulan kişiyi geri al" onClick={() => view.onUndo(item.id)} type="button"><RotateCcw size={16} /></button> : null}
+    <button title="Arşivle" aria-label="Arşivle" onClick={() => view.onUpdate(item.id, { archived: true })} type="button"><Archive size={16} /></button>
+  </>;
+}
+
+function NoteCard({ item, view }: { item: InboxItemRecord; view: NoteView }) {
+  return <article className={`sp-card keep-card kind-${item.kind}`}>
+    <div className="keep-meta"><NoteKind item={item} view={view} /></div>
+    <p className={view.expanded.has(item.id) ? "" : "keep-clamped"}>{view.expanded.has(item.id) ? item.safeText : item.summary}</p>
+    {item.safeText !== item.summary ? <button className="text-button keep-expand" onClick={() => view.onToggleExpanded(item.id)} type="button">{view.expanded.has(item.id) ? <><ChevronUp size={14} /> Kısalt</> : <><ChevronDown size={14} /> Tamamını göster</>}</button> : null}
+    <NoteLocation item={item} view={view} />
+    <p className="keep-source">{sourceLabels[item.source]} · {statusLabel(item)}</p>
+    {item.id.startsWith("queued-") ? null : <footer><NoteActions item={item} view={view} /></footer>}
+  </article>;
+}
+
+function NoteRow({ item, view }: { item: InboxItemRecord; view: NoteView }) {
+  return <article className={`note-row kind-${item.kind}`}>
+    <NoteKind item={item} view={view} />
+    <div className="note-row-body">
+      <p className={view.expanded.has(item.id) ? "" : "note-row-line"}>{view.expanded.has(item.id) ? item.safeText : item.summary}</p>
+      {item.safeText !== item.summary ? <button className="text-button keep-expand" onClick={() => view.onToggleExpanded(item.id)} type="button">{view.expanded.has(item.id) ? <><ChevronUp size={14} /> Kısalt</> : <><ChevronDown size={14} /> Tamamını göster</>}</button> : null}
+      <NoteLocation item={item} view={view} />
+    </div>
+    <p className="keep-source">{sourceLabels[item.source]} · {statusLabel(item)}</p>
+    <div className="note-row-actions"><NoteActions item={item} view={view} compact /></div>
+  </article>;
+}
+
 export function FeedView() {
   const { session } = useSession(); const client = useQueryClient(); const [text, setText] = useState(""); const [saving, setSaving] = useState(false); const [error, setError] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<TodayTask | null>(null); const [resolving, setResolving] = useState(false); const [taskError, setTaskError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set()); const [locationFor, setLocationFor] = useState<string | null>(null); const [locationText, setLocationText] = useState("");
   const [showArchived, setShowArchived] = useState(false); const [activeNote, setActiveNote] = useState<InboxItemRecord | null>(null);
+  const [viewMode, changeViewMode] = useNoteViewMode();
   const [showAllWork, setShowAllWork] = useState(false);
   const today = useQuery({ queryKey: apiQueryKeys.todayOverviewPeriod("30d"), queryFn: () => loadTodayOverview("30d") });
   const inbox = useQuery({ queryKey: apiQueryKeys.inboxItems, queryFn: () => listInboxItems(session ?? undefined), enabled: Boolean(session), refetchInterval: (query) => (query.state.data as InboxItemRecord[] | undefined)?.some((item) => item.status === "queued" || item.status === "processing") ? 1_500 : false });
   const contacts = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts, enabled: Boolean(session) });
+  const loadingError = today.error ?? inbox.error;
   async function save() { if (!session || !text.trim()) return; setSaving(true); setError(null); try { await client.cancelQueries({ queryKey: apiQueryKeys.inboxItems }); const item = await createInboxNote(session, text.trim()); client.setQueryData<InboxItemRecord[]>(apiQueryKeys.inboxItems, (current = []) => [item, ...current.filter((entry) => entry.id !== item.id)]); setText(""); } catch (next) { setError(messageFrom(next)); } finally { setSaving(false); } }
   async function resolveTask(outcome: DailyTaskOutcome) {
     if (!session) return;
@@ -51,15 +132,38 @@ export function FeedView() {
   async function addLocation(inboxItemId: string) { if (!session || locationText.trim().length < 2) return; try { await changeInboxItem(session, { inboxItemId, location: locationText.trim() }); setLocationFor(null); setLocationText(""); await client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }); } catch (next) { setError(messageFrom(next)); } }
   function toggleExpanded(id: string) { setExpanded((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }
   async function undo(inboxItemId: string) { if (!session) return; try { await undoInboxItem(session, inboxItemId); await Promise.all([client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }), client.invalidateQueries({ queryKey: apiQueryKeys.contacts })]); } catch (next) { setError(messageFrom(next)); } }
+  const visibleNotes = (inbox.data ?? []).filter((item) => (item.status === "archived") === showArchived);
+  const groupedNotes = noteGroupOrder
+    .map((kind) => ({ kind, items: visibleNotes.filter((item) => item.kind === kind) }))
+    .filter((group) => group.items.length > 0);
+  const noteView: NoteView = {
+    showArchived, expanded, locationFor, locationText, setLocationText,
+    onToggleExpanded: toggleExpanded,
+    onUpdate: (id, values) => void update(id, values),
+    onRetry: (id) => void retry(id),
+    onUndo: (id) => void undo(id),
+    onProcess: (item) => setActiveNote(item),
+    onLocationOpen: (id) => { setLocationFor(id); setLocationText(""); },
+    onLocationCancel: () => { setLocationFor(null); setLocationText(""); },
+    onLocationSubmit: (id) => void addLocation(id),
+  };
+
   return <AppShell><div className="feed-view">
     <header className="feed-header"><div><p className="eyebrow">AKIŞ</p><h1>Bugün</h1><p className="context-sentence">Önce beş işini bitir; sonra duyduğun her şeyi tek cümleyle bırak.</p></div><button className="topbar-icon-button" onClick={() => void Promise.all([today.refetch(), inbox.refetch()])} aria-label="Yenile"><RefreshCw size={17} /></button></header>
-    <section className="sp-card daily-five" aria-labelledby="daily-five-title"><div className="feed-section-heading"><div><p className="eyebrow">BUGÜNÜN 5&apos;İ</p><h2 id="daily-five-title">Önce bunları bitir</h2></div><span className="period-chip">{today.data?.completedTaskCount ?? 0}/{today.data?.tasks.length ?? 0}</span></div>{today.isPending ? <p className="context-sentence">Plan hazırlanıyor…</p> : today.data?.tasks.length ? <ol>{today.data.tasks.map((task) => <li key={task.id} className={task.resolutionStatus ? `resolved resolution-${task.resolutionStatus}` : ""}><span className="daily-number">{task.resolutionStatus === "contact_opt_out" ? <PhoneOff size={15} /> : task.resolutionStatus ? <Check size={15} /> : null}</span><Link className="daily-task-link" href={task.resolutionStatus ? `/contacts/__contact__?contactId=${encodeURIComponent(task.contactId)}` : taskRecordHref(task)}><strong>{task.title}</strong><small>{task.resolutionStatus ? `${dailyTaskResolutionLabels[task.resolutionStatus]}${task.resolutionNote ? ` · ${task.resolutionNote}` : ""}` : `${task.reason} · ${taskDueLabel(task.dueAt)}`}</small></Link>{task.resolutionStatus ? null : <span className="daily-actions"><button title="Bugünlük çıkar" aria-label={`${task.title} görevini bugünkü listeden çıkar`} onClick={() => void replace(task.id)}><Shuffle size={16} /></button><button title="Sonuçlandır" aria-label={`${task.title} görevini sonuçlandır`} onClick={() => { setTaskError(null); setActiveTask(task); }}><Check size={17} /></button></span>}</li>)}</ol> : <p className="context-sentence">Henüz planlanacak iş yok. İlk notunu veya kişini ekle.</p>}</section>
+    {loadingError ? <div className="form-error notice" role="alert"><strong>Veriler yüklenemedi.</strong> {messageFrom(loadingError)} <button className="text-button" type="button" onClick={() => void Promise.all([today.refetch(), inbox.refetch()])}>Yeniden dene</button></div> : null}
+    <section className="sp-card daily-five" aria-labelledby="daily-five-title"><div className="feed-section-heading"><div><p className="eyebrow">BUGÜNÜN 5&apos;İ</p><h2 id="daily-five-title">Önce bunları bitir</h2></div><span className="period-chip">{today.data?.completedTaskCount ?? 0}/{today.data?.tasks.length ?? 0}</span></div>{today.isPending ? <p className="context-sentence">Plan hazırlanıyor…</p> : today.isError ? <p className="context-sentence">Günlük plan şu anda gösterilemiyor.</p> : today.data?.tasks.length ? <ol>{today.data.tasks.map((task) => <li key={task.id} className={task.resolutionStatus ? `resolved resolution-${task.resolutionStatus}` : ""}><span className="daily-number">{task.resolutionStatus === "contact_opt_out" ? <PhoneOff size={15} /> : task.resolutionStatus ? <Check size={15} /> : null}</span><Link className="daily-task-link" href={task.resolutionStatus ? `/contacts/__contact__?contactId=${encodeURIComponent(task.contactId)}` : taskRecordHref(task)}><strong>{task.title}</strong><small>{task.resolutionStatus ? `${dailyTaskResolutionLabels[task.resolutionStatus]}${task.resolutionNote ? ` · ${task.resolutionNote}` : ""}` : `${task.reason} · ${taskDueLabel(task.dueAt)}`}</small></Link>{task.resolutionStatus ? null : <span className="daily-actions"><button title="Bugünlük çıkar" aria-label={`${task.title} görevini bugünkü listeden çıkar`} onClick={() => void replace(task.id)}><Shuffle size={16} /></button><button title="Sonuçlandır" aria-label={`${task.title} görevini sonuçlandır`} onClick={() => { setTaskError(null); setActiveTask(task); }}><Check size={17} /></button></span>}</li>)}</ol> : <p className="context-sentence">Henüz planlanacak iş yok. İlk notunu veya kişini ekle.</p>}</section>
     {today.data && today.data.allTasks.length > today.data.tasks.length ? <section className="all-work-section"><button className="secondary-action all-work-toggle" type="button" onClick={() => setShowAllWork((value) => !value)}>{showAllWork ? "Kalan işleri gizle" : `Tüm işleri gör (${today.data.allTasks.length})`}</button>{showAllWork ? <div className="sp-card all-work-list"><h2>Bugünkü tüm işler</h2><p className="context-sentence">İlk beş odak listen; aşağıda kalan işleri de görebilirsin.</p><ol>{today.data.allTasks.filter((task) => !today.data.tasks.some((planned) => planned.id === task.id)).map((task) => <li key={task.id}><Link className="daily-task-link" href={taskRecordHref(task)}><strong>{task.title}</strong><small>{task.reason} · {taskDueLabel(task.dueAt)}</small></Link></li>)}</ol></div> : null}</section> : null}
     <section className="sp-card quick-note" aria-labelledby="quick-note-title"><div className="feed-section-heading"><div><p className="eyebrow">HIZLI KAYIT</p><h2 id="quick-note-title">Aklındakini bırak</h2></div><Sparkles size={20} aria-hidden /></div><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Örn. Urla'da bahçeli bir ev duydum…" aria-label="Hızlı not" /><div className="quick-note-actions"><Link className="secondary-action" href="/capture"><Mic size={17} /> Sesli anlat</Link><button disabled={!text.trim() || saving} className="primary-action" onClick={() => void save()}><Send size={17} />{saving ? "Kaydediliyor…" : "Kaydet"}</button></div></section>
     {error ? <p className="form-error notice" role="alert">{error}</p> : null}
-    <div className="feed-title note-list-heading"><div><h2>Notların</h2><p className="context-sentence">Sistem tür önerir; gerçek kayda dönüştürmeye sen karar verirsin.</p></div><div className="note-view-toggle"><button className={!showArchived ? "selected" : ""} onClick={() => setShowArchived(false)} type="button">Aktif</button><button className={showArchived ? "selected" : ""} onClick={() => setShowArchived(true)} type="button">Arşiv</button></div></div>
-    {inbox.isPending ? <p className="context-sentence">Notlar yükleniyor…</p> : inbox.data?.some((item) => (item.status === "archived") === showArchived) ? <section className="keep-grid" aria-label="Akış notları">{inbox.data.filter((item) => (item.status === "archived") === showArchived).map((item) => <article key={item.id} className={`sp-card keep-card kind-${item.kind}`}><div className="keep-meta"><select aria-label="Not türü" disabled={item.id.startsWith("queued-") || showArchived} value={item.kind} onChange={(event) => void update(item.id, { kind: event.target.value as InboxItemKind })}>{inboxItemKinds.map((kind) => <option key={kind} value={kind}>{kindLabels[kind]}</option>)}</select><small>{sourceLabels[item.source]} · {statusLabel(item)}</small></div><p>{expanded.has(item.id) ? item.safeText : item.summary}</p>{item.safeText !== item.summary ? <button className="text-button keep-expand" onClick={() => toggleExpanded(item.id)} type="button">{expanded.has(item.id) ? <><ChevronUp size={14} /> Kısalt</> : <><ChevronDown size={14} /> Tamamını göster</>}</button> : null}{item.needsLocation && !showArchived ? locationFor === item.id ? <form className="location-form" onSubmit={(event) => { event.preventDefault(); void addLocation(item.id); }}><input aria-label="Konum" autoFocus placeholder="Örn. Urla İskele" value={locationText} onChange={(event) => setLocationText(event.target.value)} /><button className="primary-action compact-action" disabled={locationText.trim().length < 2} type="submit">Ekle</button><button className="text-button" onClick={() => { setLocationFor(null); setLocationText(""); }} type="button">Vazgeç</button></form> : <button className="location-prompt" onClick={() => { setLocationFor(item.id); setLocationText(""); }} type="button"><MapPin size={16} /><span>Nerede? Konumu ekleyince eşleştirebilirim.</span></button> : null}{item.id.startsWith("queued-") ? null : <footer>{showArchived ? <button className="keep-edit-action" onClick={() => void update(item.id, { archived: false })} type="button"><ArchiveRestore size={16} /> Geri getir</button> : <><button className="keep-edit-action" onClick={() => setActiveNote(item)} type="button"><Pencil size={16} /> Düzenle ve işle</button><button title={item.pinned ? "Sabitlemeyi kaldır" : "Sabitle"} aria-label={item.pinned ? "Sabitlemeyi kaldır" : "Sabitle"} onClick={() => void update(item.id, { pinned: !item.pinned })}><Pin size={16} fill={item.pinned ? "currentColor" : "none"} /></button>{item.status === "needs_review" || item.status === "failed" ? <button title="Tekrar dene" aria-label="Sınıflandırmayı tekrar dene" onClick={() => void retry(item.id)}><RefreshCw size={16} /></button> : null}{item.appliedActions.some((action) => action.type === "contact_created" && action.undoneAt === null) ? <button title="Oluşturulan kişiyi geri al" aria-label="Oluşturulan kişiyi geri al" onClick={() => void undo(item.id)}><RotateCcw size={16} /></button> : null}<button title="Arşivle" aria-label="Arşivle" onClick={() => void update(item.id, { archived: true })}><Archive size={16} /></button></>}</footer>}</article>)}</section> : <div className="sp-card empty-state"><p>{showArchived ? "Arşivlenmiş not yok." : "Henüz not yok. Bir cümle yazman yeterli."}</p></div>}
+    <div className="feed-title note-list-heading"><div><h2>Notların</h2><p className="context-sentence">Sistem tür önerir; gerçek kayda dönüştürmeye sen karar verirsin.</p></div><div className="note-heading-controls"><div className="note-view-toggle" role="group" aria-label="Not görünümü">{noteViewModes.map((mode) => <button key={mode.id} className={viewMode === mode.id ? "selected" : ""} onClick={() => changeViewMode(mode.id)} type="button">{mode.label}</button>)}</div><div className="note-view-toggle" role="group" aria-label="Not listesi"><button className={!showArchived ? "selected" : ""} onClick={() => setShowArchived(false)} type="button">Aktif</button><button className={showArchived ? "selected" : ""} onClick={() => setShowArchived(true)} type="button">Arşiv</button></div></div></div>
+    {inbox.isPending ? <p className="context-sentence">Notlar yükleniyor…</p> : inbox.isError ? <div className="sp-card empty-state"><p>Notlar şu anda gösterilemiyor.</p></div> : visibleNotes.length ? (
+      viewMode === "list"
+        ? <section className="note-rows" aria-label="Akış notları">{visibleNotes.map((item) => <NoteRow key={item.id} item={item} view={noteView} />)}</section>
+        : viewMode === "group"
+          ? <div className="note-groups">{groupedNotes.map((group) => <section key={group.kind} aria-label={kindLabels[group.kind]}><div className={`note-group-head kind-${group.kind}`}><span className="note-group-label">{kindLabels[group.kind]}</span><span className="note-group-count">{group.items.length}</span><span className="note-group-rule" /></div><div className="keep-grid">{group.items.map((item) => <NoteCard key={item.id} item={item} view={noteView} />)}</div></section>)}</div>
+          : <section className="keep-grid" aria-label="Akış notları">{visibleNotes.map((item) => <NoteCard key={item.id} item={item} view={noteView} />)}</section>
+    ) : <div className="sp-card empty-state"><p>{showArchived ? "Arşivlenmiş not yok." : "Henüz not yok. Bir cümle yazman yeterli."}</p></div>}
     {activeTask ? <TaskResolutionSheet task={activeTask} pending={resolving} error={taskError} onClose={() => setActiveTask(null)} onResolve={(outcome) => void resolveTask(outcome)} /> : null}
-    {activeNote ? <NoteProcessingSheet item={activeNote} contacts={contacts.data ?? []} onClose={() => setActiveNote(null)} onChanged={async () => { await Promise.all([client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }), client.invalidateQueries({ queryKey: apiQueryKeys.contacts }), client.invalidateQueries({ queryKey: apiQueryKeys.opportunities }), client.invalidateQueries({ queryKey: apiQueryKeys.portfolioItems }), client.invalidateQueries({ queryKey: apiQueryKeys.todayOverview })]); }} /> : null}
+    {activeNote ? <NoteProcessingSheet item={activeNote} contacts={contacts.data ?? []} onClose={() => setActiveNote(null)} onChanged={async () => { await Promise.all([client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }), client.invalidateQueries({ queryKey: apiQueryKeys.contacts }), client.invalidateQueries({ queryKey: apiQueryKeys.opportunities }), client.invalidateQueries({ queryKey: apiQueryKeys.portfolioItems }), client.invalidateQueries({ queryKey: apiQueryKeys.listings }), client.invalidateQueries({ queryKey: apiQueryKeys.todayOverview })]); }} /> : null}
   </div></AppShell>;
 }
