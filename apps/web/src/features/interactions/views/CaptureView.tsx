@@ -14,6 +14,8 @@ import {
   contactSources,
   interactionChannelLabels,
   interactionChannels,
+  interactionDirectionLabels,
+  interactionDirections,
   interactionObjectiveLabels,
   interactionObjectives,
   manualInteractionSchema,
@@ -57,6 +59,7 @@ export function CaptureView() {
   const [nextActionType, setNextActionType] = useState<ManualInteractionDraft["nextActionType"]>(null);
   const [nextActionAt, setNextActionAt] = useState("");
   const [noteSummary, setNoteSummary] = useState("");
+  const [occurredAt, setOccurredAt] = useState("");
   const [quickContactOpen, setQuickContactOpen] = useState(false);
   const [quickContactDraft, setQuickContactDraft] = useState<ContactDraft>(emptyContactDraft);
   const [contactPending, setContactPending] = useState(false);
@@ -87,6 +90,7 @@ export function CaptureView() {
       nextActionType,
       nextActionAt: submittedNextActionAt ? new Date(submittedNextActionAt).getTime() : null,
       noteSummary,
+      occurredAt: occurredAt ? new Date(occurredAt).getTime() : null,
     };
     const parsed = manualInteractionSchema.safeParse(raw);
     if (!parsed.success) {
@@ -165,7 +169,7 @@ export function CaptureView() {
       ) : (
         <form className="capture-form" onSubmit={submit}>
           <SpCard className="form-section"><div className="section-heading compact"><div><p className="eyebrow">1 · KİM</p><h2>Görüşülen kişi</h2></div></div><div className="form-row"><ContactCombobox contacts={contacts} value={selectedContactId} onChange={setContactId} /><label>Kanal<select value={channel} onChange={(event) => setChannel(event.target.value as ManualInteractionDraft["channel"])}>{interactionChannels.map((item) => <option key={item} value={item}>{interactionChannelLabels[item]}</option>)}</select></label></div></SpCard>
-          <SpCard className="form-section"><p className="eyebrow">2 · NE OLDU</p><h2>Görüşme sonucu</h2><label>Kısa sonuç<textarea value={outcome} onChange={(event) => setOutcome(event.target.value)} placeholder="Örn. Salı günü satış planını konuşacağız." required /></label><details className="form-details"><summary>İsteğe bağlı ayrıntılar</summary><div className="form-stack"><label>Görüşme amacı<select value={objective} onChange={(event) => setObjective(event.target.value as ManualInteractionDraft["objective"])}>{interactionObjectives.map((item) => <option key={item} value={item}>{interactionObjectiveLabels[item]}</option>)}</select></label><label>Yön<select value={direction} onChange={(event) => setDirection(event.target.value as ManualInteractionDraft["direction"])}><option value="mutual">Karşılıklı</option><option value="outbound">Giden</option><option value="inbound">Gelen</option></select></label><label>Talep sonucu<select value={askOutcome} onChange={(event) => setAskOutcome(event.target.value as ManualInteractionDraft["askOutcome"])}>{askOutcomes.map((item) => <option key={item} value={item}>{askOutcomeLabels[item]}</option>)}</select></label><label>Ek not<textarea value={noteSummary} onChange={(event) => setNoteSummary(event.target.value)} /></label></div></details></SpCard>
+          <SpCard className="form-section"><p className="eyebrow">2 · NE OLDU</p><h2>Görüşme sonucu</h2><label>Kısa sonuç<textarea value={outcome} onChange={(event) => setOutcome(event.target.value)} placeholder="Örn. Salı günü satış planını konuşacağız." required /></label><details className="form-details"><summary>İsteğe bağlı ayrıntılar</summary><div className="form-stack"><label>Görüşme amacı<select value={objective} onChange={(event) => setObjective(event.target.value as ManualInteractionDraft["objective"])}>{interactionObjectives.map((item) => <option key={item} value={item}>{interactionObjectiveLabels[item]}</option>)}</select></label><label>Yön<select value={direction} onChange={(event) => setDirection(event.target.value as ManualInteractionDraft["direction"])}>{interactionDirections.map((item) => <option key={item} value={item}>{interactionDirectionLabels[item]}</option>)}</select></label><QuickDateField past required={false} label="Görüşme ne zaman oldu" value={occurredAt} onChange={setOccurredAt} /><label>Talep sonucu<select value={askOutcome} onChange={(event) => setAskOutcome(event.target.value as ManualInteractionDraft["askOutcome"])}>{askOutcomes.map((item) => <option key={item} value={item}>{askOutcomeLabels[item]}</option>)}</select></label><label>Ek not<textarea value={noteSummary} onChange={(event) => setNoteSummary(event.target.value)} /></label></div></details></SpCard>
           <SpCard className="form-section"><p className="eyebrow">3 · SONRAKİ ADIM</p><h2>Takibi planla</h2><div className="form-row"><label>Aksiyon<select value={nextActionType ?? ""} onChange={(event) => { const value = (event.target.value || null) as ManualInteractionDraft["nextActionType"]; setNextActionType(value); if (!value) setNextActionAt(""); }}><option value="">Henüz yok</option>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</select></label><QuickDateField disabled={!nextActionType} label="Tarih · saat isteğe göre değiştirilebilir" required={Boolean(nextActionType)} value={nextActionAt} onChange={setNextActionAt} /></div><input name="nextActionAt" type="hidden" value={nextActionAt} /></SpCard>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
           <div className="capture-actions"><span className="privacy-copy">Yalnız gerekli iş sonucunu kaydedin.</span><button className="primary-action inline-action" disabled={pending || !selectedContactId} type="submit"><Save size={18} aria-hidden /> {pending ? "Kaydediliyor…" : "Teması kaydet"}</button></div>

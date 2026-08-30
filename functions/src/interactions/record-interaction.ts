@@ -3,6 +3,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   applyInteractionToRelationship,
   createInteraction,
+  interactionOccurredAtError,
   manualInteractionSchema,
   type Contact,
 } from "../../../packages/shared/src/index";
@@ -29,6 +30,8 @@ export const recordInteraction = onCall(
     if (!parsed.success) {
       throw new HttpsError("invalid-argument", "Interaction input is invalid.", parsed.error.flatten());
     }
+    const occurredAtError = interactionOccurredAtError(parsed.data.occurredAt ?? null, Date.now());
+    if (occurredAtError) throw new HttpsError("invalid-argument", occurredAtError);
 
     const firestore = getFirestore();
     const commandRef = firestore.collection("commands").doc(commandId);
@@ -70,7 +73,7 @@ export const recordInteraction = onCall(
 
       transaction.create(interactionRef, {
         ...interaction,
-        occurredAt: nowTimestamp,
+        occurredAt: Timestamp.fromMillis(interaction.occurredAt),
         nextActionAt: timestamp(interaction.nextActionAt),
         createdAt: nowTimestamp,
       });

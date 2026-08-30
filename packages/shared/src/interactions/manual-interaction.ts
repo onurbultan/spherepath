@@ -64,6 +64,13 @@ export const nextActionTypeLabels: Record<NextActionType, string> = {
   other: "Diğer",
 };
 
+export const interactionDirections = ["mutual", "outbound", "inbound"] as const;
+export const interactionDirectionLabels: Record<(typeof interactionDirections)[number], string> = {
+  mutual: "Karşılıklı",
+  outbound: "Giden",
+  inbound: "Gelen",
+};
+
 export const manualInteractionSchema = z
   .object({
     contactId: z.string().min(1).max(160),
@@ -75,6 +82,8 @@ export const manualInteractionSchema = z
     nextActionType: z.enum(nextActionTypes).nullable(),
     nextActionAt: z.number().int().positive().nullable(),
     noteSummary: z.string().trim().max(1_000),
+    /** When the conversation actually happened; null falls back to the moment it is recorded. */
+    occurredAt: z.number().int().positive().nullable().optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -89,13 +98,25 @@ export const manualInteractionSchema = z
 
 export type ManualInteractionDraft = z.infer<typeof manualInteractionSchema>;
 
+/** An advisor entering the day's conversations in the evening may backdate, but only so far. */
+export const maxInteractionBackdateMs = 30 * 86_400_000;
+const clockSkewGraceMs = 60_000;
+
+/** Returns a user-facing reason when a backdated conversation time is out of range. */
+export function interactionOccurredAtError(occurredAt: number | null, now: number): string | null {
+  if (occurredAt === null) return null;
+  if (occurredAt > now + clockSkewGraceMs) return "Görüşme zamanı gelecekte olamaz.";
+  if (occurredAt < now - maxInteractionBackdateMs) return "Görüşme zamanı en fazla 30 gün geriye alınabilir.";
+  return null;
+}
+
 export function createInteraction(draft: ManualInteractionDraft, tenant: TenantOwned, now: number): Interaction {
   const parsed = manualInteractionSchema.parse(draft);
   return {
     ...tenant,
     contactId: parsed.contactId,
     channel: parsed.channel,
-    occurredAt: now,
+    occurredAt: parsed.occurredAt ?? now,
     objective: parsed.objective,
     direction: parsed.direction,
     outcome: parsed.outcome,

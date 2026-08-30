@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyInteractionToRelationship, createInteraction, manualInteractionSchema } from "./manual-interaction.js";
+import { applyInteractionToRelationship, createInteraction, interactionOccurredAtError, manualInteractionSchema } from "./manual-interaction.js";
 
 describe("manual interactions", () => {
   it("requires a complete next action pair", () => {
@@ -58,5 +58,34 @@ describe("manual interactions", () => {
     expect(relationship.meaningfulTouchCount).toBe(1);
     expect(relationship.reciprocalTouchCount).toBe(1);
     expect(relationship.nextActionType).toBe("call");
+  });
+});
+
+describe("backdated conversation time", () => {
+  const base = {
+    contactId: "contact-1", channel: "phone" as const, objective: "follow_up" as const, direction: "mutual" as const,
+    outcome: "Görüşme tamamlandı", askOutcome: "not_asked" as const, nextActionType: null, nextActionAt: null, noteSummary: "",
+  };
+  const tenant = { officeId: "office-1", ownerUid: "user-1" };
+  const now = 10 * 86_400_000;
+
+  it("records the conversation time the advisor entered, not the moment of entry", () => {
+    const morning = now - 11 * 60 * 60 * 1_000;
+    expect(createInteraction({ ...base, occurredAt: morning }, tenant, now).occurredAt).toBe(morning);
+  });
+
+  it("falls back to the recording time when none is given", () => {
+    expect(createInteraction(base, tenant, now).occurredAt).toBe(now);
+  });
+
+  it("rejects a conversation time in the future or beyond the backdating window", () => {
+    expect(interactionOccurredAtError(now + 5 * 60_000, now)).toContain("gelecekte");
+    expect(interactionOccurredAtError(now - 40 * 86_400_000, now)).toContain("30 gün");
+  });
+
+  it("accepts a time inside the window and tolerates small clock skew", () => {
+    expect(interactionOccurredAtError(now - 3 * 86_400_000, now)).toBeNull();
+    expect(interactionOccurredAtError(now + 10_000, now)).toBeNull();
+    expect(interactionOccurredAtError(null, now)).toBeNull();
   });
 });
