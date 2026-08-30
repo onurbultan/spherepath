@@ -211,6 +211,14 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
     expect(newContactButtonRect.height).toBeLessThan(captureModeTabsRect.height);
     await page.setViewportSize(originalViewport);
   }
+  const voiceGap = (await page.locator(".voice-card").boundingBox())!.y - ((await captureModeTabs.boundingBox())!.y + (await captureModeTabs.boundingBox())!.height);
+  await manualModeTab.click();
+  await expect(page.locator(".capture-form")).toBeVisible();
+  const manualGap = (await page.locator(".capture-form").boundingBox())!.y - ((await captureModeTabs.boundingBox())!.y + (await captureModeTabs.boundingBox())!.height);
+  expect(voiceGap).toBeGreaterThanOrEqual(7);
+  expect(Math.abs(manualGap - voiceGap)).toBeLessThanOrEqual(1);
+  await voiceModeTab.click();
+  await expect(page.locator(".voice-card")).toBeVisible();
   const writtenNoteToggle = page.getByText("Ses yerine yazılı not kullan", { exact: true });
   const writtenNoteToggleMetrics = await writtenNoteToggle.evaluate((summary) => {
     const summaryRect = summary.getBoundingClientRect();

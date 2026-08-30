@@ -691,7 +691,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .capture-mode-tabs { display: inline-grid; grid-template-columns: 1fr 1fr; gap: 2px; width: min(100%, 420px); padding: 2px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--sunk); }
 .capture-mode-tabs button { min-height: var(--hit-min); display: inline-flex; align-items: center; justify-content: center; padding: 0 var(--space-lg); border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); font: inherit; font-weight: 700; line-height: 1; cursor: pointer; }
 .capture-mode-tabs button.selected { background: var(--card); color: var(--deed); box-shadow: var(--shadow-sm); }
-.capture-mode-tabs + .voice-card { margin-top: var(--space-md); }
+.capture-mode-tabs + :is(.voice-card, .capture-form, .success-state) { margin-top: var(--space-md); }
 
 .success-state { min-height: 300px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; }
 .success-state p:not(.eyebrow) { color: var(--text-secondary); font-size: 13.5px; }
