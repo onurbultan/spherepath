@@ -1,4 +1,5 @@
 import type { EarningsSummary } from "../closing/earnings.js";
+import type { FunnelMetrics } from "./funnel-metrics.js";
 import type { ReportingPeriod } from "../today/build-overview.js";
 
 export interface FunnelCounts {
@@ -34,6 +35,7 @@ export interface FunnelOverview {
   coaching: FunnelCoaching;
   earnings: EarningsSummary;
   target: FunnelTargetProgress;
+  metrics: FunnelMetrics;
 }
 
 const targetMonths: Record<ReportingPeriod, number> = { "30d": 1, "90d": 3, "1y": 12 };

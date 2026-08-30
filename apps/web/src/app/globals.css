@@ -1244,3 +1244,17 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .match-card.is-near-miss .match-progress > i { background: var(--warm); }
 
 .match-situation { margin: 0; padding: 4px 9px; border-radius: var(--radius-sm); background: var(--deed-bg); color: var(--deed); font-size: 12px; justify-self: start; }
+
+.mirror-card { grid-column: 1 / -1; display: grid; gap: var(--space-xl); }
+.mirror-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-lg); }
+.mirror-tile { display: grid; gap: 4px; padding: var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--background); }
+.mirror-tile > strong { font-family: var(--font-zilla-slab), serif; font-size: 26px; font-weight: 700; color: var(--deed); font-variant-numeric: tabular-nums; }
+.mirror-tile > small { color: var(--text-secondary); line-height: 1.4; }
+.mirror-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--space-xl); }
+.mirror-lists .eyebrow { margin: 0 0 var(--space-md); }
+.mirror-lists ul { display: grid; gap: var(--space-md); margin: 0; padding: 0; list-style: none; }
+.mirror-lists li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px var(--space-md); padding-bottom: var(--space-md); border-bottom: 1px solid var(--line); }
+.mirror-lists li:last-child { border-bottom: none; padding-bottom: 0; }
+.mirror-lists li > span { min-width: 0; overflow-wrap: anywhere; }
+.mirror-lists li > strong { font-variant-numeric: tabular-nums; }
+.mirror-lists li > small { grid-column: 1 / -1; color: var(--text-secondary); }

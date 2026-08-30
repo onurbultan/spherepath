@@ -1,6 +1,6 @@
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { buildEarningsSummary, buildFunnelCoaching, buildFunnelTargetProgress, reportingPeriodSchema, type CurrencyCode, type DealStage, type EarningsDeal, type FunnelOverview, type ReportingPeriod } from "../../../packages/shared/src/index.js";
+import { buildEarningsSummary, buildFunnelCoaching, buildFunnelMetrics, buildFunnelTargetProgress, reportingPeriodSchema, type ContactSource, type CurrencyCode, type DealStage, type EarningsDeal, type FunnelClosedDeal, type FunnelInteraction, type FunnelOverview, type FunnelStageEvent, type ReportingPeriod } from "../../../packages/shared/src/index.js";
 import { requireSpherepathClaims } from "../auth/claims.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 
@@ -21,8 +21,9 @@ export const getFunnelOverview = onCall(
         if (claims.role !== "broker") query = query.where("ownerUid", "==", claims.uid);
         return query;
       };
-      const [contacts, opportunities, listings, deals, events, advisor] = await Promise.all([
+      const [contacts, opportunities, listings, deals, events, interactions, advisor] = await Promise.all([
         scoped("contacts").limit(1_000).get(), scoped("opportunities").limit(1_000).get(), scoped("listings").limit(1_000).get(), scoped("deals").limit(1_000).get(), scoped("stageEvents").limit(5_000).get(),
+        scoped("interactions").limit(2_000).get(),
         db.collection("users").doc(claims.uid).get(),
       ]);
       const active = (data: FirebaseFirestore.DocumentData) => data.deletedAt === null || data.deletedAt === undefined;
@@ -54,6 +55,42 @@ export const getFunnelOverview = onCall(
         };
       });
       const monthlyTarget = typeof advisor.data()?.monthlyPortfolioTarget === "number" ? advisor.data()!.monthlyPortfolioTarget as number : null;
+
+      const contactSources = new Map(contacts.docs.map((doc) => [doc.id, (doc.data().source ?? null) as ContactSource | null]));
+      const metricEvents: FunnelStageEvent[] = events.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          entityType: data.entityType as string,
+          entityId: data.entityId as string,
+          fromStage: (data.fromStage ?? null) as string | null,
+          toStage: data.toStage as string,
+          occurredAt: millis(data.occurredAt) ?? 0,
+          correction: data.correction === true,
+        };
+      });
+      const metricInteractions: FunnelInteraction[] = interactions.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          contactId: data.contactId as string,
+          channel: data.channel,
+          objective: data.objective,
+          askOutcome: data.askOutcome,
+          occurredAt: millis(data.occurredAt) ?? 0,
+          nextActionAt: millis(data.nextActionAt),
+        };
+      });
+      const metricLostReasons = opportunities.docs
+        .filter((doc) => active(doc.data()) && doc.data().stage === "lost")
+        .map((doc) => (doc.data().lostReason ?? null) as string | null);
+      const metricDeals: FunnelClosedDeal[] = deals.docs.filter((doc) => active(doc.data()) && doc.data().stage === "closed").map((doc) => {
+        const data = doc.data();
+        return {
+          buyerSource: typeof data.buyerContactId === "string" ? contactSources.get(data.buyerContactId) ?? null : null,
+          commissionAmount: typeof data.commissionAmount === "number" ? data.commissionAmount : null,
+          currency: typeof data.currency === "string" ? data.currency as CurrencyCode : null,
+          closedAt: millis(data.closedAt),
+        };
+      });
       return {
         overview: {
           period: parsed.data,
@@ -61,6 +98,7 @@ export const getFunnelOverview = onCall(
           coaching: buildFunnelCoaching(counts),
           earnings: buildEarningsSummary(earningsDeals, parsed.data, Date.now()),
           target: buildFunnelTargetProgress(counts, parsed.data, monthlyTarget),
+          metrics: buildFunnelMetrics(metricEvents, metricInteractions, metricLostReasons, metricDeals, parsed.data, Date.now()),
         },
       };
     });
