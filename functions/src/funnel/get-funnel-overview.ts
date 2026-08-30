@@ -1,6 +1,6 @@
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { buildFunnelCoaching, reportingPeriodSchema, type FunnelOverview, type ReportingPeriod } from "../../../packages/shared/src/index.js";
+import { buildEarningsSummary, buildFunnelCoaching, buildFunnelTargetProgress, reportingPeriodSchema, type CurrencyCode, type DealStage, type EarningsDeal, type FunnelOverview, type ReportingPeriod } from "../../../packages/shared/src/index.js";
 import { requireSpherepathClaims } from "../auth/claims.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 
@@ -21,8 +21,9 @@ export const getFunnelOverview = onCall(
         if (claims.role !== "broker") query = query.where("ownerUid", "==", claims.uid);
         return query;
       };
-      const [contacts, opportunities, listings, deals, events] = await Promise.all([
+      const [contacts, opportunities, listings, deals, events, advisor] = await Promise.all([
         scoped("contacts").limit(1_000).get(), scoped("opportunities").limit(1_000).get(), scoped("listings").limit(1_000).get(), scoped("deals").limit(1_000).get(), scoped("stageEvents").limit(5_000).get(),
+        db.collection("users").doc(claims.uid).get(),
       ]);
       const active = (data: FirebaseFirestore.DocumentData) => data.deletedAt === null || data.deletedAt === undefined;
       const eventDocs = events.docs.filter((doc) => (millis(doc.data().occurredAt) ?? 0) >= windowStart);
@@ -42,7 +43,26 @@ export const getFunnelOverview = onCall(
         negotiations: uniqueEvents("deal", ["offer", "contract"]),
         closings: deals.docs.filter((doc) => active(doc.data()) && doc.data().stage === "closed" && (millis(doc.data().closedAt) ?? 0) >= windowStart).length,
       };
-      return { overview: { period: parsed.data, counts, coaching: buildFunnelCoaching(counts) } };
+      const earningsDeals: EarningsDeal[] = deals.docs.filter((doc) => active(doc.data())).map((doc) => {
+        const data = doc.data();
+        return {
+          stage: data.stage as DealStage,
+          actualAmount: typeof data.actualAmount === "number" ? data.actualAmount : null,
+          commissionAmount: typeof data.commissionAmount === "number" ? data.commissionAmount : null,
+          currency: typeof data.currency === "string" ? data.currency as CurrencyCode : null,
+          closedAt: millis(data.closedAt),
+        };
+      });
+      const monthlyTarget = typeof advisor.data()?.monthlyPortfolioTarget === "number" ? advisor.data()!.monthlyPortfolioTarget as number : null;
+      return {
+        overview: {
+          period: parsed.data,
+          counts,
+          coaching: buildFunnelCoaching(counts),
+          earnings: buildEarningsSummary(earningsDeals, parsed.data, Date.now()),
+          target: buildFunnelTargetProgress(counts, parsed.data, monthlyTarget),
+        },
+      };
     });
   },
 );

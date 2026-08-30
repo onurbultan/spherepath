@@ -90,7 +90,7 @@ export type DailyTaskOutcome = z.infer<typeof dailyTaskOutcomeSchema>;
 export const replaceDailyPlanItemSchema = z.object({ taskId: z.string().trim().min(3).max(240) }).strict();
 export type ReplaceDailyPlanItemInput = z.infer<typeof replaceDailyPlanItemSchema>;
 
-const periodDays: Record<ReportingPeriod, number> = { "30d": 30, "90d": 90, "1y": 365 };
+export const reportingPeriodDays: Record<ReportingPeriod, number> = { "30d": 30, "90d": 90, "1y": 365 };
 
 export const reportingPeriodLabels: Record<ReportingPeriod, string> = { "30d": "30 gün", "90d": "90 gün", "1y": "1 yıl" };
 
@@ -108,7 +108,7 @@ export function buildTodayOverview(
   interactions: readonly TodayInteraction[] = [],
   period: ReportingPeriod = "30d",
 ): TodayOverview {
-  const windowStart = now - periodDays[period] * 24 * 60 * 60 * 1_000;
+  const windowStart = now - reportingPeriodDays[period] * 24 * 60 * 60 * 1_000;
   const periodLabel = reportingPeriodLabels[period];
   const activeOpportunities = opportunities.filter((item) => item.stage !== "lost");
   const stages = {

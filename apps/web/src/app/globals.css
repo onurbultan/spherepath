@@ -1221,3 +1221,17 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
   .confirm-dialog { max-height: calc(100dvh - 24px); overflow: auto; }
   input, select, textarea, button, a { max-width: 100%; }
 }
+
+.earnings-card { grid-column: 1 / -1; display: grid; gap: var(--space-lg); }
+.earnings-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-lg); }
+.earnings-heading h2, .earnings-heading p { margin: 0; }
+.earnings-target { display: grid; justify-items: end; gap: 2px; padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--background); }
+.earnings-target small { color: var(--text-secondary); font-size: 11px; }
+.earnings-target strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+.earnings-totals { display: flex; flex-wrap: wrap; gap: var(--space-xl) var(--space-4xl); }
+.earnings-total { display: grid; gap: 3px; }
+.earnings-total > strong { font-family: var(--font-zilla-slab), serif; font-size: 30px; font-weight: 700; color: var(--good); font-variant-numeric: tabular-nums; }
+.earnings-total > small { color: var(--text-secondary); }
+.earnings-bar { height: 6px; border-radius: 999px; background: var(--sunk); overflow: hidden; }
+.earnings-bar > span { display: block; height: 100%; border-radius: 999px; background: var(--deed); }
+@media (max-width: 720px) { .earnings-heading { flex-direction: column; } .earnings-target { justify-items: start; } }

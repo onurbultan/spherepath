@@ -1,3 +1,4 @@
+import type { EarningsSummary } from "../closing/earnings.js";
 import type { ReportingPeriod } from "../today/build-overview.js";
 
 export interface FunnelCounts {
@@ -17,10 +18,36 @@ export interface FunnelCoaching {
   target: "capture" | "contacts" | "opportunities" | "listings";
 }
 
+export interface FunnelTargetProgress {
+  /** Monthly portfolio target the advisor set in settings; null while unset. */
+  monthlyTarget: number | null;
+  /** That monthly target scaled to the selected reporting period. */
+  periodTarget: number | null;
+  achieved: number;
+  /** Achieved over target; null while no target is set. */
+  ratio: number | null;
+}
+
 export interface FunnelOverview {
   period: ReportingPeriod;
   counts: FunnelCounts;
   coaching: FunnelCoaching;
+  earnings: EarningsSummary;
+  target: FunnelTargetProgress;
+}
+
+const targetMonths: Record<ReportingPeriod, number> = { "30d": 1, "90d": 3, "1y": 12 };
+
+/** Compares authorized listings against the monthly portfolio target, scaled to the period. */
+export function buildFunnelTargetProgress(
+  counts: FunnelCounts,
+  period: ReportingPeriod,
+  monthlyTarget: number | null,
+): FunnelTargetProgress {
+  const achieved = counts.authorizedListings;
+  if (monthlyTarget === null || monthlyTarget <= 0) return { monthlyTarget: null, periodTarget: null, achieved, ratio: null };
+  const periodTarget = monthlyTarget * targetMonths[period];
+  return { monthlyTarget, periodTarget, achieved, ratio: achieved / periodTarget };
 }
 
 export function buildFunnelCoaching(counts: FunnelCounts): FunnelCoaching {
