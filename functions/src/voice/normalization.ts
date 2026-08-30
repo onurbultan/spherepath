@@ -44,6 +44,10 @@ function propertyTypesFrom(text: string): VoicePropertyPreferences["propertyType
 
 function locationsFrom(text: string): string[] {
   const values: string[] = [];
+  for (const match of text.matchAll(/\b(?:([A-ZÇĞİÖŞÜ][\p{L}.-]{1,40})\s+)?([A-ZÇĞİÖŞÜ][\p{L}.-]{1,40})['’](?:da|de|ta|te)\b/gu)) {
+    const value = [match[1], match[2]].filter(Boolean).join(" ");
+    if (value) values.push(value);
+  }
   for (const match of text.matchAll(/\b([A-ZÇĞİÖŞÜ][\p{L}.-]{1,60})(?:['’](?:da|de|ta|te)ki)\b/gu)) {
     if (match[1]) values.push(match[1]);
   }
@@ -69,8 +73,8 @@ function preferencesFrom(text: string, transactionType: VoicePropertyPreferences
     mustHaves: [
       /\bbahçeli\b/iu.test(text) ? "Bahçeli" : null,
       /\botoparklı\b/iu.test(text) ? "Otoparklı" : null,
-      /\bdenize\s+yürüme\s+mesafesi(?:nde)?\b/iu.test(text) ? "Denize yürüme mesafesi" : null,
       /\bsakin\s+(?:bir\s+)?(?:sokak|cadde|mahalle)\b/iu.test(text) ? "Sakin sokak" : null,
+      /\bdenize\s+yürüme\s+mesafesi(?:nde)?\b/iu.test(text) ? "Denize yürüme mesafesi" : null,
     ].filter((item): item is string => item !== null),
   };
 }
@@ -132,21 +136,41 @@ export function normalizeVoiceExtraction(
     ?? propertySituations[0]
     ?? null;
   const extractedPreferences = extraction.insights.propertyPreferences;
+  // A short field note often spreads one requirement across several sentences
+  // (location first, budget next). When there is only one property situation,
+  // enrich that situation from the complete note without mixing two properties.
+  const wholeNotePreferences = primarySituation && propertySituations.length === 1
+    ? preferencesFrom(maskedTranscript, primarySituation.propertyPreferences.transactionType)
+    : null;
+  const primaryPreferences = primarySituation && wholeNotePreferences ? {
+    ...primarySituation.propertyPreferences,
+    propertyTypes: appendUnique(primarySituation.propertyPreferences.propertyTypes, wholeNotePreferences.propertyTypes),
+    preferredLocations: appendUnique(primarySituation.propertyPreferences.preferredLocations, wholeNotePreferences.preferredLocations),
+    budgetRange: primarySituation.propertyPreferences.budgetRange ?? wholeNotePreferences.budgetRange,
+    bedroomCountMin: primarySituation.propertyPreferences.bedroomCountMin ?? wholeNotePreferences.bedroomCountMin,
+    livingRoomCountMin: primarySituation.propertyPreferences.livingRoomCountMin ?? wholeNotePreferences.livingRoomCountMin,
+    roomCountMin: primarySituation.propertyPreferences.roomCountMin ?? wholeNotePreferences.roomCountMin,
+    areaMinM2: primarySituation.propertyPreferences.areaMinM2 ?? wholeNotePreferences.areaMinM2,
+    areaMaxM2: primarySituation.propertyPreferences.areaMaxM2 ?? wholeNotePreferences.areaMaxM2,
+    mustHaves: appendUnique(primarySituation.propertyPreferences.mustHaves, wholeNotePreferences.mustHaves),
+    dealBreakers: appendUnique(primarySituation.propertyPreferences.dealBreakers, wholeNotePreferences.dealBreakers),
+    timeline: primarySituation.propertyPreferences.timeline ?? wholeNotePreferences.timeline,
+  } : primarySituation?.propertyPreferences;
   const samePrimaryTransaction = primarySituation?.propertyPreferences.transactionType !== null
     && primarySituation?.propertyPreferences.transactionType === extractedPreferences.transactionType;
   const preferences = primarySituation ? {
-    ...primarySituation.propertyPreferences,
-    propertyTypes: appendUnique(primarySituation.propertyPreferences.propertyTypes, samePrimaryTransaction ? extractedPreferences.propertyTypes : []),
-    preferredLocations: appendUnique(primarySituation.propertyPreferences.preferredLocations, samePrimaryTransaction ? extractedPreferences.preferredLocations : []),
-    budgetRange: primarySituation.propertyPreferences.budgetRange ?? (samePrimaryTransaction ? extractedPreferences.budgetRange : null),
-    bedroomCountMin: primarySituation.propertyPreferences.bedroomCountMin ?? (samePrimaryTransaction ? extractedPreferences.bedroomCountMin : null),
-    livingRoomCountMin: primarySituation.propertyPreferences.livingRoomCountMin ?? (samePrimaryTransaction ? extractedPreferences.livingRoomCountMin : null),
-    roomCountMin: primarySituation.propertyPreferences.roomCountMin ?? (samePrimaryTransaction ? extractedPreferences.roomCountMin : null),
-    areaMinM2: primarySituation.propertyPreferences.areaMinM2 ?? (samePrimaryTransaction ? extractedPreferences.areaMinM2 : null),
-    areaMaxM2: primarySituation.propertyPreferences.areaMaxM2 ?? (samePrimaryTransaction ? extractedPreferences.areaMaxM2 : null),
-    mustHaves: appendUnique(primarySituation.propertyPreferences.mustHaves, samePrimaryTransaction ? extractedPreferences.mustHaves : []),
-    dealBreakers: appendUnique(primarySituation.propertyPreferences.dealBreakers, samePrimaryTransaction ? extractedPreferences.dealBreakers : []),
-    timeline: primarySituation.propertyPreferences.timeline ?? (samePrimaryTransaction ? extractedPreferences.timeline : null),
+    ...primaryPreferences!,
+    propertyTypes: appendUnique(primaryPreferences!.propertyTypes, samePrimaryTransaction ? extractedPreferences.propertyTypes : []),
+    preferredLocations: appendUnique(primaryPreferences!.preferredLocations, samePrimaryTransaction ? extractedPreferences.preferredLocations : []),
+    budgetRange: primaryPreferences!.budgetRange ?? (samePrimaryTransaction ? extractedPreferences.budgetRange : null),
+    bedroomCountMin: primaryPreferences!.bedroomCountMin ?? (samePrimaryTransaction ? extractedPreferences.bedroomCountMin : null),
+    livingRoomCountMin: primaryPreferences!.livingRoomCountMin ?? (samePrimaryTransaction ? extractedPreferences.livingRoomCountMin : null),
+    roomCountMin: primaryPreferences!.roomCountMin ?? (samePrimaryTransaction ? extractedPreferences.roomCountMin : null),
+    areaMinM2: primaryPreferences!.areaMinM2 ?? (samePrimaryTransaction ? extractedPreferences.areaMinM2 : null),
+    areaMaxM2: primaryPreferences!.areaMaxM2 ?? (samePrimaryTransaction ? extractedPreferences.areaMaxM2 : null),
+    mustHaves: appendUnique(primaryPreferences!.mustHaves, samePrimaryTransaction ? extractedPreferences.mustHaves : []),
+    dealBreakers: appendUnique(primaryPreferences!.dealBreakers, samePrimaryTransaction ? extractedPreferences.dealBreakers : []),
+    timeline: primaryPreferences!.timeline ?? (samePrimaryTransaction ? extractedPreferences.timeline : null),
   } : extractedPreferences;
   const preferenceEvidence = primarySituation?.summary ?? maskedTranscript;
   const transactionType = preferences.transactionType;

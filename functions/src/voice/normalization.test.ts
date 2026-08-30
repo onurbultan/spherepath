@@ -127,4 +127,20 @@ describe("voice extraction normalization", () => {
       bedroomCountMin: null,
     });
   });
+
+  it("combines a multi-sentence mobile note with typographic apostrophes", () => {
+    const transcript = "Elif Karaca Urla İskele’de 3+1 bahçeli villa arıyor. Bütçesi 18 milyon TL’ye kadar. Önümüzdeki perşembe saat 10:30’da arayıp seçenekleri paylaşacağım.";
+    const result = normalizeVoiceExtraction(extractVoiceDraft(transcript), transcript);
+
+    expect(result.interaction.nextActionType).toBe("call");
+    expect(result.insights.propertyPreferences).toMatchObject({
+      transactionType: "buy",
+      propertyTypes: ["villa"],
+      preferredLocations: ["Urla İskele"],
+      budgetRange: { min: null, max: 18_000_000, currency: "TRY" },
+      bedroomCountMin: 3,
+      livingRoomCountMin: 1,
+      mustHaves: ["Bahçeli"],
+    });
+  });
 });

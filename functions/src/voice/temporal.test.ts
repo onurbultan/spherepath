@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyVoiceInsights, voiceExtractionSchema } from "../../../packages/shared/src/index.js";
 import { normalizeVoiceActionTiming, voiceReferenceContext } from "./temporal.js";
+import { extractVoiceDraft } from "./privacy.js";
 
 const saturday = new Date("2026-08-29T09:00:00.000Z");
 
@@ -103,5 +104,13 @@ describe("voice action timing", () => {
 
   it("describes the exact model reference date", () => {
     expect(voiceReferenceContext(saturday)).toContain("2026-08-29 (Cumartesi)");
+  });
+
+  it("resolves a mobile-style follow-up with typographic apostrophes", () => {
+    const transcript = "Önümüzdeki perşembe saat 10:30’da arayıp seçenekleri paylaşacağım.";
+    const result = normalizeVoiceActionTiming(extractVoiceDraft(transcript), transcript, saturday);
+    expect(result.interaction.nextActionType).toBe("call");
+    expect(result.interaction.daysFromNow).toBe(5);
+    expect(result.interaction.actionTime).toBe("10:30");
   });
 });

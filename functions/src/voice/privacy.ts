@@ -130,7 +130,7 @@ export function sanitizeVoiceExtraction(extraction: VoiceExtraction): VoiceExtra
 }
 
 function inferNextAction(text: string): VoiceExtraction["interaction"]["nextActionType"] {
-  if (/\b(ara|arayacağım|arayacağiz|arayacağız|telefon edeceğim)\b/iu.test(text)) return "call";
+  if (/\b(ara|aramak|arayıp|arayacağım|arayacağiz|arayacağız|telefon edeceğim)\b/iu.test(text)) return "call";
   if (/\b(mesaj|whatsapp|yazacağım|yazacağız)\b/iu.test(text)) return "message";
   if (/\b(randevu|buluşacağım|buluşacağız|görüşeceğiz)\b/iu.test(text)) return "appointment";
   if (/\b(değerleme|ekspertiz)\b/iu.test(text)) return "valuation";
