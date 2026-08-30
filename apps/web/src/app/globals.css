@@ -931,7 +931,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .settings-sections { display: grid; gap: 14px; }
 .settings-sections-footer { display: flex; justify-content: flex-end; }
 .settings-sections-footer .primary-action { margin-top: 0; }
-#advisor-profile, #reminders, #data-controller, #office-team, #data-requests { scroll-margin-top: 78px; }
+#advisor-profile, #reminders, #data-controller, #data-requests { scroll-margin-top: 78px; }
 .settings-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .settings-summary .sp-card { min-height: 88px; padding: 12px 13px; display: flex; flex-direction: column; gap: 5px; }
 .settings-summary .sp-card > span { color: var(--text-tertiary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10px; letter-spacing: 1.1px; text-transform: uppercase; }
@@ -966,6 +966,8 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .request-actions button:hover { background: var(--sunk); }
 
 .office-team-section { display: grid; gap: var(--space-xl); margin: var(--space-xl) 0; scroll-margin-top: 72px; }
+.team-view { min-width: 0; display: grid; gap: var(--space-2xl); }
+.team-view .office-team-section { margin: 0; }
 .office-team-section .section-heading p:last-child { max-width: 760px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
 .office-team-card { align-content: start; }
 .office-member-list { display: grid; gap: var(--space-md); }

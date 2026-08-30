@@ -313,7 +313,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   });
   expect(funnelOverlap).toBeLessThanOrEqual(1);
 
-  const routes = ["/", "/funnel", "/capture", "/contacts", "/opportunities", "/listings", "/closing", "/settings"];
+  const routes = ["/", "/funnel", "/capture", "/contacts", "/opportunities", "/listings", "/closing", "/team", "/settings"];
   for (const route of routes) {
     await page.goto(route);
     await expect(page.locator("main")).toBeVisible();
@@ -338,6 +338,11 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
     await swipe(page, ".app-frame", 340, 80);
     await expect(page).toHaveURL(/\/funnel\/?$/);
     await expect(page.getByRole("heading", { name: "Nerede takılıyor?" })).toBeVisible();
+  } else {
+    await page.getByRole("navigation", { name: "Ana navigasyon" }).getByRole("link", { name: "Ekip" }).click();
+    await expect(page).toHaveURL(/\/team\/?$/);
+    await expect(page.getByRole("heading", { name: "Ekip", level: 1 })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Ana navigasyon" }).getByRole("link", { name: /Ekip/ })).toHaveAttribute("aria-current", "page");
   }
 
   await expectNoSeriousAccessibilityViolations(page);

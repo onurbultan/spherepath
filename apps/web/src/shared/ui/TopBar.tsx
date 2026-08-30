@@ -19,6 +19,7 @@ const pageTitles: Record<string, string> = {
   "/closing": "Kapama",
   "/capture": "Temas kaydet",
   "/settings": "Ayarlar ve uyum",
+  "/team": "Ekip",
 };
 
 export function TopBar({ pathname, onOpenSearch }: { pathname: string; onOpenSearch(): void }) {

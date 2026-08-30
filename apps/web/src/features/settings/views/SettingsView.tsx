@@ -1,8 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { Bell, Building2, Check, Copy, Download, FileText, Lock, MessageCircleMore, Save, ShieldCheck, UserPlus, UserRoundCog, Users } from "lucide-react";
+import { Bell, Download, FileText, Lock, MessageCircleMore, Save, ShieldCheck, UserRoundCog, Users } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   apiQueryKeys,
@@ -15,7 +14,6 @@ import {
   workspaceSettingsSchema,
   type ContactDraft,
   type DataSubjectRequestType,
-  type OfficeInviteView,
   type WorkspaceSettingsDraft,
   type WorkspaceSettingsView,
 } from "@spherepath/shared";
@@ -27,19 +25,15 @@ import { ContactCombobox } from "@/shared/ui/ContactCombobox";
 import { useActiveAnchor } from "@/shared/ui/useActiveAnchor";
 import { WhatsAppGroupSettingsCard } from "../components/WhatsAppGroupSettingsCard";
 import {
-  createOfficeInvite,
   createDataSubjectRequest,
   getContactDataExport,
-  joinOffice,
   listDataSubjectRequests,
-  loadOfficeTeam,
   loadWorkspaceSettings,
   resolveDataSubjectRequest,
-  revokeOfficeInvite,
   saveWorkspaceSettings,
 } from "../resources/settings";
 
-const settingsSections = ["advisor-profile", "reminders", "whatsapp-group", "data-controller", "voice-privacy", "office-team", "data-requests"] as const;
+const settingsSections = ["advisor-profile", "reminders", "whatsapp-group", "data-controller", "voice-privacy", "data-requests"] as const;
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Ayarlar güncellenemedi.";
@@ -83,11 +77,9 @@ function downloadJson(value: unknown, filename: string) {
 }
 
 export function SettingsView() {
-  const { session, refreshSession } = useSession();
-  const router = useRouter();
+  const { session } = useSession();
   const queryClient = useQueryClient();
   const settingsQuery = useQuery({ queryKey: apiQueryKeys.workspaceSettings, queryFn: loadWorkspaceSettings });
-  const teamQuery = useQuery({ queryKey: apiQueryKeys.officeTeam, queryFn: loadOfficeTeam });
   const requestsQuery = useQuery({ queryKey: apiQueryKeys.dataSubjectRequests, queryFn: listDataSubjectRequests });
   const contactsQuery = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts });
   const activeSection = useActiveAnchor(settingsSections, 96, Boolean(settingsQuery.data));
@@ -99,9 +91,6 @@ export function SettingsView() {
   const [requestType, setRequestType] = useState<DataSubjectRequestType>("access");
   const [requesterReference, setRequesterReference] = useState("");
   const [details, setDetails] = useState("");
-  const [invite, setInvite] = useState<OfficeInviteView | null>(null);
-  const [joinCode, setJoinCode] = useState("");
-  const [inviteCopied, setInviteCopied] = useState(false);
 
   const contacts = contactsQuery.data ?? [];
   const selectedContactId = contactId;
@@ -168,52 +157,6 @@ export function SettingsView() {
     finally { setPending(false); }
   }
 
-  async function createInvite() {
-    if (!session) return;
-    setPending(true); setError(null); setMessage(null);
-    try {
-      const nextInvite = await createOfficeInvite(session);
-      setInvite(nextInvite);
-      await refreshSession();
-      await queryClient.invalidateQueries({ queryKey: apiQueryKeys.officeTeam });
-      setMessage("Tek kullanımlık ofis daveti hazırlandı.");
-    } catch (nextError) { setError(messageFrom(nextError)); }
-    finally { setPending(false); }
-  }
-
-  async function copyInvite() {
-    if (!invite) return;
-    try {
-      await navigator.clipboard.writeText(invite.code);
-      setInviteCopied(true);
-      window.setTimeout(() => setInviteCopied(false), 2500);
-    } catch { setError("Davet kodu panoya kopyalanamadı."); }
-  }
-
-  async function revokeInvite(code: string) {
-    if (!session) return;
-    setPending(true); setError(null); setMessage(null);
-    try {
-      await revokeOfficeInvite(session, code);
-      if (invite?.code === code) setInvite(null);
-      await queryClient.invalidateQueries({ queryKey: apiQueryKeys.officeTeam });
-      setMessage("Ofis daveti iptal edildi.");
-    } catch (nextError) { setError(messageFrom(nextError)); }
-    finally { setPending(false); }
-  }
-
-  async function joinTeam(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!session) return;
-    setPending(true); setError(null); setMessage(null);
-    try {
-      await joinOffice(session, { code: joinCode });
-      await refreshSession();
-      queryClient.clear();
-      router.push("/");
-    } catch (nextError) { setError(messageFrom(nextError)); setPending(false); }
-  }
-
   if (settingsQuery.isPending || !draft) return <AppShell><div className="content-state">Ayarlar yükleniyor…</div></AppShell>;
   if (settingsQuery.error) return <AppShell><p className="form-error notice">{messageFrom(settingsQuery.error)}</p></AppShell>;
   const requests = requestsQuery.data ?? [];
@@ -231,7 +174,7 @@ export function SettingsView() {
           <a aria-current={activeSection === "reminders" ? "true" : undefined} className={activeSection === "reminders" ? "active" : ""} href="#reminders"><Bell size={16} /> Hatırlatmalar</a>
         </div>
         <div><span>Ofis</span>
-          <a aria-current={activeSection === "office-team" ? "true" : undefined} className={activeSection === "office-team" ? "active" : ""} href="#office-team"><Users size={16} /> Ekip ve davetler <em>{teamQuery.data?.members.length ?? 0}</em></a>
+          <a href="/team"><Users size={16} /> Ekip ve davetler</a>
           <a aria-current={activeSection === "whatsapp-group" ? "true" : undefined} className={activeSection === "whatsapp-group" ? "active" : ""} href="#whatsapp-group"><MessageCircleMore size={16} /> WhatsApp grubu</a>
           <a aria-current={activeSection === "data-controller" ? "true" : undefined} className={activeSection === "data-controller" ? "active" : ""} href="#data-controller"><ShieldCheck size={16} /> Veri sorumlusu</a>
         </div>
@@ -269,10 +212,6 @@ export function SettingsView() {
     </form>
     <WhatsAppGroupSettingsCard />
     <section className="office-team-section" id="voice-privacy"><div className="section-heading"><div><p className="eyebrow">SES VE GİZLİLİK</p><h2>Görüşme sonrası güvenli not</h2><p>Sesli not yalnız danışmanın görüşme bittikten sonra verdiği özettir; karşı taraf kaydedilmez.</p></div></div><div className="settings-grid"><SpCard className="settings-card"><div className="settings-title"><Lock size={20} /><div><p className="eyebrow">KALICI KORUMALAR</p><h2>Değiştirilemeyen güvenlik sınırları</h2></div></div><ul className="privacy-policy-list"><li>Aktif görüşme sırasında kayıt başlatılmaz; yalnız olduğunuzu ayrıca onaylamanız gerekir.</li><li>Ham ses ve maskelenmemiş döküm kalıcı olarak saklanmaz.</li><li>Hassas veri kategorileri inceleme öncesinde maskelenir.</li><li>Çıkarılan taslak, danışman onayı olmadan kişi veya fırsat kaydına dönüşmez.</li></ul><a className="secondary-action inline-link" href="/capture">Sesli not akışını aç</a></SpCard><SpCard className="settings-card"><div className="settings-title"><ShieldCheck size={20} /><div><p className="eyebrow">VERİ HAKLARI</p><h2>Dışa aktarma ve silme</h2></div></div><p className="privacy-copy">Kişi bazlı JSON dışa aktarımı ve silme talebi aşağıdaki veri sahibi talepleri bölümünden kimlik doğrulamasıyla yürütülür.</p><a className="secondary-action inline-link" href="#data-requests">Veri sahibi taleplerine git</a></SpCard></div></section>
-    <section className="office-team-section" id="office-team"><div className="section-heading"><div><p className="eyebrow">OFİS EKİBİ</p><h2>Ortak çalışma alanı</h2><p>Kişiler danışmana ait kalır; broker ofis genelini, danışman kendi kayıtlarını görür. Ortak portföy havuzu bütün ekibe açıktır.</p></div></div><div className="settings-grid">
-      <SpCard className="settings-card office-team-card"><div className="settings-title"><Users size={20} /><div><p className="eyebrow">{teamQuery.data?.officeName ?? "OFİS"}</p><h2>Ekip üyeleri</h2></div></div>{teamQuery.isPending ? <p>Ofis ekibi yükleniyor…</p> : teamQuery.error ? <p className="form-error">{messageFrom(teamQuery.error)}</p> : <div className="office-member-list">{teamQuery.data?.members.map((member) => <div className="office-member" key={member.uid}><span className="contact-avatar">{member.displayName.slice(0, 1).toLocaleUpperCase("tr-TR")}</span><div><strong>{member.displayName}</strong><small>{member.role === "broker" ? "Broker / ofis yöneticisi" : "Gayrimenkul danışmanı"}</small></div></div>)}</div>}{teamQuery.data?.canInvite ? <button className="secondary-action inline-action" disabled={pending} onClick={() => void createInvite()} type="button"><UserPlus size={17} /> Davet kodu oluştur</button> : null}{invite ? <div className="office-invite-result"><div className="office-invite-code"><span>7 gün geçerli · tek kullanımlık</span><strong>{invite.code}</strong></div><div className="office-invite-actions"><button className="secondary-action compact-action inline-action" onClick={() => void copyInvite()} type="button">{inviteCopied ? <Check size={15} aria-hidden /> : <Copy size={15} aria-hidden />} {inviteCopied ? "Kopyalandı" : "Kodu kopyala"}</button><button className="secondary-action danger-secondary compact-action inline-action" disabled={pending} onClick={() => void revokeInvite(invite.code)} type="button">İptal et</button></div></div> : null}{teamQuery.data?.activeInvites.filter((item) => item.code !== invite?.code).map((item) => <div className="office-invite-result" key={item.code}><div className="office-invite-code"><span>{new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(item.expiresAt)} tarihine kadar geçerli</span><strong>{item.code}</strong></div><div className="office-invite-actions"><button className="secondary-action danger-secondary compact-action inline-action" disabled={pending} onClick={() => void revokeInvite(item.code)} type="button">İptal et</button></div></div>)}</SpCard>
-      {teamQuery.data?.canJoinOffice ? <SpCard className="settings-card"><div className="settings-title"><Building2 size={20} /><div><p className="eyebrow">DAVETLE KATIL</p><h2>Başka bir ofise katıl</h2></div></div><p className="privacy-copy">Bu boş kişisel çalışma alanını, size verilen tek kullanımlık kodla ofis ekibine bağlayabilirsiniz.</p><form className="form-stack" onSubmit={joinTeam}><label>Ofis davet kodu<input autoCapitalize="characters" maxLength={8} value={joinCode} onChange={(event) => setJoinCode(event.target.value.toLocaleUpperCase("tr-TR").replace(/[^A-Z2-9]/gu, ""))} placeholder="ABCD2345" /></label><button className="secondary-action inline-action" disabled={pending || joinCode.length !== 8} type="submit"><Building2 size={17} /> Ofise katıl</button></form></SpCard> : <SpCard className="settings-card"><div className="settings-title"><Building2 size={20} /><div><p className="eyebrow">AKTİF ÇALIŞMA ALANI</p><h2>Ofis bağlantısı korunuyor</h2></div></div><p className="privacy-copy">Bu hesapta aktif kayıtlar bulunduğu için başka bir ofise doğrudan geçiş kapalıdır. Böylece kişi, fırsat ve görevler yanlışlıkla geride bırakılmaz.</p></SpCard>}
-    </div></section>
     <section className="privacy-requests" id="data-requests"><div className="section-heading"><div><p className="eyebrow">VERİ SAHİBİ HAKLARI</p><h2>Talep ve yanıt takibi</h2></div></div><div className="settings-grid"><SpCard className="settings-card"><h2>Yeni talep</h2><form className="form-stack" onSubmit={createRequest}><ContactCombobox contacts={contacts} label="Kişi" value={selectedContactId} onChange={setContactId} placeholder="Kişi ara ve seç" /><label>Talep türü<select value={requestType} onChange={(event) => setRequestType(event.target.value as DataSubjectRequestType)}>{dataSubjectRequestTypes.map((item) => <option key={item} value={item}>{dataSubjectRequestTypeLabels[item]}</option>)}</select></label><label>Kimlik / başvuru referansı <span className="optional">isteğe bağlı</span><input value={requesterReference} onChange={(event) => setRequesterReference(event.target.value)} /></label><label>Açıklama<textarea value={details} onChange={(event) => setDetails(event.target.value)} /></label><button className="secondary-action" disabled={pending || !selectedContactId} type="submit">Talebi kaydet</button></form></SpCard><div className="request-list">{(requestsQuery.data ?? []).map((item) => <SpCard className="request-card" key={item.id}><div><strong>{item.contactName}</strong><span>{dataSubjectRequestTypeLabels[item.type]} · {item.status}</span><small>Son yanıt: {new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium" }).format(item.dueAt)}</small></div><div className="request-actions">{item.type === "access" ? <button type="button" onClick={() => void exportContact(item.contactId)}><Download size={15} /> JSON indir</button> : null}{item.status === "pending_verification" ? <><button type="button" onClick={() => void resolve(item.id, "approved", item.type, item.contactId)}>Onayla</button><button type="button" onClick={() => void resolve(item.id, "rejected", item.type, item.contactId)}>Reddet</button></> : null}</div></SpCard>)}{requestsQuery.data?.length === 0 ? <SpCard><p>Henüz veri sahibi talebi yok.</p></SpCard> : null}</div></div></section>
       </div>
     </div>

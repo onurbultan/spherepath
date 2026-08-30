@@ -30,7 +30,7 @@ const officeNavigation = [
   { label: "Fırsatlar", icon: BriefcaseBusiness, href: "/opportunities", count: "opportunities" },
   { label: "Kapama", icon: Handshake, href: "/closing", count: null },
   { label: "Ofis havuzu", icon: Network, href: "/listings#office-pool", count: "portfolioItems" },
-  { label: "Ekip", icon: Users, href: "/settings#office-team", count: "team" },
+  { label: "Ekip", icon: Users, href: "/team", count: "team" },
 ] as const;
 
 export function AppShell({ children }: { children: ReactNode }) {
