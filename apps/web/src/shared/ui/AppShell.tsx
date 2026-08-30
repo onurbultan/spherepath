@@ -35,6 +35,7 @@ const officeNavigation = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const currentPathname = pathname === "/" ? pathname : pathname.replace(/\/+$/, "");
   const router = useRouter();
   const { session } = useSession();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -77,7 +78,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   function navItem({ label, icon: Icon, href, count }: { label: string; icon: typeof ListTodo; href: string; count: string | null }) {
     const route = href.split("#")[0] ?? href;
-    const active = pathname === route && !href.includes("#");
+    const active = currentPathname === route && !href.includes("#");
     const value = count ? counts[count] : undefined;
     return (
       <Link key={href} href={href} className={`${active ? "nav-item active" : "nav-item"}${href === "/capture" ? " nav-capture" : ""}`} aria-current={active ? "page" : undefined}>
@@ -106,7 +107,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!point) return;
     const dx = point.clientX - start.x; const dy = point.clientY - start.y; const elapsed = Math.max(1, Date.now() - start.at);
     if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.6 || Math.abs(dx) / elapsed < 0.18) return;
-    const current = swipePaths.indexOf(pathname as (typeof swipePaths)[number]);
+    const current = swipePaths.indexOf(currentPathname as (typeof swipePaths)[number]);
     if (current < 0) return;
     const destination = Math.max(0, Math.min(swipePaths.length - 1, current + (dx < 0 ? 1 : -1)));
     const href = swipePaths[destination];
@@ -139,7 +140,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="sidebar-footer">
-          <Link href="/settings" className={pathname === "/settings" ? "nav-item active" : "nav-item"} aria-current={pathname === "/settings" ? "page" : undefined}>
+          <Link href="/settings" className={currentPathname === "/settings" ? "nav-item active" : "nav-item"} aria-current={currentPathname === "/settings" ? "page" : undefined}>
             <SlidersHorizontal size={17} aria-hidden />
             <span>Ayarlar ve uyum</span>
           </Link>
@@ -149,7 +150,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className={`app-frame${swipeDirection ? ` page-swipe-${swipeDirection}` : ""}`} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-        <TopBar pathname={pathname} onOpenSearch={() => setPaletteOpen(true)} />
+        <TopBar pathname={currentPathname} onOpenSearch={() => setPaletteOpen(true)} />
         <main className="main-content">
           <ConnectivityBanner session={session} />
           {children}

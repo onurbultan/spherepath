@@ -7,6 +7,7 @@ import { Bell, ChevronRight, Moon, Plus, Search, Sun } from "lucide-react";
 import { apiQueryKeys, type PortfolioMatchNotificationRecord } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
 import { listMatchNotifications, markMatchNotificationsRead } from "@/features/matching/resources/portfolio";
+import { AccountMenu } from "./AccountMenu";
 import { useThemePreference } from "./theme";
 
 const pageTitles: Record<string, string> = {
@@ -73,6 +74,7 @@ export function TopBar({ pathname, onOpenSearch }: { pathname: string; onOpenSea
           </button>
           {notificationsOpen ? <div className="notification-popover" role="dialog" aria-label="Eşleşme bildirimleri"><div className="notification-heading"><div><strong>Eşleşmeler</strong><span>{notifications.length ? `${notifications.length} güncel eşleşme` : "Yeni bildirim yok"}</span></div><Link href="/listings#office-pool" onClick={() => setNotificationsOpen(false)}>Tümünü gör</Link></div>{notificationsQuery.isPending ? <div className="notification-empty">Eşleşmeler taranıyor…</div> : notifications.length ? <div className="notification-list">{notifications.slice(0, 5).map((item) => <Link href="/listings#office-pool" key={item.id} onClick={() => setNotificationsOpen(false)}><span className="notification-score">%{item.match.score}</span><span><strong>{item.match.contactName}</strong><small>{item.match.portfolioItem.headline}</small></span></Link>)}</div> : <div className="notification-empty">Yeni bir alıcı–portföy eşleşmesi oluştuğunda burada görünecek.</div>}</div> : null}
         </div>
+        <div className="topbar-mobile-account"><AccountMenu /></div>
         <Link className="primary-action inline-action compact-action" href="/capture">
           <Plus size={15} aria-hidden /> Temas kaydet
         </Link>

@@ -59,6 +59,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await expect(page.getByText(/Nerede\?/)).toBeVisible();
   await page.getByRole("link", { name: "Huni" }).click();
   await expect(page.getByRole("heading", { name: "Nerede takılıyor?" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Ana navigasyon" }).getByRole("link", { name: "Huni" })).toHaveAttribute("aria-current", "page");
   await page.getByRole("radio", { name: "90 gün" }).click();
   await expect(page.getByRole("radio", { name: "90 gün" })).toBeChecked();
   await page.getByRole("radio", { name: "1 yıl" }).click();
@@ -324,6 +325,8 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
     await page.goto("/");
     await expect(page.getByRole("navigation", { name: "Ana navigasyon" }).getByRole("link")).toHaveCount(5);
     await expect(page.locator(".sidebar .nav-group-office")).toBeHidden();
+    await expect(page.locator(".sidebar .account-menu")).toBeHidden();
+    await expect(page.locator(".topbar-mobile-account .account-menu")).toBeVisible();
     const quickNote = page.getByLabel("Hızlı not");
     await quickNote.fill("Kaydırırken bu yazı korunmalı");
     await swipe(page, "textarea[aria-label='Hızlı not']", 340, 80);

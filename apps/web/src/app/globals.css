@@ -123,6 +123,7 @@ a { color: inherit; text-decoration: none; }
   font-size: 13.5px; font-weight: 500;
   transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
 }
+.nav-item > svg { display: block; flex: 0 0 auto; }
 .nav-item > span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-item:hover, .nav-item:focus-visible { background: var(--sunk); color: var(--text-primary); }
 .nav-item.active { background: var(--deed-bg); color: var(--deed); font-weight: 700; }
@@ -187,6 +188,7 @@ a { color: inherit; text-decoration: none; }
 .notification-score { width: 38px; height: 28px; border-radius: var(--radius-md); background: var(--good-bg); color: var(--good); display: grid; place-items: center; font-family: var(--font-ibm-plex-mono), monospace; font-size: 10.5px; font-weight: 700; }
 .notification-empty { min-height: 92px; padding: 18px; color: var(--text-secondary); display: grid; place-items: center; text-align: center; font-size: 12px; line-height: 1.5; }
 .app-topbar .primary-action { margin-top: 0; }
+.topbar-mobile-account { display: none; }
 
 .account-menu { position: relative; }
 .account-trigger {
@@ -1006,7 +1008,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
   .brand-mark, .nav-group-label, .nav-count, .nav-item.settings, .sidebar-separator { display: none; }
   .sidebar nav, .nav-group, .sidebar-footer { display: contents; }
   .sidebar .nav-group-office, .sidebar-footer > .nav-item { display: none; }
-  .sidebar-footer .account-menu { min-width: 0; justify-self: stretch; }
+  .sidebar-footer .account-menu { display: none; }
   .sidebar-footer .account-trigger { width: 100%; height: var(--hit-comfortable); flex-direction: column; justify-content: center; gap: 2px; padding: 0 4px; }
   .sidebar-footer .account-avatar { width: 22px; height: 22px; flex-basis: 22px; font-size: 11px; }
   .sidebar-footer .account-name { display: block; max-width: 100%; font-size: 11px; font-weight: 500; text-align: center; }
@@ -1014,11 +1016,17 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
   .sidebar-footer .account-popover { width: min(248px, calc(100vw - 16px)); }
   .today-primary-grid { grid-template-columns: 1fr; }
   .app-topbar .primary-action { display: none; }
-  .nav-item { min-height: var(--hit-comfortable); padding: 0 6px; flex-direction: column; justify-content: center; gap: 2px; font-size: 11px; }
+  .nav-item { min-height: var(--hit-comfortable); padding: 0 6px; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; text-align: center; }
+  .nav-item > span:first-of-type { width: 100%; flex: 0 0 auto; line-height: 1.2; text-align: center; }
   .nav-item.active::before { display: none; }
   .app-topbar { padding: 0 var(--space-xl); gap: var(--space-md); }
   .topbar-crumbs, .account-name { display: none; }
   .topbar-search { width: 100%; }
+  .topbar-mobile-account { display: block; }
+  .topbar-mobile-account .account-trigger { width: var(--hit-min); height: var(--hit-min); padding: 0; justify-content: center; }
+  .topbar-mobile-account .account-avatar { width: 30px; height: 30px; flex-basis: 30px; }
+  .topbar-mobile-account .account-trigger > svg, .topbar-mobile-account .account-name { display: none; }
+  .topbar-mobile-account .account-popover { right: 0; }
   .main-content { width: min(100% - 32px, 760px); padding-top: var(--space-2xl); padding-bottom: 150px; }
   .stage-grid { grid-template-columns: repeat(2, 1fr); }
   .stage-card:last-child { grid-column: 1 / -1; }
