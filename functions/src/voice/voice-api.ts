@@ -28,6 +28,7 @@ import { extractVoiceDraft, maskSensitiveTranscript, sanitizeVoiceExtraction } f
 import { extractVoiceDraftWithVertex } from "./vertex-extraction.js";
 import { normalizeVoiceActionTiming } from "./temporal.js";
 import { normalizeVoiceExtraction } from "./normalization.js";
+import { buildVoiceDiscardQualitySnapshot, isPossiblyIncompleteTranscription } from "./quality.js";
 
 const speechClient = new speech.SpeechClient();
 const processingLeaseMs = 150_000;
@@ -61,6 +62,7 @@ function voiceView(id: string, data: FirebaseFirestore.DocumentData): VoiceNoteV
     durationMs: data.durationMs as number,
     maskedTranscript,
     maskedCategories: Array.isArray(data.maskedCategories) ? data.maskedCategories : [],
+    transcriptionWarning: data.transcriptionWarning === "possibly_incomplete" ? "possibly_incomplete" : null,
     extraction,
     interactionId: typeof data.interactionId === "string" ? data.interactionId : null,
     errorCode: typeof data.errorCode === "string" ? data.errorCode : null,
@@ -81,25 +83,53 @@ function inferredContactRole(opportunityType: "seller_listing" | "landlord_listi
   return null;
 }
 
-async function transcribe(storagePath: string): Promise<string> {
+interface TranscriptionResult {
+  text: string;
+  model: "chirp_3" | "long";
+  warning: "possibly_incomplete" | null;
+}
+
+function transcriptWordCount(value: string): number {
+  const text = value.trim();
+  return text ? text.split(/\s+/u).length : 0;
+}
+
+async function transcribe(storagePath: string, durationMs: number): Promise<TranscriptionResult> {
   const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
   if (!projectId) throw new Error("speech_project_missing");
   const [content] = await getStorage().bucket().file(storagePath).download();
-  const [response] = await speechClient.recognize({
-    recognizer: `projects/${projectId}/locations/global/recognizers/_`,
-    config: {
-      autoDecodingConfig: {},
-      languageCodes: ["tr-TR"],
-      model: "short",
-      features: { enableAutomaticPunctuation: true },
-    },
-    content,
-  });
-  return (response.results ?? [])
-    .map((result) => result.alternatives?.[0]?.transcript?.trim() ?? "")
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+  const recognize = async (model: "chirp_3" | "long") => {
+    const [response] = await speechClient.recognize({
+      recognizer: `projects/${projectId}/locations/global/recognizers/_`,
+      config: {
+        autoDecodingConfig: {},
+        languageCodes: ["tr-TR"],
+        model,
+        features: { enableAutomaticPunctuation: true },
+      },
+      content,
+    });
+    return (response.results ?? [])
+      .map((result) => result.alternatives?.[0]?.transcript?.trim() ?? "")
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+  };
+
+  let model: TranscriptionResult["model"] = "chirp_3";
+  let text = await recognize(model);
+  if (isPossiblyIncompleteTranscription(durationMs, text)) {
+    const fallback = await recognize("long");
+    if (transcriptWordCount(fallback) > transcriptWordCount(text)) {
+      text = fallback;
+      model = "long";
+    }
+  }
+  return {
+    text,
+    model,
+    warning: isPossiblyIncompleteTranscription(durationMs, text) ? "possibly_incomplete" : null,
+  };
 }
 
 async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, rawOverride?: string) {
@@ -128,6 +158,7 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
     return {
       storagePath: data.storagePath as string,
       contactId: data.contactId as string,
+      durationMs: typeof data.durationMs === "number" ? data.durationMs : 0,
       attempts: Number(data.attempts ?? 0) + 1,
     };
   });
@@ -135,7 +166,10 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
 
   try {
     const processingDate = new Date();
-    const rawTranscript = rawOverride ?? await transcribe(acquired.storagePath);
+    const transcription = rawOverride === undefined
+      ? await transcribe(acquired.storagePath, acquired.durationMs)
+      : { text: rawOverride, model: null, warning: null };
+    const rawTranscript = transcription.text;
     const masked = maskSensitiveTranscript(rawTranscript);
     let extraction = extractVoiceDraft(masked.text);
     const contact = await firestore.collection("contacts").doc(acquired.contactId).get();
@@ -160,6 +194,9 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
       maskedTranscript: masked.text,
       maskedCategories: masked.categories,
       maskedRanges: masked.maskedRanges,
+      transcriptionModel: transcription.model,
+      transcriptionWarning: transcription.warning,
+      transcriptionWordCount: transcriptWordCount(rawTranscript),
       extraction,
       sourceAudioDeletedAt: Timestamp.now(),
       processingEventId: null,
@@ -253,6 +290,9 @@ export const registerVoiceNote = onCall(
         maskedTranscript: null,
         maskedCategories: [],
         maskedRanges: [],
+        transcriptionModel: null,
+        transcriptionWarning: null,
+        transcriptionWordCount: null,
         extraction: null,
         corrections: [],
         interactionId: null,
@@ -318,6 +358,9 @@ export const registerVoiceTextTest = onCall(
         maskedTranscript: null,
         maskedCategories: [],
         maskedRanges: [],
+        transcriptionModel: null,
+        transcriptionWarning: null,
+        transcriptionWordCount: null,
         extraction: null,
         corrections: [],
         interactionId: null,
@@ -380,6 +423,9 @@ export const registerInteractionText = onCall(
         maskedTranscript: null,
         maskedCategories: [],
         maskedRanges: [],
+        transcriptionModel: null,
+        transcriptionWarning: null,
+        transcriptionWordCount: null,
         extraction: null,
         corrections: [],
         interactionId: null,
@@ -516,6 +562,7 @@ export const discardVoiceNote = onCall(
       }
       const now = Timestamp.now();
       if (note.status !== "discarded") {
+        const qualitySnapshot = buildVoiceDiscardQualitySnapshot(note);
         transaction.update(noteRef, {
           status: "discarded",
           maskedTranscript: null,
@@ -523,6 +570,7 @@ export const discardVoiceNote = onCall(
           maskedRanges: [],
           extraction: null,
           corrections: [],
+          qualitySnapshot,
           processingEventId: null,
           errorCode: null,
           discardedAt: now,

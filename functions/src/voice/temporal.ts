@@ -122,25 +122,33 @@ function actionSentenceMatches(sentence: string, nextActionType: VoiceExtraction
   return true;
 }
 
+function normalizeSplitTimes(text: string): string {
+  return text.replace(
+    /\b(saat\s+)([01]?\d|2[0-3])\.\s+([0-5]\d)(?=(?:['’](?:te|ta|de|da))?\b)/giu,
+    (_match, prefix: string, hour: string, minute: string) => `${prefix}${hour}:${minute}`,
+  );
+}
+
 function explicitActionTime(
   text: string,
   nextActionType: VoiceExtraction["interaction"]["nextActionType"],
 ): string | null | undefined {
-  const matches = [...text.matchAll(/\b(?:saat\s*)?([01]?\d|2[0-3])[:.]([0-5]\d)(?:['’](?:te|ta|de|da))?\b/giu)];
+  const normalizedText = normalizeSplitTimes(text);
+  const matches = [...normalizedText.matchAll(/\b(?:saat\s*)?([01]?\d|2[0-3])[:.]([0-5]\d)(?:['’](?:te|ta|de|da))?\b/giu)];
   if (matches.length === 0) return undefined;
   if (matches.length !== 1) return null;
   const match = matches[0]!;
   const start = match.index ?? 0;
   const sentenceStart = Math.max(
-    text.lastIndexOf(".", start),
-    text.lastIndexOf("!", start),
-    text.lastIndexOf("?", start),
-    text.lastIndexOf(",", start),
-    text.lastIndexOf(";", start),
+    normalizedText.lastIndexOf(".", start),
+    normalizedText.lastIndexOf("!", start),
+    normalizedText.lastIndexOf("?", start),
+    normalizedText.lastIndexOf(",", start),
+    normalizedText.lastIndexOf(";", start),
   ) + 1;
-  const sentenceEndCandidates = [text.indexOf(".", start), text.indexOf("!", start), text.indexOf("?", start), text.indexOf(",", start), text.indexOf(";", start)].filter((index) => index >= 0);
-  const sentenceEnd = sentenceEndCandidates.length > 0 ? Math.min(...sentenceEndCandidates) : text.length;
-  const sentence = text.slice(sentenceStart, sentenceEnd);
+  const sentenceEndCandidates = [normalizedText.indexOf(".", start), normalizedText.indexOf("!", start), normalizedText.indexOf("?", start), normalizedText.indexOf(",", start), normalizedText.indexOf(";", start)].filter((index) => index >= 0);
+  const sentenceEnd = sentenceEndCandidates.length > 0 ? Math.min(...sentenceEndCandidates) : normalizedText.length;
+  const sentence = normalizedText.slice(sentenceStart, sentenceEnd);
   if (!actionSentenceMatches(sentence, nextActionType)) return null;
   return `${String(Number(matches[0]?.[1])).padStart(2, "0")}:${matches[0]?.[2]}`;
 }

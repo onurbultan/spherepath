@@ -53,7 +53,7 @@ describe("voice action timing", () => {
       saturday,
     );
     expect(result.interaction.daysFromNow).toBe(3);
-    expect(result.interaction.actionTime).toBeNull();
+    expect(result.interaction.actionTime).toBe("11:00");
   });
 
   it("resolves Turkish number words in relative dates", () => {

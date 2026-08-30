@@ -199,6 +199,7 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
   const [opportunityType, setOpportunityType] =
     useState<OpportunityType | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
   const stoppingRef = useRef(false);
   const activeRef = useRef(true);
 
@@ -248,6 +249,7 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
     setOpportunityType(suggestedType);
     setCreateOpportunity(false);
     setShowDetails(false);
+    setShowTranscript(false);
     setStep("review");
   }, []);
 
@@ -468,6 +470,7 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
       setCreateOpportunity(false);
       setOpportunityType(null);
       setNextActionTime(null);
+      setShowTranscript(false);
       setStep("idle");
     } catch (nextError) {
       setError(messageFrom(nextError));
@@ -658,6 +661,15 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
               </SpText>
             </View>
           ) : null}
+          {voiceNote.extraction?.isUnclear ? (
+            <View style={[styles.warning, { backgroundColor: theme.warmBg }]}>
+              <AlertTriangle color={theme.warm} size={18} />
+              <SpText variant="caption" style={styles.flex}>
+                Not yeterince net çözülemedi. Duyulan metni kontrol edip eksik
+                bilgileri düzenleyin.
+              </SpText>
+            </View>
+          ) : null}
           {showDetails ? (
             <>
               <SpText variant="bodySmall" color="secondary">
@@ -732,6 +744,53 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
             onChangeText={setOutcome}
             style={[inputStyle, styles.multiline]}
           />
+          <VoiceInsightsReview
+            insights={reviewInsights}
+            preferenceLabels={preferenceLabels}
+            approvedKeyThings={approvedKeyThings}
+            includePropertyPreferences={includePropertyPreferences}
+            additionalMustHavesText={additionalMustHavesText}
+            onKeyThingsChange={setApprovedKeyThings}
+            onIncludePropertyPreferencesChange={setIncludePropertyPreferences}
+            onAdditionalMustHavesChange={setAdditionalMustHavesText}
+          />
+          {!reviewInsights?.keyThingsToRemember.length &&
+          !preferenceLabels.length ? (
+            <View style={[styles.warning, { backgroundColor: theme.warmBg }]}>
+              <AlertTriangle color={theme.warm} size={18} />
+              <SpText variant="caption" style={styles.flex}>
+                Konum, bütçe veya gayrimenkul tercihi çıkarılmadı. Duyulan metni
+                kontrol edip gerekiyorsa kaydı yeniden deneyin.
+              </SpText>
+            </View>
+          ) : null}
+          {voiceNote.maskedTranscript ? (
+            <>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: showTranscript }}
+                onPress={() => setShowTranscript((current) => !current)}
+                style={[styles.transcriptToggle, { borderColor: theme.line }]}
+              >
+                <View style={styles.flex}>
+                  <SpText variant="bodySmall">Duyulan metni karşılaştır</SpText>
+                  <SpText variant="caption" color="secondary">
+                    Sistem konuşmanızı doğru yazıya çevirmiş mi?
+                  </SpText>
+                </View>
+                <ChevronDown
+                  color={theme.textSecondary}
+                  size={20}
+                  style={{ transform: [{ rotate: showTranscript ? "180deg" : "0deg" }] }}
+                />
+              </Pressable>
+              {showTranscript ? (
+                <View style={[styles.transcriptBox, { backgroundColor: theme.background, borderColor: theme.line }]}>
+                  <SpText variant="bodySmall">{voiceNote.maskedTranscript}</SpText>
+                </View>
+              ) : null}
+            </>
+          ) : null}
           {showDetails ? (
             <>
               <SpText variant="bodySmall" color="secondary">
@@ -840,7 +899,7 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
                 {showDetails ? "Ayrıntıları gizle" : "Diğer ayrıntıları düzenle"}
               </SpText>
               <SpText variant="caption" color="secondary">
-                Kanal, yön, hafıza ve fırsat ayarları
+                Kanal, amaç, yön ve fırsat ayarları
               </SpText>
             </View>
             <ChevronDown
@@ -849,18 +908,6 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
               style={{ transform: [{ rotate: showDetails ? "180deg" : "0deg" }] }}
             />
           </Pressable>
-          {showDetails ? (
-            <VoiceInsightsReview
-              insights={reviewInsights}
-              preferenceLabels={preferenceLabels}
-              approvedKeyThings={approvedKeyThings}
-              includePropertyPreferences={includePropertyPreferences}
-              additionalMustHavesText={additionalMustHavesText}
-              onKeyThingsChange={setApprovedKeyThings}
-              onIncludePropertyPreferencesChange={setIncludePropertyPreferences}
-              onAdditionalMustHavesChange={setAdditionalMustHavesText}
-            />
-          ) : null}
           {showDetails && opportunityType ? (
             <View style={styles.stack}>
               <Pressable
@@ -1200,6 +1247,20 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
+  },
+  transcriptToggle: {
+    minHeight: 58,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
+    padding: space.md,
+  },
+  transcriptBox: {
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: space.md,
   },
   reviewActions: {
     flexDirection: "row",

@@ -171,6 +171,7 @@ export interface VoiceNoteView {
   durationMs: number;
   maskedTranscript: string | null;
   maskedCategories: SensitiveDataCategory[];
+  transcriptionWarning: "possibly_incomplete" | null;
   extraction: VoiceExtraction | null;
   interactionId: string | null;
   errorCode: string | null;
