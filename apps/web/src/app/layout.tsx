@@ -38,6 +38,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="tr" suppressHydrationWarning>
       <head>
+        <meta name="facebook-domain-verification" content="w2mszidyek3g5reasz3u2ti03tki5t" />
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
       </head>
       <body className={`${karla.variable} ${zillaSlab.variable} ${ibmPlexMono.variable}`}>
