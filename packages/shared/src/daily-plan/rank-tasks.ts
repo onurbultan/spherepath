@@ -15,11 +15,12 @@ export function rankDailyTaskCandidates(
 
   return [...candidates]
     .filter((candidate) => !candidate.complianceBlocked)
-    .sort((left, right) => score(right) - score(left) || left.id.localeCompare(right.id))
+    .sort((left, right) => scoreDailyTaskCandidate(right) - scoreDailyTaskCandidate(left) || left.id.localeCompare(right.id))
     .slice(0, safeLimit);
 }
 
-function score(candidate: DailyTaskCandidate): number {
+/** Exported so a caller can order candidates itself without duplicating the weights. */
+export function scoreDailyTaskCandidate(candidate: DailyTaskCandidate): number {
   return (
     Math.max(0, candidate.overdueDays) * 100 +
     Math.max(0, candidate.bottleneckImpact) * 20 +

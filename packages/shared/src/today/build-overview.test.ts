@@ -41,7 +41,34 @@ describe("today overview", () => {
   it("keeps separate contact and opportunity actions visible", () => {
     const now = 2_000;
     const overview = buildTodayOverview([{ id: "contact-1", name: "Ayşe", createdAt: 1_000, meaningfulTouchCount: 1, nextActionAt: 3_000, nextActionType: "call" }], [{ id: "opportunity-1", subjectContactId: "contact-1", subjectContactName: "Ayşe", stage: "first_contact", createdAt: 1_000, nextActionAt: 4_000, nextActionType: "appointment" }], now);
-    expect(overview.tasks.map((item) => item.id)).toEqual(["next-action-contact-1", "opportunity-action-opportunity-1"]);
+    expect(overview.tasks.map((item) => item.id).sort()).toEqual(["next-action-contact-1", "opportunity-action-opportunity-1"]);
+  });
+
+  it("ranks a broken promise above an on-time opportunity action", () => {
+    const now = 10 * 86_400_000;
+    const overdue = { id: "contact-1", name: "Ayşe", createdAt: 0, meaningfulTouchCount: 1, nextActionAt: now - 2 * 86_400_000, nextActionType: "call" as const };
+    const onTime = { id: "opportunity-1", subjectContactId: "contact-2", subjectContactName: "Deniz", stage: "appointment" as const, createdAt: 0, nextActionAt: now + 86_400_000, nextActionType: "appointment" as const, estimatedValue: { amount: 9_000_000, currency: "TRY" } };
+    const overview = buildTodayOverview([overdue], [onTime], now);
+    expect(overview.tasks[0]?.id).toBe("next-action-contact-1");
+  });
+
+  it("puts the larger deal first when two opportunities are equally overdue", () => {
+    const now = 10 * 86_400_000;
+    const due = now - 86_400_000;
+    const small = { id: "small", subjectContactId: "contact-1", subjectContactName: "Küçük", stage: "appointment" as const, createdAt: 0, nextActionAt: due, nextActionType: "call" as const, estimatedValue: { amount: 500_000, currency: "TRY" } };
+    const large = { id: "large", subjectContactId: "contact-2", subjectContactName: "Büyük", stage: "appointment" as const, createdAt: 0, nextActionAt: due, nextActionType: "call" as const, estimatedValue: { amount: 9_000_000, currency: "TRY" } };
+    const overview = buildTodayOverview([], [small, large], now);
+    expect(overview.tasks[0]?.id).toBe("opportunity-action-large");
+  });
+
+  it("compares deal size within a currency rather than across currencies", () => {
+    const now = 10 * 86_400_000;
+    const due = now - 86_400_000;
+    const topOfItsCurrency = { id: "gbp", subjectContactId: "contact-1", subjectContactName: "Sterlin", stage: "appointment" as const, createdAt: 0, nextActionAt: due, nextActionType: "call" as const, estimatedValue: { amount: 400_000, currency: "GBP" } };
+    const midOfItsCurrency = { id: "try", subjectContactId: "contact-2", subjectContactName: "Lira", stage: "appointment" as const, createdAt: 0, nextActionAt: due, nextActionType: "call" as const, estimatedValue: { amount: 5_000_000, currency: "TRY" } };
+    const ceiling = { id: "try-top", subjectContactId: "contact-3", subjectContactName: "Tavan", stage: "appointment" as const, createdAt: 0, nextActionAt: now + 86_400_000, nextActionType: "call" as const, estimatedValue: { amount: 20_000_000, currency: "TRY" } };
+    const overview = buildTodayOverview([], [topOfItsCurrency, midOfItsCurrency, ceiling], now);
+    expect(overview.tasks[0]?.id).toBe("opportunity-action-gbp");
   });
 
   it("turns an open opportunity next action into the first task", () => {

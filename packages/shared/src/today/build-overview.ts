@@ -1,6 +1,7 @@
 import type { Contact, Opportunity } from "../domain/entities.js";
 import { z } from "zod";
 import { nextActionTypeLabels, nextActionTypes } from "../interactions/manual-interaction.js";
+import { scoreDailyTaskCandidate } from "../daily-plan/rank-tasks.js";
 
 export interface TodayContact {
   id: string;
@@ -20,6 +21,7 @@ export interface TodayOpportunity {
   nextActionAt: number | null;
   nextActionType: Opportunity["nextActionType"];
   createdAt?: number;
+  estimatedValue?: { amount: number; currency: string } | null;
 }
 
 export interface TodayTask {
@@ -32,6 +34,8 @@ export interface TodayTask {
   opportunityId?: string;
   priority: "overdue" | "bottleneck" | "relationship";
   resolutionStatus?: "completed" | "skipped" | "rescheduled" | null;
+  /** Weighted urgency from rankDailyTaskCandidates; higher comes first. */
+  priorityScore?: number;
 }
 
 export interface TodayListing { id: string; status: "preparing" | "active" | "reserved" | "sold" | "rented" | "removed"; createdAt?: number }
@@ -154,10 +158,39 @@ export function buildTodayOverview(
       type: "next_action",
       priority: (opportunity.nextActionAt ?? now) < now ? "overdue" : "bottleneck",
     }));
+  const dayMs = 86_400_000;
+  // Deal size only compares within a currency; the largest open opportunity in each
+  // currency is the yardstick, so "large for its kind" scores the same in TRY and GBP.
+  const largestValueByCurrency = new Map<string, number>();
+  for (const opportunity of activeOpportunities) {
+    const value = opportunity.estimatedValue;
+    if (!value || value.amount <= 0) continue;
+    largestValueByCurrency.set(value.currency, Math.max(largestValueByCurrency.get(value.currency) ?? 0, value.amount));
+  }
+  const opportunityById = new Map(activeOpportunities.map((item) => [item.id, item]));
+  const contactById = new Map(contacts.map((item) => [item.id, item]));
+  const taskPriorityScore = (task: TodayTask): number => {
+    const opportunity = task.opportunityId ? opportunityById.get(task.opportunityId) : undefined;
+    const createdAt = opportunity?.createdAt ?? contactById.get(task.contactId)?.createdAt ?? now;
+    const value = opportunity?.estimatedValue ?? null;
+    const largest = value ? largestValueByCurrency.get(value.currency) ?? 0 : 0;
+    return scoreDailyTaskCandidate({
+      id: task.id,
+      overdueDays: task.dueAt !== null && task.dueAt < now ? (now - task.dueAt) / dayMs : 0,
+      bottleneckImpact: task.priority === "bottleneck" ? 1 : 0,
+      estimatedValueImpact: value && largest > 0 ? (value.amount / largest) * 10 : 0,
+      // Staleness is capped at a month so a long-forgotten record nudges the order
+      // without outranking work the advisor actually promised.
+      ageDays: Math.min(30, Math.max(0, (now - createdAt) / dayMs)),
+      complianceBlocked: false,
+    });
+  };
   const tasks = [...opportunityTasks, ...scheduled, ...uncontacted]
     .filter((task) => !completedTaskIds.has(task.id))
-    .sort((left, right) => (left.priority === "overdue" ? -1 : right.priority === "overdue" ? 1 : 0))
-    .sort((left, right) => (left.dueAt ?? Number.MAX_SAFE_INTEGER) - (right.dueAt ?? Number.MAX_SAFE_INTEGER));
+    .map((task) => ({ ...task, priorityScore: taskPriorityScore(task) }))
+    .sort((left, right) => right.priorityScore - left.priorityScore
+      || (left.dueAt ?? Number.MAX_SAFE_INTEGER) - (right.dueAt ?? Number.MAX_SAFE_INTEGER)
+      || left.id.localeCompare(right.id));
 
   const opportunitiesWithoutAction = activeOpportunities.filter((item) => item.stage !== "won" && item.nextActionAt === null).length;
   const currentDayKey = istanbulDayKey(now);

@@ -73,6 +73,9 @@ export const getTodayOverview = onCall(
           nextActionAt: millis(data.nextActionAt),
           nextActionType: data.nextActionType ?? null,
           createdAt: millis(data.createdAt) ?? 0,
+          estimatedValue: data.estimatedValue && typeof data.estimatedValue.amount === "number" && typeof data.estimatedValue.currency === "string"
+            ? { amount: data.estimatedValue.amount as number, currency: data.estimatedValue.currency as string }
+            : null,
           deletedAt: millis(data.deletedAt),
         };
       })

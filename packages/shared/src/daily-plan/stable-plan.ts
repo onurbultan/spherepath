@@ -15,7 +15,7 @@ export function selectDailyPlanTasks(tasks: readonly TodayTask[], limit = 5, exc
   const seenContacts = new Set<string>();
   return [...tasks]
     .filter((task) => !excludedIds.has(task.id))
-    .sort((left, right) => priorityWeight[right.priority] - priorityWeight[left.priority]
+    .sort((left, right) => (right.priorityScore ?? priorityWeight[right.priority]) - (left.priorityScore ?? priorityWeight[left.priority])
       || (left.dueAt ?? Number.MAX_SAFE_INTEGER) - (right.dueAt ?? Number.MAX_SAFE_INTEGER)
       || left.id.localeCompare(right.id))
     .filter((task) => {
