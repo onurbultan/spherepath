@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
 import { BriefcaseBusiness, ContactRound, Handshake, House, ListTodo, Network, Plus, Pyramid, SlidersHorizontal, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -24,6 +24,7 @@ const workNavigation = [
   { label: "Portföy", icon: House, href: "/listings", count: "listings" },
   { label: "Kişiler", icon: ContactRound, href: "/contacts", count: "contacts" },
 ] as const;
+const swipePaths = workNavigation.map((item) => item.href);
 
 const officeNavigation = [
   { label: "Fırsatlar", icon: BriefcaseBusiness, href: "/opportunities", count: "opportunities" },
@@ -37,6 +38,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { session } = useSession();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [swipeDirection, setSwipeDirection] = useState<"next" | "previous" | null>(null);
+  const touchStart = useRef<{ x: number; y: number; at: number; blocked: boolean } | null>(null);
 
   // `enabled: false` subscribes to whatever a visited page already cached
   // without ever issuing a request of its own, so the counts are free.
@@ -85,6 +88,34 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
+  function swipeBlocked(target: EventTarget | null) {
+    return target instanceof Element && Boolean(target.closest("input, textarea, select, button, a, [role='dialog'], [data-no-page-swipe], .contact-segments, .settings-subnav, .opportunity-board"));
+  }
+
+  function onTouchStart(event: TouchEvent<HTMLDivElement>) {
+    if (window.innerWidth > 900 || event.touches.length !== 1) return;
+    const point = event.touches[0];
+    if (!point) return;
+    touchStart.current = { x: point.clientX, y: point.clientY, at: Date.now(), blocked: swipeBlocked(event.target) };
+  }
+
+  function onTouchEnd(event: TouchEvent<HTMLDivElement>) {
+    const start = touchStart.current; touchStart.current = null;
+    if (!start || start.blocked || window.innerWidth > 900 || event.changedTouches.length !== 1) return;
+    const point = event.changedTouches[0];
+    if (!point) return;
+    const dx = point.clientX - start.x; const dy = point.clientY - start.y; const elapsed = Math.max(1, Date.now() - start.at);
+    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.6 || Math.abs(dx) / elapsed < 0.18) return;
+    const current = swipePaths.indexOf(pathname as (typeof swipePaths)[number]);
+    if (current < 0) return;
+    const destination = Math.max(0, Math.min(swipePaths.length - 1, current + (dx < 0 ? 1 : -1)));
+    const href = swipePaths[destination];
+    if (!href || destination === current) return;
+    setSwipeDirection(dx < 0 ? "next" : "previous");
+    router.push(href);
+    window.setTimeout(() => setSwipeDirection(null), 220);
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -117,10 +148,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <div className="app-frame">
+      <div className={`app-frame${swipeDirection ? ` page-swipe-${swipeDirection}` : ""}`} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         <TopBar pathname={pathname} onOpenSearch={() => setPaletteOpen(true)} />
         <main className="main-content">
-          <ConnectivityBanner />
+          <ConnectivityBanner session={session} />
           {children}
         </main>
       </div>

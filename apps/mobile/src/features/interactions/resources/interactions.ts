@@ -91,10 +91,10 @@ export async function confirmVoiceNote(
   voiceNoteId: string,
   interaction: ManualInteractionDraft,
   approvedInsights: VoiceInsights,
-  opportunity: Omit<OpportunityDraft, "subjectContactId"> | null,
-): Promise<{ interactionId: string; opportunityId: string | null }> {
-  const input: ConfirmVoiceNoteInput = { voiceNoteId, interaction, approvedInsights, opportunity };
-  return apiClient.command<ConfirmVoiceNoteInput, { interactionId: string; opportunityId: string | null }>(
+  opportunities: Omit<OpportunityDraft, "subjectContactId">[],
+): Promise<{ interactionId: string; opportunityId: string | null; opportunityIds: string[] }> {
+  const input: ConfirmVoiceNoteInput = { voiceNoteId, interaction, approvedInsights, opportunity: null, opportunities };
+  return apiClient.command<ConfirmVoiceNoteInput, { interactionId: string; opportunityId: string | null; opportunityIds: string[] }>(
     "confirmVoiceNote", input, createCommandId(session.uid),
   );
 }

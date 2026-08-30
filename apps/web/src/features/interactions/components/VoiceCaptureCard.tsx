@@ -22,6 +22,7 @@ import {
   type OpportunityType,
   type VoiceInsights,
   type VoiceNoteView,
+  type VoicePropertySituation,
 } from "@spherepath/shared";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
 import type { ContactRecord } from "@/features/contacts/resources/contacts";
@@ -62,10 +63,9 @@ function nextActionTimestamp(daysFromNow: number, actionTime: string | null): nu
   return scheduled.getTime();
 }
 
-function suggestedOpportunityType(insights: VoiceInsights | null | undefined): OpportunityType | null {
-  if (!insights?.propertyPreferences.transactionType) return null;
-  const transaction = insights.propertyPreferences.transactionType;
-  if (insights.propertyContext === "subject_property") {
+function opportunityTypeForSituation(situation: Pick<VoicePropertySituation, "propertyContext" | "propertyPreferences">): OpportunityType | null {
+  const transaction = situation.propertyPreferences.transactionType;
+  if (situation.propertyContext === "subject_property") {
     if (transaction === "sell") return "seller_listing";
     if (transaction === "let") return "landlord_listing";
     return null;
@@ -73,6 +73,14 @@ function suggestedOpportunityType(insights: VoiceInsights | null | undefined): O
   if (transaction === "rent") return "tenant_requirement";
   if (transaction === "buy" || transaction === "invest") return "buyer_requirement";
   return null;
+}
+
+function suggestedOpportunityTypes(insights: VoiceInsights | null | undefined): OpportunityType[] {
+  if (!insights) return [];
+  const situations = insights.propertySituations.length
+    ? insights.propertySituations
+    : [{ propertyContext: insights.propertyContext, propertyPreferences: insights.propertyPreferences }].filter((item): item is VoicePropertySituation => item.propertyContext !== null).map((item) => ({ ...item, summary: "Gayrimenkul ihtiyacı" }));
+  return [...new Set(situations.map(opportunityTypeForSituation).filter((item): item is OpportunityType => item !== null))];
 }
 
 function additionalMustHaves(value: string): string[] {
@@ -123,10 +131,10 @@ export function VoiceCaptureCard({ session, contacts, initialContactId, onSaved 
   const [approvedKeyThings, setApprovedKeyThings] = useState<string[]>([]);
   const [includePropertyPreferences, setIncludePropertyPreferences] = useState(true);
   const [additionalMustHavesText, setAdditionalMustHavesText] = useState("");
-  const [createOpportunity, setCreateOpportunity] = useState(false);
-  const [opportunityType, setOpportunityType] = useState<OpportunityType | null>(null);
+  const [selectedOpportunityTypes, setSelectedOpportunityTypes] = useState<OpportunityType[]>([]);
   const [textTranscript, setTextTranscript] = useState("");
-  const [createdOpportunityId, setCreatedOpportunityId] = useState<string | null>(null);
+  const [createdOpportunityIds, setCreatedOpportunityIds] = useState<string[]>([]);
+  const [queuedOffline, setQueuedOffline] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -150,9 +158,8 @@ export function VoiceCaptureCard({ session, contacts, initialContactId, onSaved 
     setApprovedKeyThings(note.extraction?.insights?.keyThingsToRemember ?? []);
     setIncludePropertyPreferences(hasPropertyPreferences(note.extraction?.insights) && note.extraction?.insights.propertyContext !== "subject_property");
     setAdditionalMustHavesText("");
-    const suggestedType = suggestedOpportunityType(note.extraction?.insights);
-    setOpportunityType(suggestedType);
-    setCreateOpportunity(Boolean(suggestedType && draft?.nextActionType && draft.daysFromNow !== null));
+    const suggestedTypes = suggestedOpportunityTypes(note.extraction?.insights);
+    setSelectedOpportunityTypes(draft?.nextActionType && draft.daysFromNow !== null ? suggestedTypes : []);
     setStep("review");
   }, []);
 
@@ -205,6 +212,12 @@ export function VoiceCaptureCard({ session, contacts, initialContactId, onSaved 
     setStep("uploading");
     try {
       const voiceNoteId = await uploadAndRegisterVoiceNote(session, contactId, blob, durationMs);
+      if (!voiceNoteId) {
+        setQueuedOffline(true);
+        setStep("saved");
+        return;
+      }
+      setQueuedOffline(false);
       setStep("processing");
       await pollVoiceNote(voiceNoteId);
     } catch (nextError) {
@@ -306,6 +319,7 @@ export function VoiceCaptureCard({ session, contacts, initialContactId, onSaved 
       const approvedInsights: VoiceInsights = {
         keyThingsToRemember: approvedKeyThings,
         propertyContext: includePropertyPreferences ? extractedInsights?.propertyContext ?? null : null,
+        propertySituations: extractedInsights?.propertySituations ?? [],
         propertyPreferences: includePropertyPreferences && extractedInsights ? {
           ...extractedInsights.propertyPreferences,
           mustHaves: [...new Set([
@@ -333,11 +347,11 @@ export function VoiceCaptureCard({ session, contacts, initialContactId, onSaved 
         voiceNote.id,
         parsed.data,
         approvedInsights,
-        createOpportunity && opportunityType && parsed.data.nextActionType && parsed.data.nextActionAt
-          ? { type: opportunityType, nextActionType: parsed.data.nextActionType, nextActionAt: parsed.data.nextActionAt }
-          : null,
+        parsed.data.nextActionType && parsed.data.nextActionAt
+          ? selectedOpportunityTypes.map((type) => ({ type, nextActionType: parsed.data.nextActionType!, nextActionAt: parsed.data.nextActionAt! }))
+          : [],
       );
-      setCreatedOpportunityId(result.opportunityId);
+      setCreatedOpportunityIds(result.opportunityIds);
       await onSaved();
       setStep("saved");
     } catch (nextError) {
@@ -367,15 +381,16 @@ export function VoiceCaptureCard({ session, contacts, initialContactId, onSaved 
     setApprovedKeyThings([]);
     setIncludePropertyPreferences(true);
     setAdditionalMustHavesText("");
-    setCreateOpportunity(false);
-    setOpportunityType(null);
+    setSelectedOpportunityTypes([]);
     setNextActionTime(null);
     setTextTranscript("");
-    setCreatedOpportunityId(null);
+    setCreatedOpportunityIds([]);
+    setQueuedOffline(false);
     setError(null);
   }
 
   const reviewInsights = voiceNote?.extraction?.insights;
+  const opportunitySuggestions = suggestedOpportunityTypes(reviewInsights);
   const reviewContact = contacts.find((contact) => contact.id === contactId);
   const isSubjectProperty = reviewInsights?.propertyContext === "subject_property";
   const preferenceLabels = reviewInsights ? [
@@ -398,12 +413,12 @@ export function VoiceCaptureCard({ session, contacts, initialContactId, onSaved 
   return (
     <SpCard className="voice-card">
       <div className="voice-heading"><div className="voice-icon"><Mic size={20} aria-hidden /></div><div><p className="eyebrow">GÖRÜŞME SONRASI</p><h2>5–90 saniyelik sesli not</h2></div></div>
-      {step === "saved" ? <div className="voice-success"><Check size={20} aria-hidden /><div><strong>{createdOpportunityId ? "Temas, takip ve fırsat oluşturuldu" : "Temas kaydedildi"}</strong><span>{inputMode === "audio" ? "Ses dosyası silindi; yalnız maskelenmiş ve onaylanmış kayıt tutuluyor." : "Yazılı nottan yalnız maskelenmiş ve onaylanmış kayıt tutuluyor."}</span></div>{createdOpportunityId ? <Link className="secondary-action inline-link" href={`/opportunities?opportunityId=${encodeURIComponent(createdOpportunityId)}`}>Fırsatı görüntüle</Link> : null}<button className="secondary-action" type="button" onClick={reset}>Yeni not</button></div> : null}
+      {step === "saved" ? <div className="voice-success"><Check size={20} aria-hidden /><div><strong>{queuedOffline ? "Sesli not cihazda güvende" : createdOpportunityIds.length ? `Temas, takip ve ${createdOpportunityIds.length} fırsat oluşturuldu` : "Temas kaydedildi"}</strong><span>{queuedOffline ? "Bağlantı gelince otomatik gönderilecek; bu sayfada beklemeniz gerekmiyor." : inputMode === "audio" ? "Ses dosyası silindi; yalnız maskelenmiş ve onaylanmış kayıt tutuluyor." : "Yazılı nottan yalnız maskelenmiş ve onaylanmış kayıt tutuluyor."}</span></div>{createdOpportunityIds[0] ? <Link className="secondary-action inline-link" href={`/opportunities?opportunityId=${encodeURIComponent(createdOpportunityIds[0])}`}>Fırsatları görüntüle</Link> : null}<button className="secondary-action" type="button" onClick={reset}>Yeni not</button></div> : null}
       {step === "idle" ? <><div className="voice-setup"><ContactCombobox contacts={contacts} value={contactId} onChange={setContactId} /><label className="voice-confirm"><input type="checkbox" checked={confirmedAlone} onChange={(event) => { setConfirmedAlone(event.target.checked); if (event.target.checked) window.sessionStorage.setItem("spherepath-voice-safety-confirmed", "yes"); else window.sessionStorage.removeItem("spherepath-voice-safety-confirmed"); }} /><span><strong>Görüşme bitti; karşı tarafı kaydetmiyorum.</strong><small>Bu özellik yalnızca kendi özetiniz içindir. Aktif görüşme sırasında kullanmayın. Bu onay oturum boyunca hatırlanır.</small></span></label><button className="primary-action inline-action voice-start" type="button" disabled={!confirmedAlone || !contactId} onClick={() => void startRecording()}><Mic size={18} aria-hidden /> Kaydı başlat</button></div><details className="voice-text-test form-details"><summary>Ses yerine yazılı not kullan</summary><div><p className="eyebrow">YAZILI GÖRÜŞME NOTU</p><h3>Notu yapılandır</h3><span>Not maskelenir, yapılandırılır ve kaydetmeden önce incelemenize sunulur.</span></div><textarea maxLength={4_000} value={textTranscript} onChange={(event) => setTextTranscript(event.target.value)} placeholder="Örnek: Ayşe Hanım Kadıköy'de 3+1 bir daire arıyor. Önümüzdeki hafta tekrar aramamı istedi." /><div className="voice-text-test-footer"><small>{textTranscript.length}/4000</small><button className="secondary-action inline-action" type="button" disabled={!contactId || textTranscript.trim().length < 2} onClick={() => void runInteractionText()}><FileText size={17} aria-hidden /> Yapılandır ve incele</button></div></details></> : null}
       {step === "recording" ? <div className="voice-recording" role="status"><span className="recording-dot" /><strong>{String(Math.floor(seconds / 60)).padStart(2, "0")}:{String(seconds % 60).padStart(2, "0")}</strong><span>{seconds < 5 ? `Kaydetmek için ${5 - seconds} sn daha` : "Kaydetmeye hazır"}</span><button className="secondary-action inline-action" type="button" onClick={stopRecording}><Square size={16} fill="currentColor" aria-hidden /> Durdur</button></div> : null}
       {step === "uploading" || step === "processing" ? <div className="voice-processing" role="status">{step === "uploading" ? <Upload size={20} aria-hidden /> : <LoaderCircle className="spin" size={20} aria-hidden />}<div><strong>{step === "uploading" ? "Ses yükleniyor" : "Not arka planda hazırlanıyor"}</strong><span>Başka bir sayfaya geçebilirsiniz; taslak hazır olduğunda buraya döndüğünüzde inceleme açılır.</span></div></div> : null}
       {step === "review" && voiceNote ? <><ContactCombobox contacts={contacts} label="Bu kişiye kaydedilecek" value={contactId} onChange={setContactId} /><details className="voice-advanced-toggle form-details"><summary><span className="voice-advanced-icon"><SlidersHorizontal size={19} aria-hidden /></span><span className="voice-advanced-copy"><strong>Diğer ayrıntıları düzenle</strong><small>Kanal, amaç, yön ve fırsat ayarlarını göster</small></span><ChevronDown className="voice-advanced-chevron" size={20} aria-hidden /></summary><p>Çıkarılan kanal, amaç, yön ve güvenli özeti aşağıda düzenleyebilirsiniz.</p></details></> : null}
-      {step === "review" && voiceNote ? <div className="voice-review"><div className="review-heading"><div><p className="eyebrow">İNCELE VE ONAYLA</p><h2>Çıkarılan temas taslağı</h2></div><span className="review-badge">{voiceNote.inputMode === "text_test" ? "Test metni · " : ""}Kullanıcı onayı gerekli</span></div><div className="voice-review-subject"><ContactRound size={18} aria-hidden /><span><small>BU KİŞİYE KAYDEDİLECEK</small><strong>{reviewContact?.fullName ?? reviewContact?.label ?? "Seçili kişi"}</strong></span><em>Yanlış kişiyse yukarıdaki kişi alanından yeniden atayabilirsiniz.</em></div>{voiceNote.maskedCategories.length > 0 ? <div className="masked-warning"><AlertTriangle size={18} aria-hidden /><span>{voiceNote.maskedCategories.map((category) => sensitiveDataCategoryLabels[category]).join(", ")} maskelendi ve yeniden gösterilmeyecek.</span></div> : null}{transcriptPossiblyIncomplete ? <div className="voice-transcription-warning" role="alert"><AlertTriangle size={19} aria-hidden /><span><strong>Sesin yalnızca bir bölümü yazıya çevrilmiş olabilir.</strong><small>{Math.round(voiceNote.durationMs / 1_000)} saniyelik kayıttan yalnızca {transcriptWordCount} kelime duyuldu. Aşağıdaki metni kontrol et; eksikse bu taslağı onaylama.</small></span></div> : null}{voiceNote.maskedTranscript ? <details className="voice-transcript-comparison"><summary>Duyulan metni karşılaştır <ChevronDown size={18} aria-hidden /></summary><p>{voiceNote.maskedTranscript}</p></details> : null}<div className="voice-review-grid"><label>Kanal<select value={channel} onChange={(event) => setChannel(event.target.value as ManualInteractionDraft["channel"])}>{interactionChannels.map((item) => <option key={item} value={item}>{interactionChannelLabels[item]}</option>)}</select></label><label>Amaç<select value={objective} onChange={(event) => setObjective(event.target.value as ManualInteractionDraft["objective"])}>{interactionObjectives.map((item) => <option key={item} value={item}>{interactionObjectiveLabels[item]}</option>)}</select></label><label>Yön<select value={direction} onChange={(event) => setDirection(event.target.value as ManualInteractionDraft["direction"])}><option value="mutual">Karşılıklı</option><option value="outbound">Giden</option><option value="inbound">Gelen</option></select></label><label>Görüşme sonucu<select value={askOutcome} onChange={(event) => setAskOutcome(event.target.value as ManualInteractionDraft["askOutcome"])}>{askOutcomes.map((item) => <option key={item} value={item}>{askOutcomeLabels[item]}</option>)}</select></label><label className="wide">Kısa sonuç<textarea value={outcome} onChange={(event) => setOutcome(event.target.value)} /></label><label className="wide">Güvenli özet<textarea value={noteSummary} onChange={(event) => setNoteSummary(event.target.value)} /></label><label>Sonraki aksiyon<select value={nextActionType ?? ""} onChange={(event) => { const value = (event.target.value || null) as ManualInteractionDraft["nextActionType"]; setNextActionType(value); if (!value) { setNextActionDays(null); setNextActionTime(null); setCreateOpportunity(false); } }}><option value="">Henüz yok</option>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</select></label><label>Kaç gün sonra<input type="number" min="0" max="3650" disabled={!nextActionType} value={nextActionDays ?? ""} onChange={(event) => setNextActionDays(event.target.value ? Number(event.target.value) : null)} /></label><label>Saat (opsiyonel)<input type="time" disabled={!nextActionType} value={nextActionTime ?? ""} onChange={(event) => setNextActionTime(event.target.value || null)} /></label></div>{reviewInsights?.keyThingsToRemember.length ? <section className="voice-insight-panel"><div><p className="eyebrow">HATIRLANACAKLAR</p><h3>Önemli bilgiler</h3></div><div className="voice-memory-list">{reviewInsights.keyThingsToRemember.map((item) => <label className="voice-memory-item" key={item}><input type="checkbox" checked={approvedKeyThings.includes(item)} onChange={(event) => setApprovedKeyThings((current) => event.target.checked ? [...current, item] : current.filter((value) => value !== item))} /><span>{item}</span></label>)}</div></section> : null}{preferenceLabels.length ? <section className="voice-insight-panel">{isSubjectProperty ? <div className="voice-insight-toggle"><span><strong>Görüşülen gayrimenkul</strong><small>Bu bilgiler kişinin arama tercihlerine eklenmez.</small></span></div> : <label className="voice-insight-toggle"><input type="checkbox" checked={includePropertyPreferences} onChange={(event) => setIncludePropertyPreferences(event.target.checked)} /><span><strong>Gayrimenkul tercihlerini kişi hafızasına ekle</strong><small>Yanlış bir çıkarım varsa bu seçimi kaldırabilirsiniz.</small></span></label>}<div className="voice-insight-chips">{preferenceLabels.map((item) => <span key={item}>{item}</span>)}</div>{!isSubjectProperty && includePropertyPreferences ? <label>Eksik tercih ekle<input value={additionalMustHavesText} onChange={(event) => setAdditionalMustHavesText(event.target.value)} placeholder="Örn. Sakin sokak, denize yürüme mesafesi" /></label> : null}</section> : null}{opportunityType ? <section className="voice-insight-panel"><label className="voice-insight-toggle"><input type="checkbox" disabled={!nextActionType || nextActionDays === null} checked={createOpportunity} onChange={(event) => setCreateOpportunity(event.target.checked)} /><span><strong>Bu görüşmeden fırsat oluştur</strong><small>Temas, kişi hafızası, görev ve fırsat tek onayla kaydedilir.</small></span></label>{createOpportunity ? <label>Fırsat türü<select value={opportunityType} onChange={(event) => setOpportunityType(event.target.value as OpportunityType)}>{Object.entries(opportunityTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label> : null}</section> : null}{reviewInsights?.suggestedActionReason ? <div className="voice-action-reason"><strong>Önerilen aksiyon</strong><span>{reviewInsights.suggestedActionReason}</span></div> : null}<div className="voice-review-actions"><button className="secondary-action danger-secondary inline-action" type="button" onClick={() => void discardReview()}><Trash2 size={17} aria-hidden /> Vazgeç ve taslağı sil</button><button className="primary-action inline-action" type="button" onClick={() => void submitReview()}><Check size={18} aria-hidden /> Onayla ve işi oluştur</button></div></div> : null}
+      {step === "review" && voiceNote ? <div className="voice-review"><div className="review-heading"><div><p className="eyebrow">İNCELE VE ONAYLA</p><h2>Çıkarılan temas taslağı</h2></div><span className="review-badge">{voiceNote.inputMode === "text_test" ? "Test metni · " : ""}Kullanıcı onayı gerekli</span></div><div className="voice-review-subject"><ContactRound size={18} aria-hidden /><span><small>BU KİŞİYE KAYDEDİLECEK</small><strong>{reviewContact?.fullName ?? reviewContact?.label ?? "Seçili kişi"}</strong></span><em>Yanlış kişiyse yukarıdaki kişi alanından yeniden atayabilirsiniz.</em></div>{voiceNote.maskedCategories.length > 0 ? <div className="masked-warning"><AlertTriangle size={18} aria-hidden /><span>{voiceNote.maskedCategories.map((category) => sensitiveDataCategoryLabels[category]).join(", ")} maskelendi ve yeniden gösterilmeyecek.</span></div> : null}{transcriptPossiblyIncomplete ? <div className="voice-transcription-warning" role="alert"><AlertTriangle size={19} aria-hidden /><span><strong>Sesin yalnızca bir bölümü yazıya çevrilmiş olabilir.</strong><small>{Math.round(voiceNote.durationMs / 1_000)} saniyelik kayıttan yalnızca {transcriptWordCount} kelime duyuldu. Aşağıdaki metni kontrol et; eksikse bu taslağı onaylama.</small></span></div> : null}{voiceNote.maskedTranscript ? <details className="voice-transcript-comparison"><summary>Duyulan metni karşılaştır <ChevronDown size={18} aria-hidden /></summary><p>{voiceNote.maskedTranscript}</p></details> : null}<div className="voice-review-grid"><label>Kanal<select value={channel} onChange={(event) => setChannel(event.target.value as ManualInteractionDraft["channel"])}>{interactionChannels.map((item) => <option key={item} value={item}>{interactionChannelLabels[item]}</option>)}</select></label><label>Amaç<select value={objective} onChange={(event) => setObjective(event.target.value as ManualInteractionDraft["objective"])}>{interactionObjectives.map((item) => <option key={item} value={item}>{interactionObjectiveLabels[item]}</option>)}</select></label><label>Yön<select value={direction} onChange={(event) => setDirection(event.target.value as ManualInteractionDraft["direction"])}><option value="mutual">Karşılıklı</option><option value="outbound">Giden</option><option value="inbound">Gelen</option></select></label><label>Görüşme sonucu<select value={askOutcome} onChange={(event) => setAskOutcome(event.target.value as ManualInteractionDraft["askOutcome"])}>{askOutcomes.map((item) => <option key={item} value={item}>{askOutcomeLabels[item]}</option>)}</select></label><label className="wide">Kısa sonuç<textarea value={outcome} onChange={(event) => setOutcome(event.target.value)} /></label><label className="wide">Güvenli özet<textarea value={noteSummary} onChange={(event) => setNoteSummary(event.target.value)} /></label><label>Sonraki aksiyon<select value={nextActionType ?? ""} onChange={(event) => { const value = (event.target.value || null) as ManualInteractionDraft["nextActionType"]; setNextActionType(value); if (!value) { setNextActionDays(null); setNextActionTime(null); setSelectedOpportunityTypes([]); } }}><option value="">Henüz yok</option>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</select></label><label>Kaç gün sonra<input type="number" min="0" max="3650" disabled={!nextActionType} value={nextActionDays ?? ""} onChange={(event) => setNextActionDays(event.target.value ? Number(event.target.value) : null)} /></label><label>Saat (opsiyonel)<input type="time" disabled={!nextActionType} value={nextActionTime ?? ""} onChange={(event) => setNextActionTime(event.target.value || null)} /></label></div>{reviewInsights?.keyThingsToRemember.length ? <section className="voice-insight-panel"><div><p className="eyebrow">HATIRLANACAKLAR</p><h3>Önemli bilgiler</h3></div><div className="voice-memory-list">{reviewInsights.keyThingsToRemember.map((item) => <label className="voice-memory-item" key={item}><input type="checkbox" checked={approvedKeyThings.includes(item)} onChange={(event) => setApprovedKeyThings((current) => event.target.checked ? [...current, item] : current.filter((value) => value !== item))} /><span>{item}</span></label>)}</div></section> : null}{preferenceLabels.length ? <section className="voice-insight-panel">{isSubjectProperty ? <div className="voice-insight-toggle"><span><strong>Görüşülen gayrimenkul</strong><small>Bu bilgiler kişinin arama tercihlerine eklenmez.</small></span></div> : <label className="voice-insight-toggle"><input type="checkbox" checked={includePropertyPreferences} onChange={(event) => setIncludePropertyPreferences(event.target.checked)} /><span><strong>Gayrimenkul tercihlerini kişi hafızasına ekle</strong><small>Yanlış bir çıkarım varsa bu seçimi kaldırabilirsiniz.</small></span></label>}<div className="voice-insight-chips">{preferenceLabels.map((item) => <span key={item}>{item}</span>)}</div>{!isSubjectProperty && includePropertyPreferences ? <label>Eksik tercih ekle<input value={additionalMustHavesText} onChange={(event) => setAdditionalMustHavesText(event.target.value)} placeholder="Örn. Sakin sokak, denize yürüme mesafesi" /></label> : null}</section> : null}{opportunitySuggestions.length ? <section className="voice-insight-panel"><div><p className="eyebrow">FIRSAT ÖNERİLERİ</p><h3>{opportunitySuggestions.length} ayrı iş algılandı</h3><small>{nextActionType && nextActionDays !== null ? "Oluşturmak istediklerinizi seçin." : "Fırsat oluşturmak için önce bir sonraki adımı ve günü seçin."}</small></div><div className="voice-memory-list">{opportunitySuggestions.map((type) => <label className="voice-memory-item" key={type}><input type="checkbox" disabled={!nextActionType || nextActionDays === null} checked={selectedOpportunityTypes.includes(type)} onChange={(event) => setSelectedOpportunityTypes((current) => event.target.checked ? [...current, type] : current.filter((item) => item !== type))} /><span><strong>{opportunityTypeLabels[type]}</strong></span></label>)}</div></section> : null}{reviewInsights?.suggestedActionReason ? <div className="voice-action-reason"><strong>Önerilen aksiyon</strong><span>{reviewInsights.suggestedActionReason}</span></div> : null}<div className="voice-review-actions"><button className="secondary-action danger-secondary inline-action" type="button" onClick={() => void discardReview()}><Trash2 size={17} aria-hidden /> Vazgeç ve taslağı sil</button><button className="primary-action inline-action" type="button" onClick={() => void submitReview()}><Check size={18} aria-hidden /> Onayla ve işi oluştur</button></div></div> : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
     </SpCard>
   );

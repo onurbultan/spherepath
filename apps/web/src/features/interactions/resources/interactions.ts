@@ -6,24 +6,19 @@ import {
   type OpportunityDraft,
   type RegisterInteractionTextInput,
   type RetryVoiceNoteProcessingInput,
-  type RegisterVoiceNoteInput,
   type RegisterVoiceTextTestInput,
   type VoiceInsights,
   type VoiceNoteView,
 } from "@spherepath/shared";
-import { ref, uploadBytes } from "firebase/storage";
 import { apiClient } from "@/shared/api/client";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
-import { firebaseServices } from "@/shared/firebase/client";
+import { saveOrQueueInteraction, saveOrQueueVoice } from "./captureQueue";
 
 export async function saveManualInteraction(
   session: WorkspaceSession,
   interaction: ManualInteractionDraft,
 ) {
-  const response = await apiClient.command<ManualInteractionDraft, { interactionId: string }>(
-    "recordInteraction", interaction, createCommandId(session.uid),
-  );
-  return response.interactionId;
+  return saveOrQueueInteraction(session, interaction);
 }
 
 export async function uploadAndRegisterVoiceNote(
@@ -31,25 +26,8 @@ export async function uploadAndRegisterVoiceNote(
   contactId: string,
   audio: Blob,
   durationMs: number,
-): Promise<string> {
-  const commandId = createCommandId(session.uid);
-  const mimeType = audio.type.split(";")[0] || "audio/webm";
-  const extension = mimeType === "audio/mp4" || mimeType === "audio/m4a" ? "m4a" : mimeType.includes("wav") ? "wav" : "webm";
-  const fileId = commandId.replace(/[^A-Za-z0-9_-]/gu, "-");
-  const storagePath = `offices/${session.officeId}/voice/${session.uid}/${fileId}.${extension}`;
-  await uploadBytes(ref(firebaseServices().storage, storagePath), audio, {
-    contentType: mimeType,
-    customMetadata: { contactId, durationMs: String(durationMs) },
-  });
-  const input: RegisterVoiceNoteInput = {
-    contactId,
-    storagePath,
-    durationMs,
-    mimeType: mimeType as RegisterVoiceNoteInput["mimeType"],
-    conversationEndedConfirmed: true,
-  };
-  const response = await apiClient.command<RegisterVoiceNoteInput, { voiceNoteId: string }>("registerVoiceNote", input, commandId);
-  return response.voiceNoteId;
+): Promise<string | null> {
+  return saveOrQueueVoice(session, contactId, audio, durationMs);
 }
 
 export async function getVoiceNote(voiceNoteId: string): Promise<VoiceNoteView> {
@@ -98,10 +76,10 @@ export async function confirmVoiceNote(
   voiceNoteId: string,
   interaction: ManualInteractionDraft,
   approvedInsights: VoiceInsights,
-  opportunity: Omit<OpportunityDraft, "subjectContactId"> | null,
-): Promise<{ interactionId: string; opportunityId: string | null }> {
-  const input: ConfirmVoiceNoteInput = { voiceNoteId, interaction, approvedInsights, opportunity };
-  return apiClient.command<ConfirmVoiceNoteInput, { interactionId: string; opportunityId: string | null }>(
+  opportunities: Array<Omit<OpportunityDraft, "subjectContactId">>,
+): Promise<{ interactionId: string; opportunityId: string | null; opportunityIds: string[] }> {
+  const input: ConfirmVoiceNoteInput = { voiceNoteId, interaction, approvedInsights, opportunity: null, opportunities };
+  return apiClient.command<ConfirmVoiceNoteInput, { interactionId: string; opportunityId: string | null; opportunityIds: string[] }>(
     "confirmVoiceNote", input, createCommandId(session.uid),
   );
 }

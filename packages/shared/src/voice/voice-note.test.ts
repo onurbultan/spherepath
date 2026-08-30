@@ -52,6 +52,7 @@ describe("voice extraction contract", () => {
       keyThingsToRemember: ["açık mutfak istiyor", "İki araçlık otopark önemli"],
       propertyContext: "search_preference",
       propertyPreferences: { ...emptyVoicePropertyPreferences, preferredLocations: ["Moda"] },
+      propertySituations: [],
       suggestedActionReason: null,
     }, 2);
 
@@ -75,6 +76,7 @@ describe("voice extraction contract", () => {
         areaMinM2: 185,
         areaMaxM2: 185,
       },
+      propertySituations: [],
       suggestedActionReason: null,
     }, 2);
 

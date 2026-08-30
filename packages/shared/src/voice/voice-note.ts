@@ -71,10 +71,17 @@ export const emptyVoicePropertyPreferences: VoicePropertyPreferences = {
   timeline: null,
 };
 
+export const voicePropertySituationSchema = z.object({
+  propertyContext: z.enum(voicePropertyContexts),
+  summary: z.string().trim().min(2).max(240),
+  propertyPreferences: voicePropertyPreferencesSchema,
+}).strict();
+
 export const voiceInsightsSchema = z.object({
   keyThingsToRemember: z.array(z.string().trim().min(2).max(180)).max(8),
   propertyContext: z.enum(voicePropertyContexts).nullable().default(null),
   propertyPreferences: voicePropertyPreferencesSchema,
+  propertySituations: z.array(voicePropertySituationSchema).max(3).default([]),
   suggestedActionReason: z.string().trim().min(2).max(240).nullable(),
 }).strict();
 
@@ -82,6 +89,7 @@ export const emptyVoiceInsights: VoiceInsights = {
   keyThingsToRemember: [],
   propertyContext: null,
   propertyPreferences: emptyVoicePropertyPreferences,
+  propertySituations: [],
   suggestedActionReason: null,
 };
 
@@ -141,6 +149,7 @@ export const confirmVoiceNoteSchema = z.object({
   interaction: manualInteractionSchema,
   approvedInsights: voiceInsightsSchema.default(emptyVoiceInsights),
   opportunity: opportunityDraftSchema.omit({ subjectContactId: true }).nullable().default(null),
+  opportunities: z.array(opportunityDraftSchema.omit({ subjectContactId: true })).max(3).default([]),
 }).strict();
 
 export const getVoiceNoteSchema = z.object({
@@ -158,6 +167,7 @@ export type RegisterVoiceTextTestInput = z.infer<typeof registerVoiceTextTestSch
 export type RegisterInteractionTextInput = z.infer<typeof registerInteractionTextSchema>;
 export type VoiceExtraction = z.infer<typeof voiceExtractionSchema>;
 export type VoiceInsights = z.infer<typeof voiceInsightsSchema>;
+export type VoicePropertySituation = z.infer<typeof voicePropertySituationSchema>;
 export type VoicePropertyPreferences = z.infer<typeof voicePropertyPreferencesSchema>;
 export type ConfirmVoiceNoteInput = z.infer<typeof confirmVoiceNoteSchema>;
 export type DiscardVoiceNoteInput = z.infer<typeof discardVoiceNoteSchema>;

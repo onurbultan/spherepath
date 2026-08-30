@@ -207,6 +207,7 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
     };
   });
   if (!acquired) return;
+  const processingStartedAt = Date.now();
 
   try {
     const processingDate = new Date();
@@ -248,8 +249,19 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
       errorCode: null,
       updatedAt: Timestamp.now(),
     });
+    logger.info("Voice note processing completed", {
+      voiceNoteId,
+      durationMs: Date.now() - processingStartedAt,
+      recordingDurationMs: acquired.durationMs,
+      transcriptionModel: transcription.model,
+      transcriptionLocation: transcription.location,
+      transcriptionWordCount: transcriptWordCount(rawTranscript),
+      transcriptionWarning: transcription.warning,
+      extractionEngine: extraction.provenance.engine,
+      propertySituationCount: extraction.insights.propertySituations.length,
+    });
   } catch (error) {
-    logger.error("Voice note processing failed", { voiceNoteId, eventId, attempts: acquired.attempts, error });
+    logger.error("Voice note processing failed", { voiceNoteId, eventId, attempts: acquired.attempts, durationMs: Date.now() - processingStartedAt, error });
     if (rawOverride === undefined && acquired.attempts < 3) {
       await noteRef.update({ status: "queued", processingEventId: null, errorCode: "processing_retry", updatedAt: Timestamp.now() });
       throw error;
@@ -639,7 +651,7 @@ export const discardVoiceNote = onCall(
 
 export const confirmVoiceNote = onCall(
   { region: "europe-west8", cors: true, maxInstances: 10, memory: "256MiB", timeoutSeconds: 60 },
-  async (request): Promise<{ interactionId: string; opportunityId: string | null }> => {
+  async (request): Promise<{ interactionId: string; opportunityId: string | null; opportunityIds: string[] }> => {
     const claims = requireSpherepathClaims(request);
     const envelope = readApiEnvelope<unknown>(request.data, { command: true });
     const parsed = confirmVoiceNoteSchema.safeParse(envelope.data);
@@ -648,8 +660,12 @@ export const confirmVoiceNote = onCall(
     const noteRef = firestore.collection("voiceNotes").doc(parsed.data.voiceNoteId);
     const commandRef = firestore.collection("commands").doc(envelope.commandId!);
     const interactionRef = firestore.collection("interactions").doc();
-    const opportunityRef = parsed.data.opportunity ? firestore.collection("opportunities").doc() : null;
-    const stageEventRef = parsed.data.opportunity ? firestore.collection("stageEvents").doc() : null;
+    const opportunityDrafts = [
+      ...parsed.data.opportunities,
+      ...(parsed.data.opportunity ? [parsed.data.opportunity] : []),
+    ].filter((draft, index, drafts) => drafts.findIndex((candidate) => candidate.type === draft.type) === index).slice(0, 3);
+    const opportunityRefs = opportunityDrafts.map(() => firestore.collection("opportunities").doc());
+    const stageEventRefs = opportunityDrafts.map(() => firestore.collection("stageEvents").doc());
 
     return observeApiRequest("confirmVoiceNote", envelope.requestId, () => firestore.runTransaction(async (transaction) => {
       const [commandSnapshot, noteSnapshot] = await Promise.all([transaction.get(commandRef), transaction.get(noteRef)]);
@@ -659,6 +675,9 @@ export const confirmVoiceNote = onCall(
         return {
           interactionId: receipt.interactionId as string,
           opportunityId: typeof receipt.opportunityId === "string" ? receipt.opportunityId : null,
+          opportunityIds: Array.isArray(receipt.opportunityIds)
+            ? receipt.opportunityIds as string[]
+            : typeof receipt.opportunityId === "string" ? [receipt.opportunityId as string] : [],
         };
       }
       if (!noteSnapshot.exists || !canManage(noteSnapshot.data()!, claims)) throw new HttpsError("not-found", "Voice note was not found.");
@@ -707,25 +726,29 @@ export const confirmVoiceNote = onCall(
         updatedAt: milliseconds(storedMemory.updatedAt) || null,
       });
       const memory = mergeVoiceInsightsIntoContactMemory(currentMemory, parsed.data.approvedInsights, now);
-      const inferredRole = inferredContactRole(parsed.data.opportunity?.type);
+      const inferredRoles = opportunityDrafts.map((draft) => inferredContactRole(draft.type)).filter((role): role is NonNullable<typeof role> => role !== null);
       const existingRoles = Array.isArray(contact.roles) ? contact.roles as string[] : [];
-      const roles = inferredRole ? [inferredRole, ...existingRoles.filter((role) => role !== inferredRole && role !== "unknown")].slice(0, 8) : existingRoles;
+      const roles = inferredRoles.length
+        ? [...new Set([...inferredRoles, ...existingRoles.filter((role) => role !== "unknown")])].slice(0, 8)
+        : existingRoles;
       transaction.update(contactRef, {
         relationship: { ...relationship, lastTouchAt: timestamp(relationship.lastTouchAt), nextActionAt: timestamp(relationship.nextActionAt) },
         memory: { ...memory, updatedAt: timestamp(memory.updatedAt) },
         roles,
         updatedAt: nowTimestamp,
       });
-      if (parsed.data.opportunity && opportunityRef && stageEventRef) {
+      for (const [index, draft] of opportunityDrafts.entries()) {
+        const opportunityRef = opportunityRefs[index]!;
+        const stageEventRef = stageEventRefs[index]!;
         const opportunity = createOpportunityEntity({
           subjectContactId: targetContactId,
-          ...parsed.data.opportunity,
+          ...draft,
         }, { officeId: note.officeId as string, ownerUid: note.ownerUid as string }, now);
         transaction.create(opportunityRef, {
           ...opportunity,
           qualifiedAt: nowTimestamp,
           stageEnteredAt: nowTimestamp,
-          nextActionAt: Timestamp.fromMillis(parsed.data.opportunity.nextActionAt),
+          nextActionAt: Timestamp.fromMillis(draft.nextActionAt),
           closedAt: null,
           deletedAt: null,
           createdAt: nowTimestamp,
@@ -767,10 +790,15 @@ export const confirmVoiceNote = onCall(
         type: "confirmVoiceNote",
         voiceNoteId: noteRef.id,
         interactionId: interactionRef.id,
-        opportunityId: opportunityRef?.id ?? null,
+        opportunityId: opportunityRefs[0]?.id ?? null,
+        opportunityIds: opportunityRefs.map((ref) => ref.id),
         createdAt: nowTimestamp,
       });
-      return { interactionId: interactionRef.id, opportunityId: opportunityRef?.id ?? null };
+      return {
+        interactionId: interactionRef.id,
+        opportunityId: opportunityRefs[0]?.id ?? null,
+        opportunityIds: opportunityRefs.map((ref) => ref.id),
+      };
     }));
   },
 );

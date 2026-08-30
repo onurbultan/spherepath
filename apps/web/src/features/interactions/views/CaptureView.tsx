@@ -47,6 +47,7 @@ export function CaptureView() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [queuedOffline, setQueuedOffline] = useState(false);
   const [contactId, setContactId] = useState("");
   const [channel, setChannel] = useState<ManualInteractionDraft["channel"]>("in_person");
   const [objective, setObjective] = useState<ManualInteractionDraft["objective"]>("get_acquainted");
@@ -96,7 +97,8 @@ export function CaptureView() {
     setPending(true);
     setError(null);
     try {
-      await saveManualInteraction(session, parsed.data);
+      const interactionId = await saveManualInteraction(session, parsed.data);
+      setQueuedOffline(interactionId.startsWith("queued-"));
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
@@ -137,6 +139,7 @@ export function CaptureView() {
     setNoteSummary("");
     setError(null);
     setSaved(false);
+    setQueuedOffline(false);
   }
 
   const quickContactSheet = quickContactOpen ? <div className="sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target && !contactPending) setQuickContactOpen(false); }}><section className="form-sheet" role="dialog" aria-modal="true" aria-labelledby="quick-contact-title"><div className="sheet-heading"><div><p className="eyebrow">AYNI AKIŞTA</p><h2 id="quick-contact-title">Yeni kişi ekle</h2><p className="privacy-copy">Kişiyi kaydettiğinizde bu görüşme ekranında otomatik seçilir.</p></div><button className="icon-action" aria-label="Kapat" disabled={contactPending} onClick={() => setQuickContactOpen(false)} type="button"><X size={20} /></button></div><form className="form-stack" onSubmit={createQuickContact}><label>Ad, soyad veya tanımlayıcı<input autoFocus required value={quickContactDraft.fullName} onChange={(event) => setQuickContactDraft({ ...quickContactDraft, fullName: event.target.value })} /></label><label>Telefon <span className="optional">isteğe bağlı</span><input inputMode="tel" value={quickContactDraft.phone} onChange={(event) => setQuickContactDraft({ ...quickContactDraft, phone: event.target.value })} /></label><label>Tanışma yeri <span className="optional">isteğe bağlı</span><input placeholder="Örn. Urla açık ev etkinliği" value={quickContactDraft.metAtPlace} onChange={(event) => setQuickContactDraft({ ...quickContactDraft, metAtPlace: event.target.value })} /></label><div className="form-row"><label>Kaynak<select value={quickContactDraft.source} onChange={(event) => setQuickContactDraft({ ...quickContactDraft, source: event.target.value as ContactDraft["source"] })}>{contactSources.map((item) => <option key={item} value={item}>{contactSourceLabels[item]}</option>)}</select></label><label>Rol<select value={quickContactDraft.role} onChange={(event) => setQuickContactDraft({ ...quickContactDraft, role: event.target.value as ContactDraft["role"] })}>{contactRoles.map((item) => <option key={item} value={item}>{contactRoleLabels[item]}</option>)}</select></label></div>{error ? <p className="form-error" role="alert">{error}</p> : null}<button className="primary-action auth-submit" disabled={contactPending} type="submit">{contactPending ? "Kişi hazırlanıyor…" : "Kişiyi ekle ve görüşmeye dön"}</button></form></section></div> : null;
@@ -158,7 +161,7 @@ export function CaptureView() {
       }} />
       <div className="capture-divider"><span>veya manuel kaydet</span></div>
       {saved ? (
-        <SpCard className="success-state"><div className="success-icon"><Check size={24} aria-hidden /></div><p className="eyebrow">KAYDEDİLDİ</p><h2>Temas ve sonraki aksiyon hazır</h2><p>Bugün ekranındaki ilişki görünümü birkaç saniye içinde güncellenecek.</p><div className="capture-actions"><button className="secondary-action" type="button" onClick={() => router.push("/")}>Bugün ekranına dön</button><button className="primary-action" type="button" onClick={resetManualInteraction}>Başka temas kaydet</button></div></SpCard>
+        <SpCard className="success-state"><div className="success-icon"><Check size={24} aria-hidden /></div><p className="eyebrow">{queuedOffline ? "CİHAZDA GÜVENDE" : "KAYDEDİLDİ"}</p><h2>{queuedOffline ? "Temas bağlantı gelince gönderilecek" : "Temas ve sonraki aksiyon hazır"}</h2><p>{queuedOffline ? "Bu sayfada beklemeniz gerekmez; aynı hesapla çevrimiçi olduğunuzda kayıt otomatik eşitlenir." : "Bugün ekranındaki ilişki görünümü birkaç saniye içinde güncellenecek."}</p><div className="capture-actions"><button className="secondary-action" type="button" onClick={() => router.push("/")}>Bugün ekranına dön</button><button className="primary-action" type="button" onClick={resetManualInteraction}>Başka temas kaydet</button></div></SpCard>
       ) : (
         <form className="capture-form" onSubmit={submit}>
           <SpCard className="form-section"><div className="section-heading compact"><div><p className="eyebrow">1 · KİM</p><h2>Görüşülen kişi</h2></div></div><div className="form-row"><ContactCombobox contacts={contacts} value={selectedContactId} onChange={setContactId} /><label>Kanal<select value={channel} onChange={(event) => setChannel(event.target.value as ManualInteractionDraft["channel"])}>{interactionChannels.map((item) => <option key={item} value={item}>{interactionChannelLabels[item]}</option>)}</select></label></div></SpCard>

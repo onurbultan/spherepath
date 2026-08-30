@@ -302,16 +302,18 @@ describe("callable API vertical slice", () => {
           dealBreakers: [],
           timeline: null,
         },
+        propertySituations: [],
         suggestedActionReason: "Yarın yeniden arama sözü verildi.",
       },
-      opportunity: {
-        type: "buyer_requirement",
-        nextActionType: "call",
-        nextActionAt: Date.now() + 86_400_000,
-      },
-    }, "request-voice-confirm", "command-voice-confirm"))).data as { interactionId: string; opportunityId: string | null };
+      opportunity: null,
+      opportunities: [
+        { type: "seller_listing", nextActionType: "call", nextActionAt: Date.now() + 86_400_000 },
+        { type: "buyer_requirement", nextActionType: "call", nextActionAt: Date.now() + 86_400_000 },
+      ],
+    }, "request-voice-confirm", "command-voice-confirm"))).data as { interactionId: string; opportunityId: string | null; opportunityIds: string[] };
     expect(confirmedVoice.interactionId).toBeTruthy();
     expect(confirmedVoice.opportunityId).toBeTruthy();
+    expect(confirmedVoice.opportunityIds).toHaveLength(2);
     const contactsAfterVoice = (await listContacts(envelope(undefined, "request-list-after-voice"))).data as { contacts: Array<{ id: string; memory: { keyThingsToRemember: string[] } }> };
     expect(contactsAfterVoice.contacts.find((contact) => contact.id === reassignedContact.contact.id)?.memory.keyThingsToRemember).toContain("Yarın yeniden aranacak.");
     expect(contactsAfterVoice.contacts.find((contact) => contact.id === created.contact.id)?.memory.keyThingsToRemember).not.toContain("Yarın yeniden aranacak.");
@@ -320,6 +322,7 @@ describe("callable API vertical slice", () => {
       id: confirmedVoice.opportunityId,
       subjectContactId: reassignedContact.contact.id,
     }));
+    expect(opportunitiesAfterVoice.opportunities.filter((item) => confirmedVoice.opportunityIds.includes(item.id))).toHaveLength(2);
 
     const createPortfolioItemFromDraft = httpsCallable(functions, "createPortfolioItemFromDraft");
     const portfolioRequest = envelope({

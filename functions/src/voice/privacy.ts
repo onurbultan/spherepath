@@ -76,6 +76,21 @@ export function sanitizeVoiceExtraction(extraction: VoiceExtraction): VoiceExtra
     },
     insights: {
       keyThingsToRemember: safeExtractedList(extraction.insights.keyThingsToRemember),
+      propertySituations: extraction.insights.propertySituations.flatMap((situation) => {
+        const summary = safeExtractedText(situation.summary);
+        if (!summary) return [];
+        return [{
+          ...situation,
+          summary,
+          propertyPreferences: {
+            ...situation.propertyPreferences,
+            preferredLocations: safeExtractedList(situation.propertyPreferences.preferredLocations),
+            mustHaves: safeExtractedList(situation.propertyPreferences.mustHaves),
+            dealBreakers: safeExtractedList(situation.propertyPreferences.dealBreakers),
+            timeline: safeExtractedText(situation.propertyPreferences.timeline),
+          },
+        }];
+      }),
       propertyPreferences: {
         ...preferences,
         preferredLocations: safeExtractedList(preferences.preferredLocations),
@@ -136,6 +151,7 @@ export function extractVoiceDraft(maskedTranscript: string): VoiceExtraction {
     insights: {
       keyThingsToRemember: [],
       propertyPreferences: emptyVoicePropertyPreferences,
+      propertySituations: [],
       suggestedActionReason: null,
     },
     confidence,

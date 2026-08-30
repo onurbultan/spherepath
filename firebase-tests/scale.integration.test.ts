@@ -107,20 +107,20 @@ describe("pilot scale", () => {
     const listed = (await listContacts(envelope(undefined, "request-scale-contacts"))).data as { contacts: Array<{ id: string }> };
     const contactsDuration = performance.now() - startedContacts;
     expect(listed.contacts).toHaveLength(1_000);
-    expect(contactsDuration).toBeLessThan(10_000);
+    expect(contactsDuration).toBeLessThan(2_000);
 
     const getTodayOverview = httpsCallable(functions, "getTodayOverview");
     const startedToday = performance.now();
     const today = (await getTodayOverview(envelope({ period: "30d" }, "request-scale-today"))).data as { overview: { stages: { acquaintance: number; relationship: number }; tasks: unknown[] } };
     const todayDuration = performance.now() - startedToday;
     expect(today.overview.stages).toMatchObject({ acquaintance: 1_000, relationship: 1_000 });
-    expect(todayDuration).toBeLessThan(10_000);
+    expect(todayDuration).toBeLessThan(2_000);
 
     const getFunnelOverview = httpsCallable(functions, "getFunnelOverview");
     const startedFunnel = performance.now();
     const funnel = (await getFunnelOverview(envelope({ period: "30d" }, "request-scale-funnel"))).data as { overview: { counts: { newPeople: number } } };
     const funnelDuration = performance.now() - startedFunnel;
     expect(funnel.overview.counts.newPeople).toBe(1_000);
-    expect(funnelDuration).toBeLessThan(10_000);
+    expect(funnelDuration).toBeLessThan(2_000);
   }, 45_000);
 });

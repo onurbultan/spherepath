@@ -38,7 +38,7 @@ const responseJsonSchema = {
     insights: {
       type: "object",
       additionalProperties: false,
-      required: ["keyThingsToRemember", "propertyContext", "propertyPreferences", "suggestedActionReason"],
+      required: ["keyThingsToRemember", "propertyContext", "propertyPreferences", "propertySituations", "suggestedActionReason"],
       properties: {
         keyThingsToRemember: { type: "array", maxItems: 8, items: { type: "string" } },
         propertyContext: { anyOf: [{ type: "string", enum: ["search_preference", "subject_property"] }, { type: "null" }] },
@@ -72,6 +72,49 @@ const responseJsonSchema = {
             timeline: { anyOf: [{ type: "string" }, { type: "null" }] },
           },
         },
+        propertySituations: {
+          type: "array",
+          maxItems: 3,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["propertyContext", "summary", "propertyPreferences"],
+            properties: {
+              propertyContext: { type: "string", enum: ["search_preference", "subject_property"] },
+              summary: { type: "string" },
+              propertyPreferences: {
+                type: "object",
+                additionalProperties: false,
+                required: ["transactionType", "propertyTypes", "preferredLocations", "budgetRange", "bedroomCountMin", "livingRoomCountMin", "roomCountMin", "areaMinM2", "areaMaxM2", "mustHaves", "dealBreakers", "timeline"],
+                properties: {
+                  transactionType: { anyOf: [{ type: "string", enum: ["buy", "sell", "rent", "let", "invest"] }, { type: "null" }] },
+                  propertyTypes: { type: "array", maxItems: 5, items: { type: "string", enum: ["apartment", "villa", "detached_house", "land", "commercial"] } },
+                  preferredLocations: { type: "array", maxItems: 8, items: { type: "string" } },
+                  budgetRange: {
+                    anyOf: [{
+                      type: "object",
+                      additionalProperties: false,
+                      required: ["min", "max", "currency"],
+                      properties: {
+                        min: { anyOf: [{ type: "number", minimum: 0 }, { type: "null" }] },
+                        max: { anyOf: [{ type: "number", minimum: 0 }, { type: "null" }] },
+                        currency: { type: "string", enum: ["TRY", "GBP", "USD", "EUR"] },
+                      },
+                    }, { type: "null" }],
+                  },
+                  bedroomCountMin: { anyOf: [{ type: "number", minimum: 0, maximum: 100 }, { type: "null" }] },
+                  livingRoomCountMin: { anyOf: [{ type: "number", minimum: 0, maximum: 20 }, { type: "null" }] },
+                  roomCountMin: { anyOf: [{ type: "number", minimum: 0, maximum: 100 }, { type: "null" }] },
+                  areaMinM2: { anyOf: [{ type: "number", minimum: 0, maximum: 100000 }, { type: "null" }] },
+                  areaMaxM2: { anyOf: [{ type: "number", minimum: 0, maximum: 100000 }, { type: "null" }] },
+                  mustHaves: { type: "array", maxItems: 8, items: { type: "string" } },
+                  dealBreakers: { type: "array", maxItems: 8, items: { type: "string" } },
+                  timeline: { anyOf: [{ type: "string" }, { type: "null" }] },
+                },
+              },
+            },
+          },
+        },
         suggestedActionReason: { anyOf: [{ type: "string" }, { type: "null" }] },
       },
     },
@@ -100,6 +143,7 @@ Never extract health, religion, ethnicity, political opinion, union membership, 
 Do not treat the advisor's own actions or preferences as the contact's unless the transcript clearly attributes them.
 When information is absent, use null or an empty array. Keep outcome under 500 characters, noteSummary under 1000 characters, each remembered fact under 180 characters, and the action reason under 240 characters.
 Use propertyContext=search_preference only for a buyer, tenant, or investor's search criteria. Use propertyContext=subject_property for a seller/landlord's existing property; never reinterpret that property's attributes as search preferences.
+Populate propertySituations with every distinct real-estate situation explicitly present. A person selling an existing home and planning to buy another home produces two entries: a subject_property with transactionType=sell and a search_preference with transactionType=buy. Keep each situation's location, price/budget, rooms, type and features separate. Use propertyPreferences/propertyContext for the active search_preference when one exists; otherwise use the single subject_property. Do not merge a subject property's attributes into the contact's search preference.
 Preserve room configurations exactly: 3+1 means bedroomCountMin=3 and livingRoomCountMin=1. Keep legacy roomCountMin null when bedroom/living-room counts are available. Preserve both ends of explicit area ranges using areaMinM2 and areaMaxM2.
 Capture every explicitly stated search criterion, including street character, walking-distance requirements, view, garden, parking, and similar requirements, in mustHaves or dealBreakers as appropriate. "Bahçeli ev" alone does not prove villa or detached_house; select those property types only when villa or müstakil is stated explicitly.
 Direction describes the completed conversation, not a future follow-up. Use outbound or inbound only when the transcript explicitly says who initiated the completed contact; otherwise use mutual.
@@ -124,7 +168,7 @@ export async function extractVoiceDraftWithVertex(maskedTranscript: string, refe
   if (!project) throw new Error("vertex_project_missing");
   const location = vertexLocation.value();
   const model = extractionModel.value();
-  const response = await clientFor(project, location).models.generateContent({
+  const request = () => clientFor(project, location).models.generateContent({
     model,
     contents: [{
       role: "user",
@@ -132,21 +176,36 @@ export async function extractVoiceDraftWithVertex(maskedTranscript: string, refe
     }],
     config: {
       systemInstruction,
-      temperature: 0.1,
-      maxOutputTokens: 2_048,
+      temperature: 0,
+      maxOutputTokens: 8_192,
       responseMimeType: "application/json",
       responseJsonSchema,
       httpOptions: { timeout: 30_000 },
     },
   });
-  if (!response.text) throw new Error("vertex_empty_response");
-
+  let response = await request();
   let payload: unknown;
-  try {
-    payload = JSON.parse(response.text);
-  } catch (error) {
-    logger.warn("Vertex voice extraction returned invalid JSON", { model, responseId: response.responseId, error });
-    throw new Error("vertex_invalid_json");
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    if (!response.text) {
+      if (attempt === 1) { response = await request(); continue; }
+      throw new Error("vertex_empty_response");
+    }
+    try {
+      const normalized = response.text.trim().replace(/^```(?:json)?\s*/iu, "").replace(/\s*```$/u, "");
+      payload = JSON.parse(normalized);
+      break;
+    } catch (error) {
+      logger.warn("Vertex voice extraction returned invalid JSON", {
+        model,
+        responseId: response.responseId,
+        responseLength: response.text.length,
+        finishReason: response.candidates?.[0]?.finishReason ?? null,
+        attempt,
+        error,
+      });
+      if (attempt === 1) { response = await request(); continue; }
+      throw new Error("vertex_invalid_json");
+    }
   }
   const parsed = aiVoiceExtractionSchema.safeParse(payload);
   if (!parsed.success) {

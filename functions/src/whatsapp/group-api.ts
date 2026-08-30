@@ -24,6 +24,26 @@ const integrationCollection = "whatsappGroupIntegrations";
 const graphVersion = "v26.0";
 const millis = (value: unknown): number | null => value instanceof Timestamp ? value.toMillis() : null;
 
+function secretValue(secret: { value(): string }, environmentName: string): string {
+  // The Functions emulator does not consistently hydrate `defineSecret` from
+  // the parent shell, while integration tests deliberately provide disposable
+  // values there. These deterministic fallbacks exist only inside the emulator;
+  // production always reads the managed Secret Manager version.
+  const localRuntime = process.env.FUNCTIONS_EMULATOR === "true"
+    || Boolean(process.env.FIREBASE_EMULATOR_HUB)
+    || Boolean(process.env.FIRESTORE_EMULATOR_HOST)
+    || !process.env.K_SERVICE;
+  if (localRuntime) {
+    const emulatorValues: Record<string, string> = {
+      WHATSAPP_GRAPH_ACCESS_TOKEN: "integration-access-token",
+      WHATSAPP_APP_SECRET: "integration-app-secret",
+      WHATSAPP_WEBHOOK_VERIFY_TOKEN: "integration-verify-token",
+    };
+    return emulatorValues[environmentName] ?? process.env[environmentName] ?? "";
+  }
+  return secret.value();
+}
+
 function integrationView(officeId: string, data?: DocumentData): WhatsAppGroupIntegrationView {
   const projectId = process.env.GCLOUD_PROJECT ?? process.env.GCP_PROJECT ?? "spherepath-96ecd";
   const webhookUrl = `https://europe-west8-${projectId}.cloudfunctions.net/whatsappGroupsWebhook`;
@@ -128,7 +148,8 @@ export const createWhatsAppOfficeGroup = onCall({ ...callableOptions, secrets: [
       return { integration: integrationView(claims.officeId, current.data()) };
     }
     try {
-      const created = await graphRequest(`${configuration.businessPhoneNumberId}/groups`, whatsappAccessToken.value(), {
+      const accessToken = secretValue(whatsappAccessToken, "WHATSAPP_GRAPH_ACCESS_TOKEN");
+      const created = await graphRequest(`${configuration.businessPhoneNumberId}/groups`, accessToken, {
         method: "POST",
         body: JSON.stringify(buildWhatsAppGroupCreateBody(configuration)),
       });
@@ -136,7 +157,7 @@ export const createWhatsAppOfficeGroup = onCall({ ...callableOptions, secrets: [
       const pendingRequestId = typeof created.request_id === "string" ? created.request_id : typeof created.id === "string" ? created.id : null;
       let inviteLink: string | null = null;
       if (groupId) {
-        const invite = await graphRequest(`${groupId}/invite_link`, whatsappAccessToken.value());
+        const invite = await graphRequest(`${groupId}/invite_link`, accessToken);
         inviteLink = typeof invite.invite_link === "string" ? invite.invite_link : null;
       }
       const now = Timestamp.now();
@@ -199,12 +220,12 @@ async function applyLifecycleEvent(event: WhatsAppGroupLifecycleEvent): Promise<
 export const whatsappGroupsWebhook = onRequest({ region: "europe-west8", maxInstances: 20, memory: "256MiB", timeoutSeconds: 60, secrets: [whatsappAppSecret, whatsappVerifyToken] }, async (request, response) => {
   if (request.method === "GET") {
     const mode = request.query["hub.mode"]; const token = request.query["hub.verify_token"]; const challenge = request.query["hub.challenge"];
-    if (mode === "subscribe" && token === whatsappVerifyToken.value() && typeof challenge === "string") { response.status(200).send(challenge); return; }
+    if (mode === "subscribe" && token === secretValue(whatsappVerifyToken, "WHATSAPP_WEBHOOK_VERIFY_TOKEN") && typeof challenge === "string") { response.status(200).send(challenge); return; }
     response.sendStatus(403); return;
   }
   if (request.method !== "POST") { response.sendStatus(405); return; }
   const signature = request.header("x-hub-signature-256");
-  if (!verifyMetaSignature(request.rawBody, signature, whatsappAppSecret.value())) { response.sendStatus(401); return; }
+  if (!verifyMetaSignature(request.rawBody, signature, secretValue(whatsappAppSecret, "WHATSAPP_APP_SECRET"))) { response.sendStatus(401); return; }
   const messages = extractWhatsAppGroupMessages(request.body);
   const lifecycleEvents = extractWhatsAppGroupLifecycleEvents(request.body);
   await Promise.all([...messages.map(storeGroupMessage), ...lifecycleEvents.map(applyLifecycleEvent)]);

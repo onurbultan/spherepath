@@ -1,4 +1,10 @@
-import { voiceExtractionSchema, type VoiceExtraction } from "../../../packages/shared/src/index.js";
+import {
+  emptyVoicePropertyPreferences,
+  voiceExtractionSchema,
+  type VoiceExtraction,
+  type VoicePropertyPreferences,
+  type VoicePropertySituation,
+} from "../../../packages/shared/src/index.js";
 
 function appendUnique(values: string[], additions: string[]): string[] {
   const result = [...values];
@@ -8,11 +14,141 @@ function appendUnique(values: string[], additions: string[]): string[] {
   return result.slice(0, 20);
 }
 
+function amountFrom(text: string): VoicePropertyPreferences["budgetRange"] {
+  const million = text.match(/\b(\d+(?:[.,]\d+)?)\s*milyon(?:a|e|dan|den|luk|lük)?(?=\s|$|[.,;])/iu);
+  const plain = text.match(/\b(\d{6,12})\s*(?:tl|₺|lira)?\b/iu);
+  const value = million?.[1]
+    ? Number(million[1].replace(",", ".")) * 1_000_000
+    : plain?.[1]
+      ? Number(plain[1])
+      : null;
+  if (!value || !Number.isFinite(value)) return null;
+  const upperBound = /\b(?:kadar|en fazla|üst sınır)\b/iu.test(text);
+  const lowerBound = /\b(?:en az|alt sınır)\b/iu.test(text);
+  return {
+    min: upperBound ? null : value,
+    max: lowerBound ? null : value,
+    currency: "TRY",
+  };
+}
+
+function propertyTypesFrom(text: string): VoicePropertyPreferences["propertyTypes"] {
+  return [
+    /\bvilla\b/iu.test(text) ? "villa" as const : null,
+    /\bmüstakil\b/iu.test(text) ? "detached_house" as const : null,
+    /\b(?:daire|apartman)\b/iu.test(text) ? "apartment" as const : null,
+    /\barsa\b/iu.test(text) ? "land" as const : null,
+    /\b(?:ticari|işyeri|dükkan|ofis)\b/iu.test(text) ? "commercial" as const : null,
+  ].filter((item): item is NonNullable<typeof item> => item !== null);
+}
+
+function locationsFrom(text: string): string[] {
+  const values: string[] = [];
+  for (const match of text.matchAll(/\b([A-ZÇĞİÖŞÜ][\p{L}.-]{1,60})(?:['’](?:da|de|ta|te)ki)\b/gu)) {
+    if (match[1]) values.push(match[1]);
+  }
+  for (const match of text.matchAll(/\b([A-ZÇĞİÖŞÜ][\p{L}.-]{2,60}?)(?:['’]?(?:da|de|ta|te))\s+(?:bir\s+)?(?:villa|daire|ev|arsa|müstakil|işyeri)\b/gu)) {
+    if (match[1]) values.push(match[1]);
+  }
+  return appendUnique([], values).slice(0, 8);
+}
+
+function preferencesFrom(text: string, transactionType: VoicePropertyPreferences["transactionType"]): VoicePropertyPreferences {
+  const room = text.match(/\b(\d{1,2})\s*\+\s*(\d{1,2})\b/u);
+  const areaRange = text.match(/\b(\d{2,5})\s*(?:-|–|—|ile)\s*(\d{2,5})\s*(?:m²|m2|metrekare)/iu);
+  return {
+    ...emptyVoicePropertyPreferences,
+    transactionType,
+    propertyTypes: propertyTypesFrom(text),
+    preferredLocations: locationsFrom(text),
+    budgetRange: amountFrom(text),
+    bedroomCountMin: room?.[1] ? Number(room[1]) : null,
+    livingRoomCountMin: room?.[2] ? Number(room[2]) : null,
+    areaMinM2: areaRange?.[1] ? Number(areaRange[1]) : null,
+    areaMaxM2: areaRange?.[2] ? Number(areaRange[2]) : null,
+    mustHaves: [
+      /\bbahçeli\b/iu.test(text) ? "Bahçeli" : null,
+      /\botoparklı\b/iu.test(text) ? "Otoparklı" : null,
+      /\bdenize\s+yürüme\s+mesafesi(?:nde)?\b/iu.test(text) ? "Denize yürüme mesafesi" : null,
+      /\bsakin\s+(?:bir\s+)?(?:sokak|cadde|mahalle)\b/iu.test(text) ? "Sakin sokak" : null,
+    ].filter((item): item is string => item !== null),
+  };
+}
+
+function deterministicPropertySituations(text: string): VoicePropertySituation[] {
+  const sentences = text.match(/[^.!?]+[.!?]?/gu)?.map((item) => item.trim()).filter(Boolean) ?? [];
+  const situations: VoicePropertySituation[] = [];
+  for (const sentence of sentences) {
+    const subjectTransaction = /(?:^|\s)(?:satmaya|satmak|satışa|satılık)(?=\s|$|[.,;])/iu.test(sentence)
+      ? "sell" as const
+      : /(?:^|\s)(?:kiraya\s+vermeye|kiraya\s+vermek|kiralık)(?=\s|$|[.,;])/iu.test(sentence)
+        ? "let" as const
+        : null;
+    const searchTransaction = /(?:^|\s)(?:satın\s+almayı|almayı|almak|arıyor|arayışında)(?=\s|$|[.,;])/iu.test(sentence)
+      && !/(?:^|\s)(?:satmaya|satmak)(?=\s|$|[.,;])/iu.test(sentence)
+      ? "buy" as const
+      : /(?:^|\s)(?:kiralamayı|kiralamak|kiracı\s+olmayı)(?=\s|$|[.,;])/iu.test(sentence)
+        ? "rent" as const
+        : null;
+    if (subjectTransaction) situations.push({
+      propertyContext: "subject_property",
+      summary: sentence.slice(0, 240),
+      propertyPreferences: preferencesFrom(sentence, subjectTransaction),
+    });
+    if (searchTransaction) situations.push({
+      propertyContext: "search_preference",
+      summary: sentence.slice(0, 240),
+      propertyPreferences: preferencesFrom(sentence, searchTransaction),
+    });
+  }
+  return situations.slice(0, 3);
+}
+
+function normalizeSituation(situation: VoicePropertySituation): VoicePropertySituation {
+  const deterministic = preferencesFrom(situation.summary, situation.propertyPreferences.transactionType);
+  return {
+    ...situation,
+    propertyPreferences: {
+      ...situation.propertyPreferences,
+      propertyTypes: situation.propertyPreferences.propertyTypes.length ? situation.propertyPreferences.propertyTypes : deterministic.propertyTypes,
+      preferredLocations: situation.propertyPreferences.preferredLocations.length ? situation.propertyPreferences.preferredLocations : deterministic.preferredLocations,
+      budgetRange: situation.propertyPreferences.budgetRange ?? deterministic.budgetRange,
+      bedroomCountMin: situation.propertyPreferences.bedroomCountMin ?? deterministic.bedroomCountMin,
+      livingRoomCountMin: situation.propertyPreferences.livingRoomCountMin ?? deterministic.livingRoomCountMin,
+      mustHaves: appendUnique(situation.propertyPreferences.mustHaves, deterministic.mustHaves),
+    },
+  };
+}
+
 export function normalizeVoiceExtraction(
   extraction: VoiceExtraction,
   maskedTranscript: string,
 ): VoiceExtraction {
-  const preferences = extraction.insights.propertyPreferences;
+  const inferredSituations = deterministicPropertySituations(maskedTranscript);
+  const propertySituations = (extraction.insights.propertySituations.length
+    ? extraction.insights.propertySituations.map(normalizeSituation)
+    : inferredSituations.map(normalizeSituation)).slice(0, 3);
+  const primarySituation = [...propertySituations].reverse().find((item) => item.propertyContext === "search_preference")
+    ?? propertySituations[0]
+    ?? null;
+  const extractedPreferences = extraction.insights.propertyPreferences;
+  const samePrimaryTransaction = primarySituation?.propertyPreferences.transactionType !== null
+    && primarySituation?.propertyPreferences.transactionType === extractedPreferences.transactionType;
+  const preferences = primarySituation ? {
+    ...primarySituation.propertyPreferences,
+    propertyTypes: appendUnique(primarySituation.propertyPreferences.propertyTypes, samePrimaryTransaction ? extractedPreferences.propertyTypes : []),
+    preferredLocations: appendUnique(primarySituation.propertyPreferences.preferredLocations, samePrimaryTransaction ? extractedPreferences.preferredLocations : []),
+    budgetRange: primarySituation.propertyPreferences.budgetRange ?? (samePrimaryTransaction ? extractedPreferences.budgetRange : null),
+    bedroomCountMin: primarySituation.propertyPreferences.bedroomCountMin ?? (samePrimaryTransaction ? extractedPreferences.bedroomCountMin : null),
+    livingRoomCountMin: primarySituation.propertyPreferences.livingRoomCountMin ?? (samePrimaryTransaction ? extractedPreferences.livingRoomCountMin : null),
+    roomCountMin: primarySituation.propertyPreferences.roomCountMin ?? (samePrimaryTransaction ? extractedPreferences.roomCountMin : null),
+    areaMinM2: primarySituation.propertyPreferences.areaMinM2 ?? (samePrimaryTransaction ? extractedPreferences.areaMinM2 : null),
+    areaMaxM2: primarySituation.propertyPreferences.areaMaxM2 ?? (samePrimaryTransaction ? extractedPreferences.areaMaxM2 : null),
+    mustHaves: appendUnique(primarySituation.propertyPreferences.mustHaves, samePrimaryTransaction ? extractedPreferences.mustHaves : []),
+    dealBreakers: appendUnique(primarySituation.propertyPreferences.dealBreakers, samePrimaryTransaction ? extractedPreferences.dealBreakers : []),
+    timeline: primarySituation.propertyPreferences.timeline ?? (samePrimaryTransaction ? extractedPreferences.timeline : null),
+  } : extractedPreferences;
+  const preferenceEvidence = primarySituation?.summary ?? maskedTranscript;
   const transactionType = preferences.transactionType;
   const propertyContext = transactionType === "sell" || transactionType === "let"
     ? "subject_property"
@@ -46,8 +182,8 @@ export function normalizeVoiceExtraction(
     /\bdenize\s+yürüme\s+mesafesi(?:nde)?\b/iu.test(maskedTranscript) ? "Denize yürüme mesafesi" : null,
   ].filter((item): item is string => item !== null);
   const propertyTypes = preferences.propertyTypes.filter((propertyType) => {
-    if (propertyType === "detached_house") return /\bmüstakil\b/iu.test(maskedTranscript);
-    if (propertyType === "villa") return /\bvilla\b/iu.test(maskedTranscript);
+    if (propertyType === "detached_house") return /\bmüstakil\b/iu.test(preferenceEvidence);
+    if (propertyType === "villa") return /\bvilla\b/iu.test(preferenceEvidence);
     return true;
   });
   const explicitDirection = /\b(?:ben\s+|kendisini\s+)?aradım\b|\btelefon\s+ettim\b/iu.test(maskedTranscript)
@@ -66,16 +202,19 @@ export function normalizeVoiceExtraction(
     },
     insights: {
       ...extraction.insights,
-      keyThingsToRemember,
+      keyThingsToRemember: propertySituations.length > 1
+        ? appendUnique(keyThingsToRemember, propertySituations.map((item) => item.summary)).slice(0, 8)
+        : keyThingsToRemember,
       propertyContext,
+      propertySituations,
       propertyPreferences: {
         ...preferences,
         propertyTypes,
-        bedroomCountMin: roomConfiguration?.[1] ? Number(roomConfiguration[1]) : preferences.bedroomCountMin,
-        livingRoomCountMin: roomConfiguration?.[2] ? Number(roomConfiguration[2]) : preferences.livingRoomCountMin,
-        roomCountMin: roomConfiguration ? null : preferences.roomCountMin,
-        areaMinM2: areaRange?.[1] ? Number(areaRange[1]) : preferences.areaMinM2,
-        areaMaxM2: areaRange?.[2] ? Number(areaRange[2]) : preferences.areaMaxM2,
+        bedroomCountMin: primarySituation ? preferences.bedroomCountMin : roomConfiguration?.[1] ? Number(roomConfiguration[1]) : preferences.bedroomCountMin,
+        livingRoomCountMin: primarySituation ? preferences.livingRoomCountMin : roomConfiguration?.[2] ? Number(roomConfiguration[2]) : preferences.livingRoomCountMin,
+        roomCountMin: primarySituation ? preferences.roomCountMin : roomConfiguration ? null : preferences.roomCountMin,
+        areaMinM2: primarySituation ? preferences.areaMinM2 : areaRange?.[1] ? Number(areaRange[1]) : preferences.areaMinM2,
+        areaMaxM2: primarySituation ? preferences.areaMaxM2 : areaRange?.[2] ? Number(areaRange[2]) : preferences.areaMaxM2,
         mustHaves: appendUnique(preferences.mustHaves, explicitMustHaves),
       },
     },

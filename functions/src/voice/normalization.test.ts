@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyVoiceInsights, voiceExtractionSchema } from "../../../packages/shared/src/index.js";
 import { normalizeVoiceExtraction } from "./normalization.js";
+import { extractVoiceDraft } from "./privacy.js";
 
 function extraction(transactionType: "buy" | "sell" | "rent", nextActionType: "message" | "valuation" | "other") {
   return voiceExtractionSchema.parse({
@@ -92,5 +93,38 @@ describe("voice extraction normalization", () => {
       "Sakin sokak",
       "Denize yürüme mesafesi",
     ]);
+  });
+
+  it("keeps a sale and a later purchase as two separate property situations", () => {
+    const transcript = "Derya Hanım'la görüştüm. Karşıyaka'daki 3+1 evini 8 milyona satmaya karar vermiş. Orası satıldıktan sonra Koçlarda bir villa almayı hedefliyor. Ona ilgili portföyleri ve ilgili alıcıları bulmamız gerekiyor.";
+    const result = normalizeVoiceExtraction(extractVoiceDraft(transcript), transcript);
+
+    expect(result.insights.propertySituations).toHaveLength(2);
+    expect(result.insights.propertySituations[0]).toMatchObject({
+      propertyContext: "subject_property",
+      propertyPreferences: {
+        transactionType: "sell",
+        preferredLocations: ["Karşıyaka"],
+        budgetRange: { min: 8_000_000, max: 8_000_000, currency: "TRY" },
+        bedroomCountMin: 3,
+        livingRoomCountMin: 1,
+      },
+    });
+    expect(result.insights.propertySituations[1]).toMatchObject({
+      propertyContext: "search_preference",
+      propertyPreferences: {
+        transactionType: "buy",
+        propertyTypes: ["villa"],
+        preferredLocations: ["Koçlar"],
+        bedroomCountMin: null,
+      },
+    });
+    expect(result.insights.propertyContext).toBe("search_preference");
+    expect(result.insights.propertyPreferences).toMatchObject({
+      transactionType: "buy",
+      propertyTypes: ["villa"],
+      preferredLocations: ["Koçlar"],
+      bedroomCountMin: null,
+    });
   });
 });

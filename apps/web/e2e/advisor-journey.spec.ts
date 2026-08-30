@@ -11,6 +11,17 @@ async function expectNoSeriousAccessibilityViolations(page: Page) {
   ).toEqual([]);
 }
 
+async function swipe(page: Page, selector: string, fromX: number, toX: number) {
+  await page.locator(selector).evaluate(async (target, { fromX, toX }) => {
+    const y = Math.min(window.innerHeight - 160, 340);
+    const start = new Touch({ identifier: 1, target, clientX: fromX, clientY: y });
+    target.dispatchEvent(new TouchEvent("touchstart", { bubbles: true, cancelable: true, touches: [start], changedTouches: [start] }));
+    await new Promise((resolve) => window.setTimeout(resolve, 32));
+    const end = new Touch({ identifier: 1, target, clientX: toX, clientY: y });
+    target.dispatchEvent(new TouchEvent("touchend", { bubbles: true, cancelable: true, touches: [], changedTouches: [end] }));
+  }, { fromX, toX });
+}
+
 test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır", async ({ context, page }, testInfo) => {
   const runId = `${testInfo.project.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const contactName = `E2E Ayşe ${runId.slice(-6)}`;
@@ -174,9 +185,49 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await expect(page.getByRole("heading", { name: contactName })).toBeVisible();
   await expect(page.getByText("Bu kişiyi arşivlemek istediğinden emin misin?")).toHaveCount(0);
 
+  await page.goto("/");
   await context.setOffline(true);
   await expect(page.getByRole("status")).toContainText("Çevrimdışısın");
+  const offlineNote = `Çevrimdışı Urla portföy notu ${runId.slice(-6)}`;
+  await page.getByLabel("Hızlı not").fill(offlineNote);
+  await page.getByRole("button", { name: "Kaydet" }).click();
+  await expect(page.getByText(offlineNote)).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("1 kayıt güvenli kuyrukta");
   await context.setOffline(false);
+  await expect(page.getByRole("status")).toBeHidden({ timeout: 15_000 });
+  await expect(page.getByText(offlineNote)).toBeVisible();
+
+  await page.goto("/contacts");
+  await page.getByRole("button", { name: new RegExp(contactName) }).first().click();
+  await page.getByRole("main").getByRole("link", { name: "Temas kaydet" }).click();
+  await page.evaluate(() => {
+    class OfflineMediaRecorder {
+      static isTypeSupported() { return true; }
+      mimeType: string;
+      state = "inactive";
+      ondataavailable: ((event: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      constructor(_stream: unknown, options?: { mimeType?: string }) { this.mimeType = options?.mimeType ?? "audio/webm"; }
+      start() { this.state = "recording"; }
+      stop() {
+        this.state = "inactive";
+        this.ondataavailable?.({ data: new Blob(["offline-audio"], { type: this.mimeType }) });
+        this.onstop?.();
+      }
+    }
+    Object.defineProperty(window, "MediaRecorder", { configurable: true, value: OfflineMediaRecorder });
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", { configurable: true, value: async () => ({ getTracks: () => [{ stop() {} }] }) });
+  });
+  await page.getByRole("checkbox", { name: /Görüşme bitti/ }).check();
+  await context.setOffline(true);
+  await page.getByRole("button", { name: "Kaydı başlat" }).click();
+  await expect(page.getByRole("button", { name: "Durdur" })).toBeVisible();
+  await page.waitForTimeout(5_100);
+  await page.getByRole("button", { name: "Durdur" }).click();
+  await expect(page.getByText("Sesli not cihazda güvende")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("1 kayıt güvenli kuyrukta");
+  await context.setOffline(false);
+  await expect(page.getByRole("status")).toBeHidden({ timeout: 15_000 });
 
   const routes = ["/", "/funnel", "/capture", "/contacts", "/opportunities", "/listings", "/closing", "/settings"];
   for (const route of routes) {
@@ -187,6 +238,20 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
     expect(await page.locator("a, button, input, select, textarea").evaluateAll((elements) => elements.filter((element) => {
       const rect = element.getBoundingClientRect(); const style = getComputedStyle(element); return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.right > window.innerWidth + 1;
     }).length)).toBe(0);
+  }
+
+  if ((page.viewportSize()?.width ?? 1_000) <= 900) {
+    await page.goto("/");
+    await expect(page.getByRole("navigation", { name: "Ana navigasyon" }).getByRole("link")).toHaveCount(5);
+    await expect(page.locator(".sidebar .nav-group-office")).toBeHidden();
+    const quickNote = page.getByLabel("Hızlı not");
+    await quickNote.fill("Kaydırırken bu yazı korunmalı");
+    await swipe(page, "textarea[aria-label='Hızlı not']", 340, 80);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(quickNote).toHaveValue("Kaydırırken bu yazı korunmalı");
+    await swipe(page, ".app-frame", 340, 80);
+    await expect(page).toHaveURL(/\/funnel\/?$/);
+    await expect(page.getByRole("heading", { name: "Nerede takılıyor?" })).toBeVisible();
   }
 
   await expectNoSeriousAccessibilityViolations(page);

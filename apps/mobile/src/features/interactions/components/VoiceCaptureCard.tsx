@@ -30,7 +30,6 @@ import {
   nextActionTypeLabels,
   nextActionTypes,
   opportunityTypeLabels,
-  opportunityTypes,
   propertyTransactionTypeLabels,
   sensitiveDataCategoryLabels,
   voicePropertyTypeLabels,
@@ -38,6 +37,7 @@ import {
   type OpportunityType,
   type VoiceInsights,
   type VoiceNoteView,
+  type VoicePropertySituation,
 } from "@spherepath/shared";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
 import type { ContactRecord } from "@/features/contacts/resources/contacts";
@@ -119,12 +119,11 @@ function additionalMustHaves(value: string): string[] {
   ].slice(0, 20);
 }
 
-function suggestedOpportunityType(
-  insights: VoiceInsights | null | undefined,
+function opportunityTypeForSituation(
+  situation: Pick<VoicePropertySituation, "propertyContext" | "propertyPreferences">,
 ): OpportunityType | null {
-  if (!insights?.propertyPreferences.transactionType) return null;
-  const transaction = insights.propertyPreferences.transactionType;
-  if (insights.propertyContext === "subject_property") {
+  const transaction = situation.propertyPreferences.transactionType;
+  if (situation.propertyContext === "subject_property") {
     if (transaction === "sell") return "seller_listing";
     if (transaction === "let") return "landlord_listing";
     return null;
@@ -133,6 +132,18 @@ function suggestedOpportunityType(
   if (transaction === "buy" || transaction === "invest")
     return "buyer_requirement";
   return null;
+}
+
+function suggestedOpportunityTypes(
+  insights: VoiceInsights | null | undefined,
+): OpportunityType[] {
+  if (!insights) return [];
+  const situations: Pick<VoicePropertySituation, "propertyContext" | "propertyPreferences">[] = insights.propertySituations.length
+    ? insights.propertySituations
+    : insights.propertyContext
+      ? [{ propertyContext: insights.propertyContext, propertyPreferences: insights.propertyPreferences }]
+      : [];
+  return [...new Set(situations.map(opportunityTypeForSituation).filter((item): item is OpportunityType => item !== null))];
 }
 
 function formatRoomPreference(insights: VoiceInsights): string | null {
@@ -195,9 +206,8 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
   const [additionalMustHavesText, setAdditionalMustHavesText] = useState("");
   const [includePropertyPreferences, setIncludePropertyPreferences] =
     useState(true);
-  const [createOpportunity, setCreateOpportunity] = useState(false);
-  const [opportunityType, setOpportunityType] =
-    useState<OpportunityType | null>(null);
+  const [selectedOpportunityTypes, setSelectedOpportunityTypes] =
+    useState<OpportunityType[]>([]);
   const [showDetails, setShowDetails] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
   const stoppingRef = useRef(false);
@@ -245,9 +255,8 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
       hasPropertyPreferences(note.extraction?.insights) &&
         note.extraction?.insights.propertyContext !== "subject_property",
     );
-    const suggestedType = suggestedOpportunityType(note.extraction?.insights);
-    setOpportunityType(suggestedType);
-    setCreateOpportunity(false);
+    const suggestedTypes = suggestedOpportunityTypes(note.extraction?.insights);
+    setSelectedOpportunityTypes(draft?.nextActionType && draft.daysFromNow !== null ? suggestedTypes : []);
     setShowDetails(false);
     setShowTranscript(false);
     setStep("review");
@@ -403,6 +412,7 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
       const extractedInsights = voiceNote.extraction?.insights;
       const approvedInsights: VoiceInsights = {
         keyThingsToRemember: approvedKeyThings,
+        propertySituations: extractedInsights?.propertySituations ?? [],
         propertyContext: includePropertyPreferences
           ? (extractedInsights?.propertyContext ?? null)
           : null,
@@ -438,16 +448,13 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
         voiceNote.id,
         parsed.data,
         approvedInsights,
-        createOpportunity &&
-          opportunityType &&
-          parsed.data.nextActionType &&
-          parsed.data.nextActionAt
-          ? {
-              type: opportunityType,
-              nextActionType: parsed.data.nextActionType,
-              nextActionAt: parsed.data.nextActionAt,
-            }
-          : null,
+        parsed.data.nextActionType && parsed.data.nextActionAt
+          ? selectedOpportunityTypes.map((type) => ({
+              type,
+              nextActionType: parsed.data.nextActionType!,
+              nextActionAt: parsed.data.nextActionAt!,
+            }))
+          : [],
       );
       await onSaved();
       setStep("saved");
@@ -467,8 +474,7 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
       setApprovedKeyThings([]);
       setAdditionalMustHavesText("");
       setIncludePropertyPreferences(true);
-      setCreateOpportunity(false);
-      setOpportunityType(null);
+      setSelectedOpportunityTypes([]);
       setNextActionTime(null);
       setShowTranscript(false);
       setStep("idle");
@@ -498,6 +504,7 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
     Math.floor(recorderState.durationMillis / 1_000),
   );
   const reviewInsights = voiceNote?.extraction?.insights;
+  const opportunitySuggestions = suggestedOpportunityTypes(reviewInsights);
   const isSubjectProperty =
     reviewInsights?.propertyContext === "subject_property";
   const preferenceLabels = reviewInsights
@@ -832,6 +839,7 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
                 setNextActionType(null);
                 setNextActionDays(null);
                 setNextActionTime(null);
+                setSelectedOpportunityTypes([]);
               }}
               style={choice(nextActionType === null)}
             >
@@ -908,54 +916,33 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
               style={{ transform: [{ rotate: showDetails ? "180deg" : "0deg" }] }}
             />
           </Pressable>
-          {showDetails && opportunityType ? (
+          {opportunitySuggestions.length ? (
             <View style={styles.stack}>
-              <Pressable
-                onPress={() => setCreateOpportunity((current) => !current)}
-                style={styles.insightToggle}
-              >
-                <View
-                  style={[
-                    styles.checkbox,
-                    {
-                      borderColor: createOpportunity ? theme.deed : theme.line,
-                      backgroundColor: createOpportunity
-                        ? theme.deed
-                        : "transparent",
-                    },
-                  ]}
-                >
-                  {createOpportunity ? (
-                    <Check color={theme.onDeed} size={13} />
-                  ) : null}
-                </View>
-                <View style={styles.flex}>
-                  <SpText variant="bodySmall">
-                    Bu kayıttan fırsat oluştur
-                  </SpText>
-                  <SpText variant="caption" color="secondary">
-                    Sonraki aksiyon belirlenmişse tek onayla oluşturulur.
-                  </SpText>
-                </View>
-              </Pressable>
-              {createOpportunity ? (
-                <View style={styles.choices}>
-                  {opportunityTypes.map((item) => (
-                    <Pressable
-                      key={item}
-                      onPress={() => setOpportunityType(item)}
-                      style={choice(opportunityType === item)}
-                    >
-                      <SpText
-                        variant="caption"
-                        color={opportunityType === item ? "deed" : "secondary"}
-                      >
-                        {opportunityTypeLabels[item]}
-                      </SpText>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
+              <SpText variant="bodySmall">Fırsat önerileri</SpText>
+              <SpText variant="caption" color="secondary">
+                {nextActionType && nextActionDays !== null
+                  ? `${opportunitySuggestions.length} ayrı iş algılandı. Oluşturmak istediklerinizi seçin.`
+                  : "Fırsat oluşturmak için önce bir sonraki adımı ve günü seçin."}
+              </SpText>
+              {opportunitySuggestions.map((item) => {
+                const selected = selectedOpportunityTypes.includes(item);
+                const enabled = Boolean(nextActionType && nextActionDays !== null);
+                return (
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: selected, disabled: !enabled }}
+                    disabled={!enabled}
+                    key={item}
+                    onPress={() => setSelectedOpportunityTypes((current) => selected ? current.filter((type) => type !== item) : [...current, item])}
+                    style={[styles.insightToggle, { opacity: enabled ? 1 : 0.55 }]}
+                  >
+                    <View style={[styles.checkbox, { borderColor: selected ? theme.deed : theme.line, backgroundColor: selected ? theme.deed : "transparent" }]}>
+                      {selected ? <Check color={theme.onDeed} size={13} /> : null}
+                    </View>
+                    <SpText variant="bodySmall" style={styles.flex}>{opportunityTypeLabels[item]}</SpText>
+                  </Pressable>
+                );
+              })}
             </View>
           ) : null}
           <View style={styles.reviewActions}>
