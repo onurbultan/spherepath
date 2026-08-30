@@ -29,8 +29,9 @@ import { extractVoiceDraftWithVertex } from "./vertex-extraction.js";
 import { normalizeVoiceActionTiming } from "./temporal.js";
 import { normalizeVoiceExtraction } from "./normalization.js";
 import { buildVoiceDiscardQualitySnapshot, isPossiblyIncompleteTranscription } from "./quality.js";
+import { emergencySpeechTarget, fallbackSpeechTarget, primarySpeechTarget, type SpeechTarget } from "./transcription-config.js";
 
-const speechClient = new speech.SpeechClient();
+const speechClients = new Map<string, speech.SpeechClient>();
 const processingLeaseMs = 150_000;
 
 function timestamp(value: number | null): Timestamp | null {
@@ -85,7 +86,8 @@ function inferredContactRole(opportunityType: "seller_listing" | "landlord_listi
 
 interface TranscriptionResult {
   text: string;
-  model: "chirp_3" | "long";
+  model: SpeechTarget["model"];
+  location: SpeechTarget["location"];
   warning: "possibly_incomplete" | null;
 }
 
@@ -98,13 +100,18 @@ async function transcribe(storagePath: string, durationMs: number): Promise<Tran
   const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
   if (!projectId) throw new Error("speech_project_missing");
   const [content] = await getStorage().bucket().file(storagePath).download();
-  const recognize = async (model: "chirp_3" | "long") => {
-    const [response] = await speechClient.recognize({
-      recognizer: `projects/${projectId}/locations/global/recognizers/_`,
+  const recognize = async (target: SpeechTarget) => {
+    let client = speechClients.get(target.apiEndpoint);
+    if (!client) {
+      client = new speech.SpeechClient({ apiEndpoint: target.apiEndpoint });
+      speechClients.set(target.apiEndpoint, client);
+    }
+    const [response] = await client.recognize({
+      recognizer: `projects/${projectId}/locations/${target.location}/recognizers/_`,
       config: {
         autoDecodingConfig: {},
         languageCodes: ["tr-TR"],
-        model,
+        model: target.model,
         features: { enableAutomaticPunctuation: true },
       },
       content,
@@ -116,18 +123,55 @@ async function transcribe(storagePath: string, durationMs: number): Promise<Tran
       .trim();
   };
 
-  let model: TranscriptionResult["model"] = "chirp_3";
-  let text = await recognize(model);
+  let target: SpeechTarget = primarySpeechTarget;
+  let text: string;
+  try {
+    text = await recognize(target);
+  } catch (error) {
+    logger.warn("Primary voice transcription unavailable; safe fallback selected", {
+      primaryModel: primarySpeechTarget.model,
+      primaryLocation: primarySpeechTarget.location,
+      fallbackModel: fallbackSpeechTarget.model,
+      fallbackLocation: fallbackSpeechTarget.location,
+      error,
+    });
+    target = fallbackSpeechTarget;
+    try {
+      text = await recognize(target);
+    } catch (fallbackError) {
+      logger.warn("Long voice transcription fallback unavailable; emergency model selected", {
+        fallbackModel: fallbackSpeechTarget.model,
+        fallbackLocation: fallbackSpeechTarget.location,
+        emergencyModel: emergencySpeechTarget.model,
+        emergencyLocation: emergencySpeechTarget.location,
+        error: fallbackError,
+      });
+      target = emergencySpeechTarget;
+      text = await recognize(target);
+    }
+  }
   if (isPossiblyIncompleteTranscription(durationMs, text)) {
-    const fallback = await recognize("long");
-    if (transcriptWordCount(fallback) > transcriptWordCount(text)) {
-      text = fallback;
-      model = "long";
+    for (const candidate of [fallbackSpeechTarget, emergencySpeechTarget] as const) {
+      if (candidate.model === target.model && candidate.location === target.location) continue;
+      try {
+        const alternative = await recognize(candidate);
+        if (transcriptWordCount(alternative) > transcriptWordCount(text)) {
+          text = alternative;
+          target = candidate;
+        }
+      } catch (error) {
+        logger.warn("Alternative voice transcription unavailable; best existing result retained", {
+          model: candidate.model,
+          location: candidate.location,
+          error,
+        });
+      }
     }
   }
   return {
     text,
-    model,
+    model: target.model,
+    location: target.location,
     warning: isPossiblyIncompleteTranscription(durationMs, text) ? "possibly_incomplete" : null,
   };
 }
@@ -168,7 +212,7 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
     const processingDate = new Date();
     const transcription = rawOverride === undefined
       ? await transcribe(acquired.storagePath, acquired.durationMs)
-      : { text: rawOverride, model: null, warning: null };
+      : { text: rawOverride, model: null, location: null, warning: null };
     const rawTranscript = transcription.text;
     const masked = maskSensitiveTranscript(rawTranscript);
     let extraction = extractVoiceDraft(masked.text);
@@ -195,6 +239,7 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
       maskedCategories: masked.categories,
       maskedRanges: masked.maskedRanges,
       transcriptionModel: transcription.model,
+      transcriptionLocation: transcription.location,
       transcriptionWarning: transcription.warning,
       transcriptionWordCount: transcriptWordCount(rawTranscript),
       extraction,
@@ -291,6 +336,7 @@ export const registerVoiceNote = onCall(
         maskedCategories: [],
         maskedRanges: [],
         transcriptionModel: null,
+        transcriptionLocation: null,
         transcriptionWarning: null,
         transcriptionWordCount: null,
         extraction: null,
@@ -359,6 +405,7 @@ export const registerVoiceTextTest = onCall(
         maskedCategories: [],
         maskedRanges: [],
         transcriptionModel: null,
+        transcriptionLocation: null,
         transcriptionWarning: null,
         transcriptionWordCount: null,
         extraction: null,
@@ -424,6 +471,7 @@ export const registerInteractionText = onCall(
         maskedCategories: [],
         maskedRanges: [],
         transcriptionModel: null,
+        transcriptionLocation: null,
         transcriptionWarning: null,
         transcriptionWordCount: null,
         extraction: null,
