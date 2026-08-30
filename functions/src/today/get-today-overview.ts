@@ -122,15 +122,17 @@ export const getTodayOverview = onCall(
     const candidateOverview = buildTodayOverview(contacts, opportunities, now, listings, deals, new Set(), interactions, parsedQuery.data.period);
     const planRef = firestore.collection("dailyPlans").doc(`${claims.uid}-${dayKey}`.replace(/[^a-zA-Z0-9_-]/g, "_"));
     const planSnapshot = await planRef.get();
+    const suppressedContactIds = planSnapshot.exists ? ((planSnapshot.data()!.suppressedContactIds ?? []) as string[]) : [];
+    const visibleCandidates = candidateOverview.tasks.filter((task) => !suppressedContactIds.includes(task.contactId));
     const storedSnapshots = (planSnapshot.data()?.taskSnapshots ?? []) as TodayTask[];
     const storedTaskIds = planSnapshot.exists ? ((planSnapshot.data()!.taskIds ?? []) as string[]) : [];
     const taskIds = planSnapshot.exists
-      ? topUpDailyPlanTasks([...storedSnapshots, ...candidateOverview.tasks], storedTaskIds)
-      : selectDailyPlanTasks(candidateOverview.tasks).map((task) => task.id);
-    const snapshotById = new Map([...storedSnapshots, ...candidateOverview.tasks].map((task) => [task.id, task]));
+      ? topUpDailyPlanTasks([...storedSnapshots, ...visibleCandidates], storedTaskIds)
+      : selectDailyPlanTasks(visibleCandidates).map((task) => task.id);
+    const snapshotById = new Map([...storedSnapshots, ...visibleCandidates].map((task) => [task.id, task]));
     const selectedSnapshots = taskIds.flatMap((taskId) => { const task = snapshotById.get(taskId); return task ? [task] : []; });
     if (!planSnapshot.exists) {
-      await planRef.set({ officeId: claims.officeId, ownerUid: claims.uid, dayKey, taskIds, taskSnapshots: selectedSnapshots, createdAt: Timestamp.fromMillis(now), updatedAt: Timestamp.fromMillis(now) });
+      await planRef.set({ officeId: claims.officeId, ownerUid: claims.uid, dayKey, taskIds, taskSnapshots: selectedSnapshots, suppressedContactIds: [], createdAt: Timestamp.fromMillis(now), updatedAt: Timestamp.fromMillis(now) });
     } else if (taskIds.join("|") !== storedTaskIds.join("|")) {
       await planRef.update({ taskIds, taskSnapshots: selectedSnapshots, updatedAt: Timestamp.fromMillis(now) });
     }
@@ -140,7 +142,11 @@ export const getTodayOverview = onCall(
       const resolution = resolutionById.get(taskId) ?? (task ? optOutResolutionByContactId.get(task.contactId) : undefined);
       return task ? [{ ...task, resolutionStatus: resolution?.status ?? null, resolutionNote: resolution?.note ?? null }] : [];
     });
-    return { overview: { ...candidateOverview, tasks: plannedTasks, completedTaskCount: plannedTasks.filter((task) => task.resolutionStatus).length } };
+    const allTasks = visibleCandidates.map((task) => {
+      const resolution = resolutionById.get(task.id) ?? optOutResolutionByContactId.get(task.contactId);
+      return { ...task, resolutionStatus: resolution?.status ?? null, resolutionNote: resolution?.note ?? null };
+    });
+    return { overview: { ...candidateOverview, tasks: plannedTasks, allTasks, completedTaskCount: plannedTasks.filter((task) => task.resolutionStatus).length } };
     });
   },
 );
@@ -328,14 +334,18 @@ export const replaceDailyPlanItem = onCall(
         if (!plan.exists) throw new HttpsError("failed-precondition", "Daily plan has not been generated yet.");
         if (receipt.exists) { result = (receipt.data()!.taskIds ?? []) as string[]; return; }
         if (plan.data()!.officeId !== claims.officeId || plan.data()!.ownerUid !== claims.uid) throw new HttpsError("permission-denied", "Daily plan is outside your workspace.");
-        result = replaceDailyPlanTask(candidates, plan.data()!.taskIds as string[], parsed.data.taskId);
-        if (result.join("|") === (plan.data()!.taskIds as string[]).join("|")) throw new HttpsError("failed-precondition", "Bu görevin yerine geçecek başka uygun iş yok.");
         const previousSnapshots = (plan.data()!.taskSnapshots ?? []) as TodayTask[];
+        const removedTask = [...previousSnapshots, ...candidates].find((task) => task.id === parsed.data.taskId);
+        if (!removedTask) throw new HttpsError("not-found", "Bugünkü iş bulunamadı.");
+        const suppressedContactIds = [...new Set([...(plan.data()!.suppressedContactIds ?? []) as string[], removedTask.contactId])];
+        const replacementCandidates = candidates.filter((task) => !suppressedContactIds.includes(task.contactId));
+        result = replaceDailyPlanTask(replacementCandidates, plan.data()!.taskIds as string[], parsed.data.taskId);
+        if (result.join("|") === (plan.data()!.taskIds as string[]).join("|")) throw new HttpsError("failed-precondition", "Bu görevin yerine geçecek başka uygun iş yok.");
         const taskMap = new Map([...previousSnapshots, ...candidates].map((task) => [task.id, task]));
         const taskSnapshots = result.flatMap((id) => { const task = taskMap.get(id); return task ? [task] : []; });
         const now = Timestamp.now();
-        transaction.update(planRef, { taskIds: result, taskSnapshots, updatedAt: now });
-        transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "replaceDailyPlanItem", taskIds: result, createdAt: now });
+        transaction.update(planRef, { taskIds: result, taskSnapshots, suppressedContactIds, updatedAt: now });
+        transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "replaceDailyPlanItem", taskIds: result, suppressedContactIds, createdAt: now });
       });
       return { taskIds: result };
     });

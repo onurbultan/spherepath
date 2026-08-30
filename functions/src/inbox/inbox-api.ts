@@ -1,27 +1,65 @@
 import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
+  analyzeInboxItemSchema,
   classifyInboxText,
+  contactMemorySchema,
   createContact as createContactEntity,
   createOpportunity as createOpportunityEntity,
   createPortfolioItem,
   createInboxItemSchema,
+  emptyVoiceInsights,
   inboxItemIdSchema,
   inboxItemKinds,
   inboxPageQuerySchema,
   opportunityTypeLabels,
+  mergeVoiceInsightsIntoContactMemory,
   processInboxItemSchema,
   updateInboxItemSchema,
   type InboxAppliedAction,
   type InboxItem,
   type InboxItemRecord,
+  type InboxItemAnalysis,
 } from "../../../packages/shared/src/index.js";
 import { requireSpherepathClaims, type SpherepathClaims } from "../auth/claims.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
+import { normalizeVoiceExtraction } from "../voice/normalization.js";
+import { extractVoiceDraft, sanitizeVoiceExtraction } from "../voice/privacy.js";
+import { normalizeVoiceActionTiming } from "../voice/temporal.js";
+import { extractVoiceDraftWithVertex } from "../voice/vertex-extraction.js";
 
 const callableOptions = { region: "europe-west8" as const, cors: true, maxInstances: 10, memory: "256MiB" as const, timeoutSeconds: 60 };
 const millis = (value: unknown): number | null => value instanceof Timestamp ? value.toMillis() : null;
 const timestamp = (value: number | null): Timestamp | null => value === null ? null : Timestamp.fromMillis(value);
+
+function actionAtFrom(daysFromNow: number | null, actionTime: string | null, now: Date): number | null {
+  if (daysFromNow === null) return null;
+  const local = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Istanbul", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(now);
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(local.find((item) => item.type === type)?.value ?? 0);
+  const [hour, minute] = (actionTime ?? "10:00").split(":").map(Number);
+  // Türkiye uses UTC+3 year-round. Date.UTC also safely carries day overflow.
+  return Date.UTC(part("year"), part("month") - 1, part("day") + daysFromNow, (hour ?? 10) - 3, minute ?? 0);
+}
+
+async function analyzeText(text: string): Promise<InboxItemAnalysis> {
+  const now = new Date();
+  let extraction = extractVoiceDraft(text);
+  if (process.env.FUNCTIONS_EMULATOR !== "true") {
+    try { extraction = sanitizeVoiceExtraction(await extractVoiceDraftWithVertex(text, now)); } catch { /* Rules remain a safe fallback. */ }
+  }
+  extraction = normalizeVoiceExtraction(extraction, text);
+  extraction = normalizeVoiceActionTiming(extraction, text, now);
+  const transaction = extraction.insights.propertyPreferences.transactionType;
+  return {
+    insights: extraction.insights,
+    nextActionType: extraction.interaction.nextActionType,
+    nextActionAt: actionAtFrom(extraction.interaction.daysFromNow, extraction.interaction.actionTime, now),
+    opportunityType: transaction === "rent" ? "tenant_requirement" : "buyer_requirement",
+    engine: extraction.provenance.engine,
+  };
+}
 
 function canManage(data: DocumentData, claims: SpherepathClaims): boolean {
   return data.officeId === claims.officeId && (data.ownerUid === claims.uid || claims.role === "broker" || data.source === "whatsapp");
@@ -211,6 +249,18 @@ export const updateInboxItem = onCall(callableOptions, async (request): Promise<
   });
 });
 
+export const analyzeInboxItem = onCall(callableOptions, async (request): Promise<{ analysis: InboxItemAnalysis }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<unknown>(request.data);
+  const parsed = analyzeInboxItemSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Inbox analysis input is invalid.", parsed.error.flatten());
+  return observeApiRequest("analyzeInboxItem", envelope.requestId, async () => {
+    const snapshot = await getFirestore().collection("inboxItems").doc(parsed.data.inboxItemId).get();
+    if (!snapshot.exists || !canManage(snapshot.data()!, claims)) throw new HttpsError("not-found", "Inbox item was not found.");
+    return { analysis: await analyzeText(snapshot.data()!.safeText as string) };
+  });
+});
+
 export const processInboxItem = onCall(callableOptions, async (request): Promise<{ item: InboxItemRecord; entityId: string }> => {
   const claims = requireSpherepathClaims(request);
   const envelope = readApiEnvelope<unknown>(request.data, { command: true });
@@ -256,6 +306,15 @@ export const processInboxItem = onCall(callableOptions, async (request): Promise
         const opportunity = createOpportunityEntity({ subjectContactId: parsed.data.contactId, type: parsed.data.opportunityType, nextActionType: parsed.data.nextActionType, nextActionAt: parsed.data.nextActionAt }, { officeId: claims.officeId, ownerUid: claims.uid }, now);
         transaction.create(entityRef, { ...opportunity, qualifiedAt: nowStamp, stageEnteredAt: nowStamp, nextActionAt: Timestamp.fromMillis(parsed.data.nextActionAt), closedAt: null, deletedAt: null, createdAt: nowStamp, updatedAt: nowStamp });
         transaction.create(stageEventRef!, { officeId: claims.officeId, ownerUid: claims.uid, entityType: "opportunity", entityId: entityRef.id, fromStage: null, toStage: "new_lead", reason: "Akış notundan oluşturuldu", commandId: envelope.commandId, occurredAt: nowStamp, createdAt: nowStamp });
+        const currentMemory = contactMemorySchema.parse({
+          ...(contactSnapshot!.data()!.memory ?? {}),
+          updatedAt: millis(contactSnapshot!.data()!.memory?.updatedAt),
+        });
+        const nextMemory = mergeVoiceInsightsIntoContactMemory(currentMemory, parsed.data.approvedInsights ?? emptyVoiceInsights, now);
+        transaction.update(contactSnapshot!.ref, {
+          memory: { ...nextMemory, updatedAt: timestamp(nextMemory.updatedAt) },
+          updatedAt: nowStamp,
+        });
         linkedContactId = parsed.data.contactId;
         label = `${opportunityTypeLabels[parsed.data.opportunityType]} oluşturuldu`;
       } else if (parsed.data.action === "portfolio") {

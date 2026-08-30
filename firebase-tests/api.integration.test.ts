@@ -12,6 +12,7 @@ const auth = getAuth(app);
 const functions = getFunctions(app, "europe-west8");
 let testEnvironment: RulesTestEnvironment;
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const requirementInsights = { keyThingsToRemember: ["Urla'da kiralık daire arıyor"], propertyContext: "search_preference", propertyPreferences: { transactionType: "rent", propertyTypes: ["apartment"], preferredLocations: ["Urla"], budgetRange: { min: null, max: 60_000, currency: "TRY" }, bedroomCountMin: 2, livingRoomCountMin: 1, roomCountMin: null, areaMinM2: null, areaMaxM2: null, mustHaves: ["Otoparklı"], dealBreakers: [], timeline: null }, propertySituations: [], suggestedActionReason: "Uygun portföyleri mesajla" } as const;
 
 function envelope<T>(data: T, requestId: string, commandId?: string) {
   return { data, requestId: `${requestId}-${runId}`, commandId: commandId ? `${commandId}-${runId}` : undefined };
@@ -460,7 +461,7 @@ describe("callable API vertical slice", () => {
     expect(followUp.item.appliedActions).toContainEqual(expect.objectContaining({ type: "follow_up_scheduled" }));
 
     const requirementNote = (await createInboxItem(envelope({ source: "typed", text: "Integration Contact kiralık daire arıyor", linkedContactId: created.contact.id, requestedKind: "requirement" }, "request-inbox-requirement-create", "command-inbox-requirement-create"))).data as { item: { id: string } };
-    const requirementCommand = envelope({ inboxItemId: requirementNote.item.id, action: "requirement", contactId: created.contact.id, opportunityType: "tenant_requirement", nextActionType: "message", nextActionAt: Date.now() + 4 * 86_400_000 }, "request-inbox-requirement", "command-inbox-requirement");
+    const requirementCommand = envelope({ inboxItemId: requirementNote.item.id, action: "requirement", contactId: created.contact.id, opportunityType: "tenant_requirement", nextActionType: "message", nextActionAt: Date.now() + 4 * 86_400_000, approvedInsights: requirementInsights }, "request-inbox-requirement", "command-inbox-requirement");
     const requirementResult = (await processInboxItem(requirementCommand)).data as { entityId: string };
     const requirementReplay = (await processInboxItem({ ...requirementCommand, requestId: `request-inbox-requirement-replay-${runId}` })).data as { entityId: string };
     expect(requirementReplay.entityId).toBe(requirementResult.entityId);
@@ -482,10 +483,11 @@ describe("callable API vertical slice", () => {
     }, "request-data-access", "command-data-access"))).data as { request: { id: string; status: string } };
     expect(accessRequest.request.status).toBe("pending_verification");
     const getContactDataExport = httpsCallable(functions, "getContactDataExport");
-    const contactExport = (await getContactDataExport(envelope({ contactId: created.contact.id }, "request-contact-export"))).data as { export: { contact: { id: string }; interactions: unknown[]; opportunities: unknown[] } };
+    const contactExport = (await getContactDataExport(envelope({ contactId: created.contact.id }, "request-contact-export"))).data as { export: { contact: { id: string; memory: { propertyPreferences: { preferredLocations: string[]; budgetRange: { max: number } | null } } }; interactions: unknown[]; opportunities: unknown[] } };
     expect(contactExport.export.contact.id).toBe(created.contact.id);
     expect(contactExport.export.interactions.length).toBeGreaterThan(0);
     expect(contactExport.export.opportunities.length).toBeGreaterThan(0);
+    expect(contactExport.export.contact.memory.propertyPreferences).toMatchObject({ preferredLocations: ["Urla"], budgetRange: { max: 60_000 } });
     const resolveDataSubjectRequest = httpsCallable(functions, "resolveDataSubjectRequest");
     await resolveDataSubjectRequest(envelope({ requestId: accessRequest.request.id, decision: "approved", resolutionNote: "Identity verified.", correctedContact: null }, "request-data-access-resolve", "command-data-access-resolve"));
 

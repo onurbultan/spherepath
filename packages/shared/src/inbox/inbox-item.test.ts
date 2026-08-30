@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { emptyVoiceInsights } from "../voice/voice-note";
 import { classifyInboxText, maskSensitiveInboxText, processInboxItemSchema, updateInboxItemSchema } from "./inbox-item";
 
 describe("inbox classification", () => {
@@ -31,7 +32,7 @@ describe("inbox classification", () => {
   });
 
   it("validates a requirement conversion as one trusted command", () => {
-    expect(processInboxItemSchema.parse({ inboxItemId: "note-1", action: "requirement", contactId: "contact-1", opportunityType: "buyer_requirement", nextActionType: "call", nextActionAt: Date.now() + 86_400_000 }).action).toBe("requirement");
-    expect(processInboxItemSchema.safeParse({ inboxItemId: "note-1", action: "requirement", contactId: "contact-1", opportunityType: "seller_listing", nextActionType: "call", nextActionAt: Date.now() + 86_400_000 }).success).toBe(false);
+    expect(processInboxItemSchema.parse({ inboxItemId: "note-1", action: "requirement", contactId: "contact-1", opportunityType: "buyer_requirement", nextActionType: "call", nextActionAt: Date.now() + 86_400_000, approvedInsights: emptyVoiceInsights }).action).toBe("requirement");
+    expect(processInboxItemSchema.safeParse({ inboxItemId: "note-1", action: "requirement", contactId: "contact-1", opportunityType: "seller_listing", nextActionType: "call", nextActionAt: Date.now() + 86_400_000, approvedInsights: emptyVoiceInsights }).success).toBe(false);
   });
 });

@@ -68,6 +68,8 @@ export interface TodayOverview {
   };
   focus: { title: string; description: string; evidence: string; action: string; sampleSufficient: boolean; targetOpportunityId: string | null; targetContactId: string | null };
   tasks: TodayTask[];
+  /** Ranked work beyond the stable daily five, for advisors who want the full queue. */
+  allTasks: TodayTask[];
   recentInteractions: TodayInteraction[];
   completedTaskCount: number;
 }
@@ -226,5 +228,5 @@ export function buildTodayOverview(
             ? { title: "Talebi portföye dönüştür", description: `${stages.lead} açık talep var; aktif portföy henüz yok.`, evidence: `${stages.lead} açık talep / 0 aktif portföy`, action: "En eski kaydı değerleme veya yetki adımına ilerlet.", sampleSufficient, targetOpportunityId: activeOpportunities.filter((item) => item.stage !== "won").sort((a, b) => (a.createdAt ?? now) - (b.createdAt ?? now))[0]?.id ?? null, targetContactId: null }
             : { title: "Aktif portföyleri sonuca taşı", description: `${stages.listing} aktif portföy ve ${stages.closing} tamamlanan işlem var.`, evidence: `${stages.listing} aktif portföy / ${stages.closing} kapanan işlem`, action: "En uygun alıcı için sunum veya teklif takibini tamamla.", sampleSufficient, targetOpportunityId: null, targetContactId: null };
 
-  return { period, stages, focus, tasks, recentInteractions, completedTaskCount: completedTaskIds.size };
+  return { period, stages, focus, tasks, allTasks: tasks, recentInteractions, completedTaskCount: completedTaskIds.size };
 }

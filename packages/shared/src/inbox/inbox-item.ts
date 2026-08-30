@@ -4,6 +4,7 @@ import { contactDraftSchema } from "../contacts/contact-draft.js";
 import { nextActionTypes } from "../interactions/manual-interaction.js";
 import { opportunityTypes } from "../opportunities/opportunity-draft.js";
 import { portfolioItemDraftSchema } from "../matching/portfolio-match.js";
+import { voiceInsightsSchema, type VoiceInsights } from "../voice/voice-note.js";
 
 export const inboxItemSources = ["typed", "voice", "whatsapp"] as const;
 export const inboxItemKinds = ["note", "person", "property", "requirement", "follow_up"] as const;
@@ -72,6 +73,7 @@ export const processInboxItemSchema = z.discriminatedUnion("action", [
     opportunityType: z.enum(opportunityTypes).refine((value) => value === "buyer_requirement" || value === "tenant_requirement"),
     nextActionType: z.enum(nextActionTypes),
     nextActionAt: z.number().int().positive(),
+    approvedInsights: voiceInsightsSchema,
   }),
   processBaseSchema.extend({ action: z.literal("portfolio"), contactId: z.string().trim().min(1).max(160).nullable(), portfolio: portfolioItemDraftSchema }),
   processBaseSchema.extend({
@@ -87,6 +89,19 @@ export const processInboxItemSchema = z.discriminatedUnion("action", [
 });
 
 export type ProcessInboxItemInput = z.infer<typeof processInboxItemSchema>;
+
+export const analyzeInboxItemSchema = z.object({
+  inboxItemId: z.string().trim().min(1).max(160),
+}).strict();
+export type AnalyzeInboxItemInput = z.infer<typeof analyzeInboxItemSchema>;
+
+export interface InboxItemAnalysis {
+  insights: VoiceInsights;
+  nextActionType: (typeof nextActionTypes)[number] | null;
+  nextActionAt: number | null;
+  opportunityType: "buyer_requirement" | "tenant_requirement";
+  engine: "rules" | "vertex_ai";
+}
 
 export const inboxPageQuerySchema = z.preprocess(
   (value) => value ?? {},

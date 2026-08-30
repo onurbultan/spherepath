@@ -19,6 +19,7 @@ import {
   marketingChannelLabels,
   marketingChannels,
   nextActionTypeLabels,
+  nextActionTypes,
   referralDraftSchema,
   type ContactDraft,
   type ContactPrivacyDraft,
@@ -27,6 +28,7 @@ import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
 import { ContactCombobox } from "@/shared/ui/ContactCombobox";
 import { useSheetDismiss } from "@/shared/ui/useSheetDismiss";
+import { QuickDateField } from "@/shared/ui/QuickDateField";
 import { useSession } from "@/features/auth/resources/session";
 import { ContactInteractionTimeline } from "../components/ContactInteractionTimeline";
 import { archiveContact, listContacts, saveContact, saveContactPrivacy, type ContactRecord } from "../resources/contacts";
@@ -362,6 +364,7 @@ export function ContactsView() {
                 <label>Kaynak<select value={draft.source} onChange={(event) => setDraft({ ...draft, source: event.target.value as ContactDraft["source"] })}>{contactSources.map((source) => <option key={source} value={source}>{contactSourceLabels[source]}</option>)}</select></label>
                 <label>Rol<select value={draft.role} onChange={(event) => setDraft({ ...draft, role: event.target.value as ContactDraft["role"] })}>{contactRoles.map((role) => <option key={role} value={role}>{contactRoleLabels[role]}</option>)}</select></label>
               </div>
+              {!editing ? <details className="form-details"><summary>İlk takibi planla · isteğe bağlı</summary><div className="form-row"><label>Aksiyon<select value={draft.nextActionType ?? ""} onChange={(event) => setDraft({ ...draft, nextActionType: (event.target.value || null) as ContactDraft["nextActionType"], nextActionAt: event.target.value ? draft.nextActionAt ?? null : null })}><option value="">Henüz yok</option>{nextActionTypes.map((type) => <option key={type} value={type}>{nextActionTypeLabels[type]}</option>)}</select></label><QuickDateField disabled={!draft.nextActionType} required={Boolean(draft.nextActionType)} value={draft.nextActionAt ? new Date(new Date(draft.nextActionAt).getTime() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16) : ""} onChange={(value) => setDraft({ ...draft, nextActionAt: value ? new Date(value).getTime() : null })} /></div></details> : null}
               {error ? <p className="form-error" role="alert">{error}</p> : null}
               <button className="primary-action auth-submit" disabled={pending} type="submit">{pending ? "Kaydediliyor…" : editing ? "Değişiklikleri kaydet" : "Kişiyi kaydet"}</button>
             </form>

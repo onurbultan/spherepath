@@ -25,4 +25,14 @@ describe("contact draft", () => {
       role: "unknown",
     })).toThrow();
   });
+
+  it("can put a first follow-up directly on a new contact", () => {
+    const nextActionAt = 1_725_086_400_000;
+    const contact = createContact({ fullName: "Ayşe Kaya", phone: "", metAtPlace: "", source: "referral", role: "buyer", nextActionType: "call", nextActionAt }, { officeId: "office-a", ownerUid: "alice" }, 1_725_000_000_000);
+    expect(contact.relationship).toMatchObject({ nextActionType: "call", nextActionAt });
+  });
+
+  it("does not accept a first action without its time", () => {
+    expect(contactDraftSchema.safeParse({ fullName: "Ayşe Kaya", phone: "", metAtPlace: "", source: "referral", role: "buyer", nextActionType: "call", nextActionAt: null }).success).toBe(false);
+  });
 });

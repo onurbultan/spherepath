@@ -680,6 +680,9 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .voice-later { display: flex; align-items: center; gap: var(--space-md); color: var(--text-secondary); font-size: 12.5px; }
 .capture-divider { display: flex; align-items: center; gap: var(--space-lg); margin: var(--space-xl) 0; color: var(--text-tertiary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.1px; }
 .capture-divider::before, .capture-divider::after { content: ""; height: 1px; flex: 1; background: var(--line); }
+.capture-mode-tabs { display: inline-grid; grid-template-columns: 1fr 1fr; gap: 4px; width: min(100%, 420px); padding: 4px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--sunk); }
+.capture-mode-tabs button { min-height: 44px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); font: inherit; font-weight: 700; cursor: pointer; }
+.capture-mode-tabs button.selected { background: var(--card); color: var(--deed); box-shadow: var(--shadow-sm); }
 
 .success-state { min-height: 300px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; }
 .success-state p:not(.eyebrow) { color: var(--text-secondary); font-size: 13.5px; }
@@ -1124,7 +1127,14 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .daily-number { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--deed-bg); color: var(--deed); }
 .daily-actions { display: flex; gap: 4px; }
 .daily-actions button, .keep-card footer button { width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); cursor: pointer; }
+.daily-actions button:first-child { width: auto; grid-template-columns: auto auto; gap: var(--space-xs); padding: 0 var(--space-sm); }
+.daily-actions button:first-child::after { content: "Bugün gizle"; font: inherit; font-size: .78rem; white-space: nowrap; }
 .daily-actions button:hover, .keep-card footer button:hover { background: var(--deed-bg); color: var(--deed); }
+.all-work-section { display: grid; gap: var(--space-md); }
+.all-work-toggle { justify-self: start; }
+.all-work-list { display: grid; gap: var(--space-md); }
+.all-work-list ol { display: grid; gap: var(--space-xs); margin: 0; padding: 0; list-style: none; }
+.all-work-list li { padding: var(--space-sm) 0; border-top: 1px solid var(--line); }
 .quick-note { display: grid; gap: var(--space-lg); }
 .quick-note textarea { width: 100%; min-height: 116px; resize: vertical; padding: var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--background); color: var(--text-primary); font: inherit; font-size: 16px; line-height: 1.5; }
 .quick-note textarea:focus { outline: 2px solid var(--focus); outline-offset: 2px; }

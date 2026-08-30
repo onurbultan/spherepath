@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Contact, ContactRole, ContactSource, TenantOwned } from "../domain/entities.js";
 import { emptyVoicePropertyPreferences } from "../voice/voice-note.js";
+import { nextActionTypes } from "../interactions/manual-interaction.js";
 
 export const contactSources = [
   "in_person",
@@ -54,6 +55,12 @@ export const contactDraftSchema = z.object({
   metAtPlace: z.string().trim().max(160, "Tanışma yeri en fazla 160 karakter olabilir."),
   source: z.enum(contactSources),
   role: z.enum(contactRoles),
+  nextActionType: z.enum(nextActionTypes).nullable().optional(),
+  nextActionAt: z.number().int().positive().nullable().optional(),
+}).superRefine((value, context) => {
+  const type = value.nextActionType ?? null;
+  const at = value.nextActionAt ?? null;
+  if ((type === null) !== (at === null)) context.addIssue({ code: "custom", message: "İlk aksiyon ve zamanı birlikte seçilmeli.", path: [type === null ? "nextActionType" : "nextActionAt"] });
 });
 
 export type ContactDraft = z.infer<typeof contactDraftSchema>;
@@ -76,8 +83,8 @@ export function createContact(draft: ContactDraft, tenant: TenantOwned, now: num
       meaningfulTouchCount: 0,
       reciprocalTouchCount: 0,
       lastTouchAt: null,
-      nextActionAt: null,
-      nextActionType: null,
+      nextActionAt: parsed.nextActionAt ?? null,
+      nextActionType: parsed.nextActionType ?? null,
       lastObjective: null,
       lastAskOutcome: null,
       referralCount: 0,

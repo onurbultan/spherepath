@@ -94,6 +94,8 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await noteDialog.getByLabel("Not türü").selectOption("requirement");
   await noteDialog.getByRole("combobox", { name: "İlgili kişi ara" }).fill(contactName);
   await noteDialog.getByRole("option", { name: contactName }).click();
+  await noteDialog.getByRole("button", { name: "Talep bilgilerini ve tarihi çıkar" }).click();
+  await expect(noteDialog.getByText("Talep bilgileri çıkarıldı")).toBeVisible();
   await noteDialog.getByRole("button", { name: "Talep oluştur" }).click();
   const processedNote = page.locator("article.keep-card").filter({ hasText: "Ayşe Urla'da bahçeli satılık ev arıyor." });
   await expect(processedNote).toContainText("Alıcı talebi oluşturuldu");
@@ -153,8 +155,8 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
     expect(voiceSetupHeights[2]).toBeGreaterThanOrEqual(52);
   }
   const selectedContactValues = page.locator(".contact-combobox-value");
-  await expect(selectedContactValues).toHaveCount(2);
-  await expect(selectedContactValues).toHaveText([contactName, contactName]);
+  await expect(selectedContactValues).toHaveCount(1);
+  await expect(selectedContactValues).toHaveText(contactName);
   const contactPickers = await page.getByRole("combobox", { name: "Kişi ara" }).all();
   for (const picker of contactPickers) {
     await expect(picker).toHaveAttribute("placeholder", "");
@@ -175,6 +177,9 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await expect(page.getByRole("alert").filter({ hasText: "Mikrofon izni verilmedi" })).toContainText(
     "Mikrofon izni verilmedi",
   );
+  await page.getByRole("tab", { name: "Manuel yaz" }).click();
+  await expect(selectedContactValues).toHaveCount(1);
+  await expect(selectedContactValues).toHaveText(contactName);
   await page.getByLabel("Kanal").selectOption({ label: "Telefon" });
   await page.getByLabel("Kısa sonuç").fill("Satış hedefini netleştirdik; ekspertiz için görüşeceğiz.");
   await page.getByLabel("Aksiyon").selectOption({ label: "Ara" });

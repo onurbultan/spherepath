@@ -46,7 +46,7 @@ export function replaceDailyPlanTask(tasks: readonly TodayTask[], currentTaskIds
   const selectedTasks = tasks.filter((task) => currentTaskIds.includes(task.id) && task.id !== taskId);
   const selectedContacts = new Set(selectedTasks.map((task) => task.contactId));
   const candidate = selectDailyPlanTasks(tasks.filter((task) => !selectedContacts.has(task.contactId)), 5, new Set(currentTaskIds))[0];
-  if (!candidate) return [...currentTaskIds];
+  if (!candidate) return currentTaskIds.filter((id) => id !== taskId);
   const next = [...currentTaskIds];
   next[index] = candidate.id;
   return next;
