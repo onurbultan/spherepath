@@ -1131,6 +1131,10 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .quick-note-actions { display: flex; justify-content: flex-end; gap: var(--space-sm); }
 .quick-note-actions a, .quick-note-actions button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-sm); }
 .feed-title { display: grid; gap: 2px; margin-top: var(--space-md); }
+.note-list-heading { grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-lg); }
+.note-view-toggle { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--card); }
+.note-view-toggle button { min-height: 36px; padding: 0 12px; border: 0; border-radius: calc(var(--radius-md) - 3px); background: transparent; color: var(--text-secondary); cursor: pointer; }
+.note-view-toggle button.selected { background: var(--deed-bg); color: var(--deed); font-weight: 700; }
 .keep-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); align-items: start; gap: var(--space-lg); }
 .keep-card { min-width: 0; display: grid; gap: var(--space-md); border-top-width: 3px; }
 .keep-card.kind-note, .keep-card.kind-person { border-top-color: var(--deed); }
@@ -1141,8 +1145,16 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .keep-meta select { min-width: 0; height: 32px; padding: 0 26px 0 8px; border: 0; border-radius: var(--radius-sm); background: var(--deed-bg); color: var(--deed); font: inherit; font-size: 11px; font-weight: 700; }
 .keep-meta small { color: var(--text-tertiary); }
 .keep-card > p { margin: 0; overflow-wrap: anywhere; line-height: 1.5; }
-.keep-card footer { display: flex; justify-content: flex-end; margin-top: auto; }
+.keep-card footer { display: flex; align-items: center; justify-content: flex-end; margin-top: auto; }
+.keep-card footer .keep-edit-action { width: auto; padding: 0 10px; display: inline-flex; gap: 6px; margin-right: auto; color: var(--deed); font-size: 12px; font-weight: 700; }
 .location-prompt { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-md); border-radius: var(--radius-md); background: var(--ask-bg); color: var(--ask); font-size: 12px; }
+.note-processing-sheet { width: min(620px, 100%); }
+.note-extraction-review { display: grid; gap: var(--space-md); padding: var(--space-lg); border: 1px solid var(--good); border-radius: var(--radius-lg); background: var(--good-bg); }
+.note-extraction-review > strong { color: var(--good); }
+.note-process-action { width: 100%; }
+.note-sheet-actions { display: flex; justify-content: flex-end; gap: var(--space-sm); padding-top: var(--space-md); }
+.note-sheet-actions button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-sm); }
+.success-notice { margin: 0; padding: var(--space-md); border-radius: var(--radius-md); background: var(--good-bg); color: var(--good); }
 
 .funnel-header { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-xl); }
 .funnel-periods { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--card); }

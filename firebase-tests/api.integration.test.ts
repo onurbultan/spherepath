@@ -449,6 +449,30 @@ describe("callable API vertical slice", () => {
     expect(whatsappInbox.items.some((item) => item.safeText.includes("Sağlık durumu"))).toBe(false);
     expect(whatsappInbox.items).toContainEqual(expect.objectContaining({ source: "whatsapp", safeText: "[HASSAS İÇERİK MASKELENDİ]", status: "needs_review" }));
 
+    const createInboxItem = httpsCallable(functions, "createInboxItem");
+    const updateInboxItem = httpsCallable(functions, "updateInboxItem");
+    const processInboxItem = httpsCallable(functions, "processInboxItem");
+    const editableNote = (await createInboxItem(envelope({ source: "typed", text: "Daha sonra ara", linkedContactId: null, requestedKind: null }, "request-inbox-edit-create", "command-inbox-edit-create"))).data as { item: { id: string } };
+    const editedNote = (await updateInboxItem(envelope({ inboxItemId: editableNote.item.id, text: "Integration Contact gelecek hafta aransın", kind: "follow_up", linkedContactId: created.contact.id }, "request-inbox-edit", "command-inbox-edit"))).data as { item: { safeText: string; kind: string; linkedContactId: string } };
+    expect(editedNote.item).toMatchObject({ safeText: "Integration Contact gelecek hafta aransın", kind: "follow_up", linkedContactId: created.contact.id });
+    const followUp = (await processInboxItem(envelope({ inboxItemId: editableNote.item.id, action: "follow_up", contactId: created.contact.id, nextActionType: "call", nextActionAt: Date.now() + 3 * 86_400_000 }, "request-inbox-follow-up", "command-inbox-follow-up"))).data as { item: { appliedActions: Array<{ type: string }> }; entityId: string };
+    expect(followUp.entityId).toBe(created.contact.id);
+    expect(followUp.item.appliedActions).toContainEqual(expect.objectContaining({ type: "follow_up_scheduled" }));
+
+    const requirementNote = (await createInboxItem(envelope({ source: "typed", text: "Integration Contact kiralık daire arıyor", linkedContactId: created.contact.id, requestedKind: "requirement" }, "request-inbox-requirement-create", "command-inbox-requirement-create"))).data as { item: { id: string } };
+    const requirementCommand = envelope({ inboxItemId: requirementNote.item.id, action: "requirement", contactId: created.contact.id, opportunityType: "tenant_requirement", nextActionType: "message", nextActionAt: Date.now() + 4 * 86_400_000 }, "request-inbox-requirement", "command-inbox-requirement");
+    const requirementResult = (await processInboxItem(requirementCommand)).data as { entityId: string };
+    const requirementReplay = (await processInboxItem({ ...requirementCommand, requestId: `request-inbox-requirement-replay-${runId}` })).data as { entityId: string };
+    expect(requirementReplay.entityId).toBe(requirementResult.entityId);
+
+    const personNote = (await createInboxItem(envelope({ source: "typed", text: "Akış Kişisi ile tanıştım", linkedContactId: null, requestedKind: "person" }, "request-inbox-person-create", "command-inbox-person-create"))).data as { item: { id: string } };
+    const personResult = (await processInboxItem(envelope({ inboxItemId: personNote.item.id, action: "person", contact: { fullName: "Akış Kişisi", phone: "+905551112244", metAtPlace: "Akış notu", source: "other", role: "unknown" } }, "request-inbox-person", "command-inbox-person"))).data as { item: { linkedContactId: string }; entityId: string };
+    expect(personResult.item.linkedContactId).toBe(personResult.entityId);
+
+    const portfolioNote = (await createInboxItem(envelope({ source: "typed", text: "Urla'da satılık bahçeli villa", linkedContactId: null, requestedKind: "property" }, "request-inbox-portfolio-create", "command-inbox-portfolio-create"))).data as { item: { id: string } };
+    const portfolioFromNote = (await processInboxItem(envelope({ inboxItemId: portfolioNote.item.id, action: "portfolio", contactId: null, portfolio: { source: "manual", sourceAuthorName: null, headline: "Urla bahçeli villa", summary: "Akış notundan oluşturulan satılık bahçeli villa", transactionType: "sell", propertyType: "villa", location: "Urla", askingPrice: { amount: 15_000_000, currency: "TRY" }, bedroomCount: 3, livingRoomCount: 1, areaM2: 180, landAreaM2: null, features: ["garden"], attributes: [], authorizationType: "unknown", titleDeedType: "unknown", constructionAllowed: null, listingUrl: null } }, "request-inbox-portfolio", "command-inbox-portfolio"))).data as { item: { appliedActions: Array<{ type: string }> }; entityId: string };
+    expect(portfolioFromNote.item.appliedActions).toContainEqual(expect.objectContaining({ type: "portfolio_created", entityId: portfolioFromNote.entityId }));
+
     const createDataSubjectRequest = httpsCallable(functions, "createDataSubjectRequest");
     const accessRequest = (await createDataSubjectRequest(envelope({
       contactId: created.contact.id,

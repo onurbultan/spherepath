@@ -1,4 +1,4 @@
-import { ApiError, classifyInboxText, createCommandId, type CreateInboxItemInput, type InboxItemRecord, type UpdateInboxItemInput } from "@spherepath/shared";
+import { ApiError, classifyInboxText, createCommandId, type CreateInboxItemInput, type InboxItemRecord, type ProcessInboxItemInput, type UpdateInboxItemInput } from "@spherepath/shared";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
 import { apiClient } from "@/shared/api/client";
 
@@ -40,6 +40,9 @@ export async function flushInboxQueue(session: WorkspaceSession): Promise<number
 export function inboxQueueCount(ownerUid?: string): number { const queue = readQueue(); return ownerUid ? queue.filter((item) => item.ownerUid === ownerUid).length : queue.length; }
 export async function changeInboxItem(session: WorkspaceSession, input: UpdateInboxItemInput): Promise<InboxItemRecord> {
   return (await apiClient.command<UpdateInboxItemInput, { item: InboxItemRecord }>("updateInboxItem", input, createCommandId(session.uid))).item;
+}
+export async function processInboxItem(session: WorkspaceSession, input: ProcessInboxItemInput): Promise<{ item: InboxItemRecord; entityId: string }> {
+  return apiClient.command<ProcessInboxItemInput, { item: InboxItemRecord; entityId: string }>("processInboxItem", input, createCommandId(session.uid));
 }
 export async function undoInboxItem(session: WorkspaceSession, inboxItemId: string): Promise<InboxItemRecord> {
   return (await apiClient.command<{ inboxItemId: string }, { item: InboxItemRecord }>("undoInboxApplication", { inboxItemId }, createCommandId(session.uid))).item;

@@ -1,5 +1,9 @@
 import { z } from "zod";
 import type { Audited, Instant, TenantOwned } from "../domain/entities.js";
+import { contactDraftSchema } from "../contacts/contact-draft.js";
+import { nextActionTypes } from "../interactions/manual-interaction.js";
+import { opportunityTypes } from "../opportunities/opportunity-draft.js";
+import { portfolioItemDraftSchema } from "../matching/portfolio-match.js";
 
 export const inboxItemSources = ["typed", "voice", "whatsapp"] as const;
 export const inboxItemKinds = ["note", "person", "property", "requirement", "follow_up"] as const;
@@ -10,7 +14,7 @@ export type InboxItemKind = (typeof inboxItemKinds)[number];
 export type InboxItemStatus = (typeof inboxItemStatuses)[number];
 
 export interface InboxAppliedAction {
-  type: "classification" | "contact_created" | "location_added";
+  type: "classification" | "contact_created" | "contact_linked" | "location_added" | "opportunity_created" | "portfolio_created" | "follow_up_scheduled";
   entityId: string | null;
   label: string;
   appliedAt: Instant;
@@ -45,16 +49,44 @@ export type CreateInboxItemInput = z.infer<typeof createInboxItemSchema>;
 
 export const updateInboxItemSchema = z.object({
   inboxItemId: z.string().trim().min(1).max(160),
+  text: z.string().trim().min(1, "Not boş bırakılamaz.").max(4_000, "Not en fazla 4.000 karakter olabilir.").optional(),
   kind: z.enum(inboxItemKinds).optional(),
+  linkedContactId: z.string().trim().min(1).max(160).nullable().optional(),
   pinned: z.boolean().optional(),
   archived: z.boolean().optional(),
   /** Answers the card's own "Nerede?" prompt; appended to the note and reclassified. */
   location: z.string().trim().min(2, "Konum en az 2 karakter olmalı.").max(120).optional(),
 }).strict().refine(
-  (value) => value.kind !== undefined || value.pinned !== undefined || value.archived !== undefined || value.location !== undefined,
+  (value) => value.text !== undefined || value.kind !== undefined || value.linkedContactId !== undefined || value.pinned !== undefined || value.archived !== undefined || value.location !== undefined,
   "En az bir değişiklik gerekli.",
 );
 export type UpdateInboxItemInput = z.infer<typeof updateInboxItemSchema>;
+
+const processBaseSchema = z.object({ inboxItemId: z.string().trim().min(1).max(160) });
+
+export const processInboxItemSchema = z.discriminatedUnion("action", [
+  processBaseSchema.extend({ action: z.literal("person"), contact: contactDraftSchema }),
+  processBaseSchema.extend({
+    action: z.literal("requirement"),
+    contactId: z.string().trim().min(1).max(160),
+    opportunityType: z.enum(opportunityTypes).refine((value) => value === "buyer_requirement" || value === "tenant_requirement"),
+    nextActionType: z.enum(nextActionTypes),
+    nextActionAt: z.number().int().positive(),
+  }),
+  processBaseSchema.extend({ action: z.literal("portfolio"), contactId: z.string().trim().min(1).max(160).nullable(), portfolio: portfolioItemDraftSchema }),
+  processBaseSchema.extend({
+    action: z.literal("follow_up"),
+    contactId: z.string().trim().min(1).max(160),
+    nextActionType: z.enum(nextActionTypes),
+    nextActionAt: z.number().int().positive(),
+  }),
+]).superRefine((value, context) => {
+  if ((value.action === "requirement" || value.action === "follow_up") && value.nextActionAt < Date.now() - 60_000) {
+    context.addIssue({ code: "custom", message: "Takip zamanı geçmişte olamaz.", path: ["nextActionAt"] });
+  }
+});
+
+export type ProcessInboxItemInput = z.infer<typeof processInboxItemSchema>;
 
 export const inboxPageQuerySchema = z.preprocess(
   (value) => value ?? {},

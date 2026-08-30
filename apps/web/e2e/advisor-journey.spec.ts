@@ -87,6 +87,24 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await contactActionMenus.first().locator("summary").click();
 
   await page.goto("/");
+  const savedNote = page.locator("article.keep-card").filter({ hasText: "Bahçeli satılık bir ev duydum." });
+  await savedNote.getByRole("button", { name: "Düzenle ve işle" }).click();
+  const noteDialog = page.getByRole("dialog", { name: "Bu not neye dönüşsün?" });
+  await noteDialog.getByLabel("Not metni").fill("Ayşe Urla'da bahçeli satılık ev arıyor.");
+  await noteDialog.getByLabel("Not türü").selectOption("requirement");
+  await noteDialog.getByRole("combobox", { name: "İlgili kişi ara" }).fill(contactName);
+  await noteDialog.getByRole("option", { name: contactName }).click();
+  await noteDialog.getByRole("button", { name: "Talep oluştur" }).click();
+  const processedNote = page.locator("article.keep-card").filter({ hasText: "Ayşe Urla'da bahçeli satılık ev arıyor." });
+  await expect(processedNote).toContainText("Alıcı talebi oluşturuldu");
+  await processedNote.getByRole("button", { name: "Arşivle" }).click();
+  await expect(processedNote).toBeHidden();
+  await page.getByRole("button", { name: "Arşiv" }).click();
+  await expect(processedNote).toBeVisible();
+  await processedNote.getByRole("button", { name: "Geri getir" }).click();
+  await expect(processedNote).toBeHidden();
+  await page.getByRole("button", { name: "Aktif" }).click();
+  await expect(processedNote).toBeVisible();
   const dailyTasks = page.locator(".daily-five li");
   await expect(dailyTasks).toHaveCount(2);
   const stableTaskTitles = await dailyTasks.locator("strong").allTextContents();
@@ -165,7 +183,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await expect(page.getByRole("heading", { name: "Temas ve sonraki aksiyon hazır" })).toBeVisible();
 
   await page.goto("/opportunities");
-  await page.getByRole("button", { name: "Fırsat oluştur" }).click();
+  await page.getByRole("button", { name: /Yeni fırsat|Fırsat oluştur/ }).first().click();
   const opportunityDialog = page.getByRole("dialog");
   await opportunityDialog.getByRole("combobox", { name: "Kişi ara" }).fill(contactName);
   await opportunityDialog.getByRole("option", { name: contactName }).click();

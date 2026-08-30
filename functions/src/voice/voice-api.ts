@@ -6,6 +6,7 @@ import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   applyInteractionToRelationship,
+  classifyInboxText,
   contactMemorySchema,
   confirmVoiceNoteSchema,
   createOpportunity as createOpportunityEntity,
@@ -660,6 +661,7 @@ export const confirmVoiceNote = onCall(
     const noteRef = firestore.collection("voiceNotes").doc(parsed.data.voiceNoteId);
     const commandRef = firestore.collection("commands").doc(envelope.commandId!);
     const interactionRef = firestore.collection("interactions").doc();
+    const inboxRef = firestore.collection("inboxItems").doc(`voice-${parsed.data.voiceNoteId}`);
     const opportunityDrafts = [
       ...parsed.data.opportunities,
       ...(parsed.data.opportunity ? [parsed.data.opportunity] : []),
@@ -705,6 +707,26 @@ export const confirmVoiceNote = onCall(
         occurredAt: nowTimestamp,
         nextActionAt: timestamp(interaction.nextActionAt),
         createdAt: nowTimestamp,
+      });
+      const inboxClassification = classifyInboxText(interaction.noteSummary || interaction.outcome || "Görüşme kaydedildi");
+      transaction.create(inboxRef, {
+        officeId: note.officeId,
+        ownerUid: note.ownerUid,
+        source: "voice",
+        safeText: inboxClassification.safeText,
+        summary: inboxClassification.summary,
+        kind: inboxClassification.kind,
+        status: "applied",
+        confidence: inboxClassification.confidence,
+        linkedContactId: targetContactId,
+        sourceEntityId: interactionRef.id,
+        appliedActions: [{ type: "classification", entityId: interactionRef.id, label: "Sesli görüşme onaylandı", appliedAt: nowTimestamp, undoneAt: null }],
+        pinned: false,
+        needsLocation: inboxClassification.needsLocation,
+        errorCode: null,
+        archivedAt: null,
+        createdAt: nowTimestamp,
+        updatedAt: nowTimestamp,
       });
       const storedMemory = (contact.memory ?? {}) as FirebaseFirestore.DocumentData;
       const currentMemory = contactMemorySchema.parse({

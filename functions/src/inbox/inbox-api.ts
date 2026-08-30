@@ -3,10 +3,14 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   classifyInboxText,
   createContact as createContactEntity,
+  createOpportunity as createOpportunityEntity,
+  createPortfolioItem,
   createInboxItemSchema,
   inboxItemIdSchema,
   inboxItemKinds,
   inboxPageQuerySchema,
+  opportunityTypeLabels,
+  processInboxItemSchema,
   updateInboxItemSchema,
   type InboxAppliedAction,
   type InboxItem,
@@ -165,7 +169,14 @@ export const updateInboxItem = onCall(callableOptions, async (request): Promise<
       const [snapshot, receipt] = await Promise.all([transaction.get(ref), transaction.get(commandRef)]);
       if (receipt.exists) return;
       if (!snapshot.exists || !canManage(snapshot.data()!, claims)) throw new HttpsError("not-found", "Inbox item was not found.");
+      if (parsed.data.linkedContactId) {
+        const contact = await transaction.get(db.collection("contacts").doc(parsed.data.linkedContactId));
+        if (!contact.exists || !canManage(contact.data()!, claims) || contact.data()!.deletedAt !== null) throw new HttpsError("not-found", "Linked contact was not found.");
+      }
       const now = Timestamp.now();
+      const edited = parsed.data.text === undefined && parsed.data.kind === undefined
+        ? null
+        : classifyInboxText(parsed.data.text ?? snapshot.data()!.safeText as string, (parsed.data.kind ?? snapshot.data()!.kind) as typeof inboxItemKinds[number]);
       // Adding the location rewrites the note and reclassifies it, so the card's own
       // "Nerede? Konumu ekleyince eşleştirebilirim." prompt actually leads somewhere.
       const located = parsed.data.location === undefined
@@ -175,7 +186,16 @@ export const updateInboxItem = onCall(callableOptions, async (request): Promise<
         ? { type: "location_added", entityId: null, label: `Konum eklendi: ${parsed.data.location}`, appliedAt: now.toMillis(), undoneAt: null }
         : null;
       transaction.update(ref, {
-        ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind, needsLocation: parsed.data.kind === "property" ? snapshot.data()!.needsLocation : false }),
+        ...(edited === null ? {} : {
+          safeText: edited.safeText,
+          summary: edited.summary,
+          kind: edited.kind,
+          confidence: edited.confidence,
+          needsLocation: edited.needsLocation,
+          status: edited.sensitiveContentMasked ? "needs_review" : snapshot.data()!.status === "archived" ? "archived" : "applied",
+          errorCode: null,
+        }),
+        ...(parsed.data.linkedContactId === undefined ? {} : { linkedContactId: parsed.data.linkedContactId }),
         ...(parsed.data.pinned === undefined ? {} : { pinned: parsed.data.pinned }),
         ...(parsed.data.archived === undefined ? {} : { status: parsed.data.archived ? "archived" : "applied", archivedAt: parsed.data.archived ? now : null }),
         ...(located === null ? {} : {
@@ -188,6 +208,77 @@ export const updateInboxItem = onCall(callableOptions, async (request): Promise<
       transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "updateInboxItem", inboxItemId: ref.id, createdAt: now });
     });
     const result = await ref.get(); return { item: toRecord(result.id, result.data()!) };
+  });
+});
+
+export const processInboxItem = onCall(callableOptions, async (request): Promise<{ item: InboxItemRecord; entityId: string }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<unknown>(request.data, { command: true });
+  const parsed = processInboxItemSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Inbox processing input is invalid.", parsed.error.flatten());
+  return observeApiRequest("processInboxItem", envelope.requestId, async () => {
+    const db = getFirestore();
+    const itemRef = db.collection("inboxItems").doc(parsed.data.inboxItemId);
+    const commandRef = db.collection("commands").doc(envelope.commandId!);
+    const entityRef = parsed.data.action === "person"
+      ? db.collection("contacts").doc()
+      : parsed.data.action === "requirement"
+        ? db.collection("opportunities").doc()
+        : parsed.data.action === "portfolio"
+          ? db.collection("portfolioItems").doc()
+          : db.collection("contacts").doc(parsed.data.contactId);
+    const stageEventRef = parsed.data.action === "requirement" ? db.collection("stageEvents").doc() : null;
+    let entityId = entityRef.id;
+    await db.runTransaction(async (transaction) => {
+      const [itemSnapshot, receipt] = await Promise.all([transaction.get(itemRef), transaction.get(commandRef)]);
+      if (receipt.exists) {
+        if (!canManage(receipt.data()!, claims) || receipt.data()!.type !== "processInboxItem") throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+        entityId = receipt.data()!.entityId as string;
+        return;
+      }
+      if (!itemSnapshot.exists || !canManage(itemSnapshot.data()!, claims)) throw new HttpsError("not-found", "Inbox item was not found.");
+      if (itemSnapshot.data()!.status === "archived") throw new HttpsError("failed-precondition", "Arşivlenmiş notu önce geri getir.");
+      const actionType = parsed.data.action === "person" ? "contact_created" : parsed.data.action === "requirement" ? "opportunity_created" : parsed.data.action === "portfolio" ? "portfolio_created" : "follow_up_scheduled";
+      const actions = (itemSnapshot.data()!.appliedActions ?? []) as DocumentData[];
+      if (actions.some((action) => action.type === actionType && action.undoneAt === null)) throw new HttpsError("already-exists", "Bu not daha önce işlendi.");
+      const contactId = parsed.data.action === "person" ? null : parsed.data.contactId;
+      const contactSnapshot = contactId ? await transaction.get(db.collection("contacts").doc(contactId)) : null;
+      if (contactSnapshot && (!contactSnapshot.exists || !canManage(contactSnapshot.data()!, claims) || contactSnapshot.data()!.deletedAt !== null)) throw new HttpsError("not-found", "Contact was not found.");
+      const now = Date.now(); const nowStamp = Timestamp.fromMillis(now);
+      let label: string;
+      let linkedContactId = itemSnapshot.data()!.linkedContactId ?? null;
+      if (parsed.data.action === "person") {
+        const contact = createContactEntity(parsed.data.contact, { officeId: claims.officeId, ownerUid: claims.uid }, now);
+        transaction.create(entityRef, storedContact(contact));
+        linkedContactId = entityRef.id;
+        label = `${parsed.data.contact.fullName} kişi olarak oluşturuldu`;
+      } else if (parsed.data.action === "requirement") {
+        const opportunity = createOpportunityEntity({ subjectContactId: parsed.data.contactId, type: parsed.data.opportunityType, nextActionType: parsed.data.nextActionType, nextActionAt: parsed.data.nextActionAt }, { officeId: claims.officeId, ownerUid: claims.uid }, now);
+        transaction.create(entityRef, { ...opportunity, qualifiedAt: nowStamp, stageEnteredAt: nowStamp, nextActionAt: Timestamp.fromMillis(parsed.data.nextActionAt), closedAt: null, deletedAt: null, createdAt: nowStamp, updatedAt: nowStamp });
+        transaction.create(stageEventRef!, { officeId: claims.officeId, ownerUid: claims.uid, entityType: "opportunity", entityId: entityRef.id, fromStage: null, toStage: "new_lead", reason: "Akış notundan oluşturuldu", commandId: envelope.commandId, occurredAt: nowStamp, createdAt: nowStamp });
+        linkedContactId = parsed.data.contactId;
+        label = `${opportunityTypeLabels[parsed.data.opportunityType]} oluşturuldu`;
+      } else if (parsed.data.action === "portfolio") {
+        const portfolio = createPortfolioItem(parsed.data.portfolio, { officeId: claims.officeId, ownerUid: claims.uid }, now);
+        transaction.create(entityRef, { ...portfolio, createdAt: nowStamp, updatedAt: nowStamp });
+        linkedContactId = parsed.data.contactId ?? linkedContactId;
+        label = "Ofis havuzuna portföy eklendi";
+      } else {
+        const relationship = contactSnapshot!.data()!.relationship as DocumentData;
+        transaction.update(entityRef, { relationship: { ...relationship, nextActionType: parsed.data.nextActionType, nextActionAt: Timestamp.fromMillis(parsed.data.nextActionAt) }, updatedAt: nowStamp });
+        linkedContactId = parsed.data.contactId;
+        label = "Takip planlandı";
+      }
+      transaction.update(itemRef, {
+        linkedContactId,
+        status: "applied",
+        appliedActions: [...actions, { type: actionType, entityId: entityRef.id, label, appliedAt: nowStamp, undoneAt: null }],
+        updatedAt: nowStamp,
+      });
+      transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "processInboxItem", inboxItemId: itemRef.id, action: parsed.data.action, entityId: entityRef.id, createdAt: nowStamp });
+    });
+    const result = await itemRef.get();
+    return { item: toRecord(result.id, result.data()!), entityId };
   });
 });
 
