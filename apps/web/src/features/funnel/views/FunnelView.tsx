@@ -13,7 +13,7 @@ function coachingHref(coaching: FunnelOverview["coaching"]): string {
   const subject = coaching.subject;
   if (!subject) return routes[coaching.target];
   if (subject.kind === "opportunity") return `/opportunities?opportunityId=${encodeURIComponent(subject.id)}`;
-  if (subject.kind === "contact") return `/contacts/${encodeURIComponent(subject.id)}`;
+  if (subject.kind === "contact") return `/contacts/__contact__?contactId=${encodeURIComponent(subject.id)}`;
   return "/listings";
 }
 

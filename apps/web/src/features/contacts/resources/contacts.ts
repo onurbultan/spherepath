@@ -10,14 +10,23 @@ export interface ContactInteractionRecord extends Interaction {
   id: string;
 }
 
+export interface ContactTaskOutcomeRecord {
+  id: string;
+  taskId: string;
+  status: "completed" | "skipped" | "rescheduled" | "contact_opt_out";
+  note: string | null;
+  rescheduledAt: number | null;
+  resolvedAt: number;
+}
+
 export async function listContacts(): Promise<ContactRecord[]> {
   return (await apiClient.query<undefined, { contacts: ContactRecord[] }>("listContacts", undefined)).contacts;
 }
 
-export async function listContactInteractions(contactId: string): Promise<ContactInteractionRecord[]> {
-  return (await apiClient.query<{ contactId: string }, { interactions: ContactInteractionRecord[] }>(
+export async function listContactInteractions(contactId: string): Promise<{ interactions: ContactInteractionRecord[]; taskOutcomes: ContactTaskOutcomeRecord[] }> {
+  return apiClient.query<{ contactId: string }, { interactions: ContactInteractionRecord[]; taskOutcomes: ContactTaskOutcomeRecord[] }>(
     "listContactInteractions", { contactId },
-  )).interactions;
+  );
 }
 
 export async function saveContact(

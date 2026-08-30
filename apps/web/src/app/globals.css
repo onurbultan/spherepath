@@ -500,12 +500,18 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .today-task-list { list-style: none; padding: 0; margin: 0; width: 100%; display: grid; border-top: 1px solid var(--line); }
 .today-task-list li { min-height: 54px; padding: 0 18px; display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: 11px; align-items: center; border-bottom: 1px solid var(--line); background: var(--card); }
 .today-task-list li:hover { background: var(--sunk); }
+.today-task-list li.resolved { background: var(--sunk); }
 .today-task-list a { min-width: 0; display: grid; align-content: center; gap: 2px; }
 .today-task-list strong { font-size: 13.5px; font-weight: 600; }
+.today-task-list li.resolved strong { color: var(--text-tertiary); text-decoration: line-through; }
+.today-task-list li.resolution-contact_opt_out strong { color: var(--ask); text-decoration: none; }
 .today-task-list span { color: var(--text-secondary); font-size: 11.5px; }
 .today-task-list time { padding: 3px 7px; border-radius: var(--radius-sm); background: var(--background); color: var(--text-secondary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 .today-task-list li button { width: 28px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text-secondary); display: grid; place-items: center; cursor: pointer; }
 .today-task-list li button:hover { background: var(--good-bg); border-color: color-mix(in srgb, var(--good) 30%, var(--line)); color: var(--good); }
+.task-resolution-mark { width: 28px; height: 28px; border-radius: 50%; background: var(--good-bg); color: var(--good) !important; display: grid; place-items: center; }
+.resolution-contact_opt_out .task-resolution-mark { background: var(--ask-bg); color: var(--ask) !important; }
+.today-task-list li.resolution-contact_opt_out time { background: var(--ask-bg); color: var(--ask); }
 .task-button-label { display: none; }
 .task-priority-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--deed); }
 .task-priority-overdue .task-priority-dot { background: var(--ask); }
@@ -515,10 +521,11 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .daily-plan-footer { margin-top: auto; min-height: 36px; padding: 0 18px; display: flex; align-items: center; color: var(--text-tertiary); font-size: 11.5px; }
 .today-plan-empty { flex: 1; display: grid; place-content: center; justify-items: center; gap: 8px; color: var(--good); }
 .task-resolution-sheet { width: min(620px, calc(100vw - 32px)); }
-.task-resolution-choices { margin: 6px 0 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.task-resolution-choices { margin: 6px 0 18px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .task-resolution-choices > button { min-height: 74px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--card); color: var(--text-secondary); display: flex; align-items: flex-start; gap: 9px; text-align: left; cursor: pointer; }
 .task-resolution-choices > button:hover { background: var(--sunk); }
 .task-resolution-choices > button.selected { border-color: color-mix(in srgb, var(--deed) 45%, var(--line)); background: var(--deed-bg); color: var(--deed); }
+.task-resolution-choices > button.danger-choice.selected { border-color: color-mix(in srgb, var(--ask) 45%, var(--line)); background: var(--ask-bg); color: var(--ask); }
 .task-resolution-choices > button span { display: grid; gap: 2px; }
 .task-resolution-choices > button strong { color: var(--text-primary); font-size: 12.5px; }
 .task-resolution-choices > button small { font-size: 10.5px; line-height: 1.35; }
@@ -623,6 +630,8 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .contact-history-list > li { position: relative; display: grid; grid-template-columns: 30px 1fr; gap: 10px; padding: 0 0 18px; }
 .contact-history-list > li:not(:last-child)::before { content: ""; position: absolute; left: 14px; top: 30px; bottom: 3px; width: 1px; background: var(--line); }
 .contact-history-icon { z-index: 1; width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 50%; background: var(--card); color: var(--deed); display: grid; place-items: center; }
+.contact-history-list > li.contact-history-alert .contact-history-icon { border-color: color-mix(in srgb, var(--ask) 35%, var(--line)); background: var(--ask-bg); color: var(--ask); }
+.contact-history-list > li.contact-history-alert p { color: var(--ask); }
 .contact-history-meta strong { color: var(--text-primary); font-size: 12.5px; }
 .contact-history-meta time { color: var(--text-tertiary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 9.5px; }
 .contact-history-list p { margin: 5px 0 0; color: var(--text-secondary); font-size: 12.5px; line-height: 1.45; }
@@ -652,6 +661,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .privacy-status span { padding: 4px 8px; border-radius: var(--radius-pill); background: var(--sunk); }
 .privacy-status .compliant { background: var(--good-bg); color: var(--good); font-weight: 600; }
 .privacy-status .pending { background: var(--warm-bg); color: var(--warm); font-weight: 600; }
+.privacy-status .withdrawn { background: var(--ask-bg); color: var(--ask); font-weight: 600; }
 
 .card-actions { grid-column: 1 / -1; margin-top: auto; padding-top: var(--space-lg); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 6px; }
 .card-actions button { justify-content: flex-start; min-width: 0; width: 100%; min-height: var(--control-md); border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 7px; padding: 0 8px; font-size: 12.5px; cursor: pointer; }
@@ -1108,6 +1118,9 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .daily-five li strong, .daily-five li small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .daily-five li small { color: var(--text-secondary); }
 .daily-five li.resolved strong { color: var(--text-tertiary); text-decoration: line-through; }
+.daily-five li.resolved small { overflow: visible; white-space: normal; line-height: 1.35; }
+.daily-five li.resolution-contact_opt_out strong { color: var(--ask); text-decoration: none; }
+.daily-five li.resolution-contact_opt_out .daily-number { background: var(--ask-bg); color: var(--ask); }
 .daily-number { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--deed-bg); color: var(--deed); }
 .daily-actions { display: flex; gap: 4px; }
 .daily-actions button, .keep-card footer button { width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); cursor: pointer; }

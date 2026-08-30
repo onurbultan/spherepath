@@ -21,6 +21,15 @@ interface ContactInteractionRecord extends Interaction {
   id: string;
 }
 
+interface ContactTaskOutcomeRecord {
+  id: string;
+  taskId: string;
+  status: "completed" | "skipped" | "rescheduled" | "contact_opt_out";
+  note: string | null;
+  rescheduledAt: number | null;
+  resolvedAt: number;
+}
+
 function callableOptions() {
   return {
     region: "europe-west8" as const,
@@ -168,7 +177,7 @@ export const listContacts = onCall(callableOptions(), async (request): Promise<{
   });
 });
 
-export const listContactInteractions = onCall(callableOptions(), async (request): Promise<{ interactions: ContactInteractionRecord[] }> => {
+export const listContactInteractions = onCall(callableOptions(), async (request): Promise<{ interactions: ContactInteractionRecord[]; taskOutcomes: ContactTaskOutcomeRecord[] }> => {
   const claims = requireSpherepathClaims(request);
   const envelope = readApiEnvelope<{ contactId?: unknown }>(request.data);
   const contactId = parseContactId(envelope.data?.contactId);
@@ -178,12 +187,36 @@ export const listContactInteractions = onCall(callableOptions(), async (request)
     if (!contactSnapshot.exists || !canManage(contactSnapshot.data()!, claims) || contactSnapshot.data()!.deletedAt !== null) {
       throw new HttpsError("not-found", "Contact was not found.");
     }
-    const snapshot = await firestore.collection("interactions").where("contactId", "==", contactId).limit(100).get();
+    const directTaskIds = [`next-action-${contactId}`, `first-interaction-${contactId}`];
+    const [snapshot, contactTaskOutcomesSnapshot, legacyTaskOutcomesSnapshot] = await Promise.all([
+      firestore.collection("interactions").where("contactId", "==", contactId).limit(100).get(),
+      firestore.collection("dailyTaskCompletions").where("contactId", "==", contactId).limit(100).get(),
+      firestore.collection("dailyTaskCompletions").where("taskId", "in", directTaskIds).limit(100).get(),
+    ]);
     const interactions = snapshot.docs
       .filter((item) => canManage(item.data(), claims))
       .map((item) => toInteractionRecord(item.id, item.data()))
       .sort((left, right) => right.occurredAt - left.occurredAt);
-    return { interactions };
+    const taskOutcomeDocuments = new Map([...contactTaskOutcomesSnapshot.docs, ...legacyTaskOutcomesSnapshot.docs].map((item) => [item.id, item]));
+    const taskOutcomes = [...taskOutcomeDocuments.values()]
+      .filter((item) => {
+        const data = item.data();
+        return canManage(data, claims) && (data.contactId === contactId || directTaskIds.includes(data.taskId as string));
+      })
+      .flatMap<ContactTaskOutcomeRecord>((item) => {
+        const data = item.data();
+        if (!["completed", "skipped", "rescheduled", "contact_opt_out"].includes(data.status as string)) return [];
+        return [{
+          id: item.id,
+          taskId: data.taskId as string,
+          status: data.status as ContactTaskOutcomeRecord["status"],
+          note: typeof data.outcomeNote === "string" ? data.outcomeNote : typeof data.skippedReason === "string" ? data.skippedReason : null,
+          rescheduledAt: millis(data.rescheduledAt),
+          resolvedAt: millis(data.resolvedAt) ?? millis(data.updatedAt) ?? 0,
+        }];
+      })
+      .sort((left, right) => right.resolvedAt - left.resolvedAt);
+    return { interactions, taskOutcomes };
   });
 });
 

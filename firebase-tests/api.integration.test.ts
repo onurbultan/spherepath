@@ -11,9 +11,10 @@ const app = initializeApp({ apiKey: "demo-key", projectId, authDomain: `${projec
 const auth = getAuth(app);
 const functions = getFunctions(app, "europe-west8");
 let testEnvironment: RulesTestEnvironment;
+const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 function envelope<T>(data: T, requestId: string, commandId?: string) {
-  return { data, requestId, commandId };
+  return { data, requestId: `${requestId}-${runId}`, commandId: commandId ? `${commandId}-${runId}` : undefined };
 }
 
 beforeAll(async () => {
@@ -126,6 +127,19 @@ describe("callable API vertical slice", () => {
     const todayAfterCompletion = (await getTodayOverview(envelope(undefined, "request-today-completed"))).data as { overview: { completedTaskCount: number; tasks: Array<{ id: string }> } };
     expect(todayAfterCompletion.overview.completedTaskCount).toBe(1);
     expect(todayAfterCompletion.overview.tasks).toEqual([expect.objectContaining({ id: `opportunity-action-${opportunity.opportunity.id}` })]);
+
+    await completeDailyTask(envelope({ taskId: `opportunity-action-${opportunity.opportunity.id}`, status: "contact_opt_out", outcomeNote: null, skippedReason: "Telefon ve WhatsApp üzerinden iletişim istemiyor.", rescheduledAt: null, rescheduledActionType: null }, "request-task-opt-out", "command-task-opt-out"));
+    const contactsAfterOptOut = (await listContacts(envelope(undefined, "request-list-after-opt-out"))).data as { contacts: Array<{ id: string; relationship: { nextActionAt: number | null }; privacy: { marketingConsent: string; iysStatus: string } }> };
+    expect(contactsAfterOptOut.contacts).toEqual([expect.objectContaining({
+      id: created.contact.id,
+      relationship: expect.objectContaining({ nextActionAt: null }),
+      privacy: expect.objectContaining({ marketingConsent: "withdrawn", iysStatus: "rejected" }),
+    })]);
+    const opportunitiesAfterOptOut = (await listOpportunities(envelope(undefined, "request-list-opportunities-after-opt-out"))).data as { opportunities: Array<{ id: string; nextActionAt: number | null }> };
+    expect(opportunitiesAfterOptOut.opportunities).toEqual([expect.objectContaining({ id: opportunity.opportunity.id, nextActionAt: null })]);
+    const listContactInteractions = httpsCallable(functions, "listContactInteractions");
+    const historyAfterOptOut = (await listContactInteractions(envelope({ contactId: created.contact.id }, "request-history-after-opt-out"))).data as { taskOutcomes: Array<{ status: string; note: string }> };
+    expect(historyAfterOptOut.taskOutcomes).toEqual([expect.objectContaining({ status: "contact_opt_out", note: "Telefon ve WhatsApp üzerinden iletişim istemiyor." })]);
 
     for (const [index, toStage] of ["appointment", "valuation", "mandate_offer", "won"].entries()) {
       await advanceOpportunity(envelope({

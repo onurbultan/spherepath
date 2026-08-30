@@ -24,6 +24,14 @@ export interface TodayOpportunity {
   estimatedValue?: { amount: number; currency: string } | null;
 }
 
+export type DailyTaskResolutionStatus = "completed" | "skipped" | "rescheduled" | "contact_opt_out";
+export const dailyTaskResolutionLabels: Record<DailyTaskResolutionStatus, string> = {
+  completed: "Tamamlandı",
+  skipped: "Atlandı",
+  rescheduled: "Ertelendi",
+  contact_opt_out: "İletişim istemiyor",
+};
+
 export interface TodayTask {
   id: string;
   contactId: string;
@@ -33,7 +41,8 @@ export interface TodayTask {
   type: "record_interaction" | "next_action";
   opportunityId?: string;
   priority: "overdue" | "bottleneck" | "relationship";
-  resolutionStatus?: "completed" | "skipped" | "rescheduled" | null;
+  resolutionStatus?: DailyTaskResolutionStatus | null;
+  resolutionNote?: string | null;
   /** Weighted urgency from rankDailyTaskCandidates; higher comes first. */
   priorityScore?: number;
 }
@@ -73,14 +82,14 @@ export type ReportingPeriod = z.infer<typeof reportingPeriodSchema>;
 
 export const dailyTaskOutcomeSchema = z.object({
   taskId: z.string().trim().min(3).max(240),
-  status: z.enum(["completed", "skipped", "rescheduled"]),
+  status: z.enum(["completed", "skipped", "rescheduled", "contact_opt_out"]),
   outcomeNote: z.string().trim().max(500).nullable(),
   skippedReason: z.string().trim().max(300).nullable(),
   rescheduledAt: z.number().int().positive().nullable(),
   rescheduledActionType: z.enum(nextActionTypes).nullable(),
 }).strict().superRefine((value, context) => {
-  if (value.status === "skipped" && !value.skippedReason) {
-    context.addIssue({ code: "custom", message: "Atlanan görev için neden gerekli.", path: ["skippedReason"] });
+  if ((value.status === "skipped" || value.status === "contact_opt_out") && !value.skippedReason) {
+    context.addIssue({ code: "custom", message: value.status === "contact_opt_out" ? "İletişim tercihi için açıklama gerekli." : "Atlanan görev için neden gerekli.", path: ["skippedReason"] });
   }
   if (value.status === "rescheduled" && (value.rescheduledAt === null || value.rescheduledActionType === null)) {
     context.addIssue({ code: "custom", message: "Yeni tarih ve aksiyon türü gerekli.", path: [value.rescheduledAt === null ? "rescheduledAt" : "rescheduledActionType"] });

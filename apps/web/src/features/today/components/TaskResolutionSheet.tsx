@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CalendarClock, Check, CircleSlash, X } from "lucide-react";
+import { CalendarClock, Check, CircleSlash, PhoneOff, X } from "lucide-react";
 import { dailyTaskOutcomeSchema, nextActionTypeLabels, nextActionTypes, type DailyTaskOutcome, type TodayTask } from "@spherepath/shared";
 import { QuickDateField } from "@/shared/ui/QuickDateField";
 import { useSheetDismiss } from "@/shared/ui/useSheetDismiss";
@@ -57,7 +57,7 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve }
       taskId: task.id,
       status,
       outcomeNote: status === "completed" ? note.trim() || null : null,
-      skippedReason: status === "skipped" ? note.trim() || null : null,
+      skippedReason: status === "skipped" || status === "contact_opt_out" ? note.trim() || null : null,
       rescheduledAt: status === "rescheduled" && rescheduledAt ? new Date(rescheduledAt).getTime() : null,
       rescheduledActionType: status === "rescheduled" ? rescheduledActionType : null,
     });
@@ -78,15 +78,16 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve }
       <div className="task-resolution-choices" role="group" aria-label="Görev sonucu">
         <button className={status === "completed" ? "selected" : ""} onClick={() => { setStatus("completed"); setNote(""); }} type="button"><Check size={17} /><span><strong>Tamamlandı</strong><small>Bu aksiyonu kapat</small></span></button>
         <button className={status === "rescheduled" ? "selected" : ""} onClick={() => { setStatus("rescheduled"); setNote(""); }} type="button"><CalendarClock size={17} /><span><strong>Ertele</strong><small>Yeni tarih ve aksiyon belirle</small></span></button>
-        <button className={status === "skipped" ? "selected" : ""} onClick={() => { setStatus("skipped"); setNote(""); }} type="button"><CircleSlash size={17} /><span><strong>Atla</strong><small>Nedenini kaydet</small></span></button>
+        <button className={status === "skipped" ? "selected" : ""} onClick={() => { setStatus("skipped"); setNote(""); }} type="button"><CircleSlash size={17} /><span><strong>Atla</strong><small>Yalnız bu görevi kapat</small></span></button>
+        <button className={`danger-choice${status === "contact_opt_out" ? " selected" : ""}`} onClick={() => { setStatus("contact_opt_out"); setNote(""); }} type="button"><PhoneOff size={17} /><span><strong>İletişim istemiyor</strong><small>Gelecek iletişimleri kapat</small></span></button>
       </div>
       {status === "rescheduled"
         ? <div className="form-stack"><label>Yeni aksiyon<select value={rescheduledActionType} onChange={(event) => setRescheduledActionType(event.target.value as NonNullable<DailyTaskOutcome["rescheduledActionType"]>)}>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</select></label><QuickDateField label="Yeni tarih" value={rescheduledAt} onChange={setRescheduledAt} /></div>
-        : <label>{status === "skipped" ? "Neden atlanıyor?" : "Kısa sonuç"} <span className="optional">{status === "completed" ? "isteğe bağlı" : ""}</span><textarea required={status === "skipped"} value={note} onChange={(event) => setNote(event.target.value)} placeholder={status === "skipped" ? "Örn. Kişi artık aranmamasını istedi." : "Örn. Görüşüldü, teklif cuma günü paylaşılacak."} /></label>}
+        : <label>{status === "contact_opt_out" ? "İletişim neden kapatılıyor?" : status === "skipped" ? "Neden atlanıyor?" : "Kısa sonuç"} <span className="optional">{status === "completed" ? "isteğe bağlı" : ""}</span><textarea required={status === "skipped" || status === "contact_opt_out"} value={note} onChange={(event) => setNote(event.target.value)} placeholder={status === "contact_opt_out" ? "Örn. Kişi telefon ve WhatsApp üzerinden iletişim kurulmasını istemiyor." : status === "skipped" ? "Örn. Bugün uygun değil; bu görevi kapatıyorum." : "Örn. Görüşüldü, teklif cuma günü paylaşılacak."} /></label>}
       {localError ?? error ? <p className="form-error" role="alert">{localError ?? error}</p> : null}
       <div className="task-resolution-actions">
         <Link className="secondary-action inline-link" href={taskRecordHref(task)}>Teması ayrıntılı kaydet</Link>
-        <button className="primary-action inline-action" disabled={pending} type="submit">{pending ? "Kaydediliyor…" : status === "rescheduled" ? "Yeni tarihe ertele" : "Sonucu kaydet"}</button>
+        <button className="primary-action inline-action" disabled={pending} type="submit">{pending ? "Kaydediliyor…" : status === "rescheduled" ? "Yeni tarihe ertele" : status === "contact_opt_out" ? "İletişimi kapat" : "Sonucu kaydet"}</button>
       </div>
     </form>
   </div>;

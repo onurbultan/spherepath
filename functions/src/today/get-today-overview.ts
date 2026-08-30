@@ -95,8 +95,30 @@ export const getTodayOverview = onCall(
     });
     const now = Date.now();
     const dayKey = istanbulDayKey(now);
-    const completions = completionsSnapshot.docs.filter((item) => { const data = item.data(); return data.dayKey === dayKey && ["completed", "skipped", "rescheduled"].includes(data.status as string) && data.ownerUid === claims.uid; });
-    const resolutionById = new Map(completions.map((item) => [item.data().taskId as string, item.data().status as "completed" | "skipped" | "rescheduled"]));
+    const completions = completionsSnapshot.docs.filter((item) => { const data = item.data(); return data.dayKey === dayKey && ["completed", "skipped", "rescheduled", "contact_opt_out"].includes(data.status as string) && data.ownerUid === claims.uid; });
+    const resolutionById = new Map(completions.map((item) => {
+      const data = item.data();
+      return [data.taskId as string, {
+        status: data.status as "completed" | "skipped" | "rescheduled" | "contact_opt_out",
+        note: typeof data.outcomeNote === "string" ? data.outcomeNote : typeof data.skippedReason === "string" ? data.skippedReason : null,
+      }] as const;
+    }));
+    const optOutResolutionByContactId = new Map(completions.flatMap((item) => {
+      const data = item.data();
+      if (data.status !== "contact_opt_out") return [];
+      const taskId = data.taskId as string;
+      const legacyContactId = taskId.startsWith("next-action-")
+        ? taskId.slice("next-action-".length)
+        : taskId.startsWith("first-interaction-")
+          ? taskId.slice("first-interaction-".length)
+          : null;
+      const resolvedContactId = typeof data.contactId === "string" ? data.contactId : legacyContactId;
+      if (!resolvedContactId) return [];
+      return [[resolvedContactId, {
+        status: "contact_opt_out" as const,
+        note: typeof data.skippedReason === "string" ? data.skippedReason : null,
+      }] as const];
+    }));
     const candidateOverview = buildTodayOverview(contacts, opportunities, now, listings, deals, new Set(), interactions, parsedQuery.data.period);
     const planRef = firestore.collection("dailyPlans").doc(`${claims.uid}-${dayKey}`.replace(/[^a-zA-Z0-9_-]/g, "_"));
     const planSnapshot = await planRef.get();
@@ -113,7 +135,11 @@ export const getTodayOverview = onCall(
       await planRef.update({ taskIds, taskSnapshots: selectedSnapshots, updatedAt: Timestamp.fromMillis(now) });
     }
     const tasksById = new Map(selectedSnapshots.map((task) => [task.id, task]));
-    const plannedTasks = taskIds.flatMap((taskId) => { const task = tasksById.get(taskId); return task ? [{ ...task, resolutionStatus: resolutionById.get(taskId) ?? null }] : []; });
+    const plannedTasks = taskIds.flatMap((taskId) => {
+      const task = tasksById.get(taskId);
+      const resolution = resolutionById.get(taskId) ?? (task ? optOutResolutionByContactId.get(task.contactId) : undefined);
+      return task ? [{ ...task, resolutionStatus: resolution?.status ?? null, resolutionNote: resolution?.note ?? null }] : [];
+    });
     return { overview: { ...candidateOverview, tasks: plannedTasks, completedTaskCount: plannedTasks.filter((task) => task.resolutionStatus).length } };
     });
   },
@@ -121,7 +147,7 @@ export const getTodayOverview = onCall(
 
 export const completeDailyTask = onCall(
   { region: "europe-west8", cors: true, maxInstances: 10, memory: "256MiB", timeoutSeconds: 60 },
-  async (request): Promise<{ taskId: string; status: "completed" | "skipped" | "rescheduled" }> => {
+  async (request): Promise<{ taskId: string; status: "completed" | "skipped" | "rescheduled" | "contact_opt_out" }> => {
     const claims = requireSpherepathClaims(request);
     const envelope = readApiEnvelope<DailyTaskOutcome>(request.data, { command: true });
     const parsed = dailyTaskOutcomeSchema.safeParse(envelope.data);
@@ -160,27 +186,36 @@ export const completeDailyTask = onCall(
           throw new HttpsError("permission-denied", "Daily task target is outside your workspace.");
         }
 
-        let linkedContactRef: FirebaseFirestore.DocumentReference | null = null;
-        let linkedContactData: FirebaseFirestore.DocumentData | null = null;
+        let resolvedContactRef: FirebaseFirestore.DocumentReference | null = contactId ? targetRef : null;
+        let resolvedContactData: FirebaseFirestore.DocumentData | null = contactId ? targetData : null;
+        let linkedContactAction = false;
         if (opportunityId && typeof targetData.subjectContactId === "string") {
           const contactRef = db.collection("contacts").doc(targetData.subjectContactId);
           const contactSnapshot = await transaction.get(contactRef);
           const contactData = contactSnapshot.data();
-          const contactActionAt = contactData?.relationship?.nextActionAt;
-          const opportunityActionAt = targetData.nextActionAt;
-          const sameAction = contactSnapshot.exists
+          const manageableContact = contactSnapshot.exists
             && contactData?.officeId === claims.officeId
             && (contactData?.ownerUid === claims.uid || claims.role === "broker")
-            && !(contactData?.deletedAt instanceof Timestamp)
+            && !(contactData?.deletedAt instanceof Timestamp);
+          if (manageableContact) {
+            resolvedContactRef = contactRef;
+            resolvedContactData = contactData ?? null;
+          }
+          const contactActionAt = contactData?.relationship?.nextActionAt;
+          const opportunityActionAt = targetData.nextActionAt;
+          linkedContactAction = manageableContact
             && contactData?.relationship?.nextActionType === targetData.nextActionType
             && contactActionAt instanceof Timestamp
             && opportunityActionAt instanceof Timestamp
             && Math.abs(contactActionAt.toMillis() - opportunityActionAt.toMillis()) <= 5 * 60 * 1_000;
-          if (sameAction) {
-            linkedContactRef = contactRef;
-            linkedContactData = contactData ?? null;
-          }
         }
+
+        if (parsed.data.status === "contact_opt_out" && (!resolvedContactRef || !resolvedContactData)) {
+          throw new HttpsError("failed-precondition", "The task is not linked to a manageable contact.");
+        }
+        const relatedOpportunities = parsed.data.status === "contact_opt_out" && resolvedContactRef
+          ? await transaction.get(db.collection("opportunities").where("subjectContactId", "==", resolvedContactRef.id).limit(100))
+          : null;
 
         const now = Timestamp.now();
         if (opportunityId) {
@@ -189,23 +224,44 @@ export const completeDailyTask = onCall(
             nextActionType: parsed.data.status === "rescheduled" ? parsed.data.rescheduledActionType : null,
             updatedAt: now,
           });
-          if (linkedContactRef && linkedContactData) {
-            transaction.update(linkedContactRef, {
+          if (linkedContactAction && resolvedContactRef && parsed.data.status !== "contact_opt_out") {
+            transaction.update(resolvedContactRef, {
               "relationship.nextActionAt": parsed.data.status === "rescheduled" ? Timestamp.fromMillis(parsed.data.rescheduledAt!) : null,
               "relationship.nextActionType": parsed.data.status === "rescheduled" ? parsed.data.rescheduledActionType : null,
               updatedAt: now,
             });
           }
-        } else if (contactId && (contactPrefix === "next-action-" || parsed.data.status === "rescheduled")) {
+        } else if (contactId && (contactPrefix === "next-action-" || parsed.data.status === "rescheduled") && parsed.data.status !== "contact_opt_out") {
           transaction.update(targetRef, {
             "relationship.nextActionAt": parsed.data.status === "rescheduled" ? Timestamp.fromMillis(parsed.data.rescheduledAt!) : null,
             "relationship.nextActionType": parsed.data.status === "rescheduled" ? parsed.data.rescheduledActionType : null,
             updatedAt: now,
           });
         }
+        if (parsed.data.status === "contact_opt_out" && resolvedContactRef) {
+          transaction.update(resolvedContactRef, {
+            "relationship.nextActionAt": null,
+            "relationship.nextActionType": null,
+            "privacy.marketingConsent": "withdrawn",
+            "privacy.marketingWithdrawnAt": now,
+            "privacy.marketingChannels": [],
+            "privacy.iysStatus": "rejected",
+            "privacy.iysCheckedAt": now,
+            updatedAt: now,
+          });
+          for (const snapshot of relatedOpportunities?.docs ?? []) {
+            const opportunity = snapshot.data();
+            if (opportunity.officeId === claims.officeId
+              && (opportunity.ownerUid === claims.uid || claims.role === "broker")
+              && !(opportunity.deletedAt instanceof Timestamp)) {
+              transaction.update(snapshot.ref, { nextActionAt: null, nextActionType: null, updatedAt: now });
+            }
+          }
+        }
         transaction.set(completionRef, {
           officeId: claims.officeId,
           ownerUid: claims.uid,
+          contactId: resolvedContactRef?.id ?? null,
           taskId: parsed.data.taskId,
           dayKey: istanbulDayKey(Date.now()),
           status: parsed.data.status,

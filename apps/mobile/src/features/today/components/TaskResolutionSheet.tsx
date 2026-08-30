@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
-import { CalendarClock, Check, CircleSlash, X } from "lucide-react-native";
+import { CalendarClock, Check, CircleSlash, PhoneOff, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { dailyTaskOutcomeSchema, nextActionTypeLabels, nextActionTypes, type DailyTaskOutcome, type NextActionType, type TodayTask } from "@spherepath/shared";
+import { dailyTaskOutcomeSchema, dailyTaskResolutionLabels, nextActionTypeLabels, nextActionTypes, type DailyTaskOutcome, type NextActionType, type TodayTask } from "@spherepath/shared";
 import { SpText } from "@/shared/ui/SpText";
 import { radius, space } from "@/shared/ui/tokens.generated";
 import { useSpTheme } from "@/shared/ui/theme";
@@ -56,7 +56,7 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve, 
       taskId: task.id,
       status,
       outcomeNote: status === "completed" ? note.trim() || null : null,
-      skippedReason: status === "skipped" ? note.trim() || null : null,
+      skippedReason: status === "skipped" || status === "contact_opt_out" ? note.trim() || null : null,
       rescheduledAt: status === "rescheduled" ? Date.now() + days * 86_400_000 : null,
       rescheduledActionType: status === "rescheduled" ? actionType : null,
     });
@@ -89,10 +89,10 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve, 
         </View>
 
         <View accessibilityRole="radiogroup" accessibilityLabel="Görev sonucu" style={styles.options}>
-          {(["completed", "rescheduled", "skipped"] as const).map((item) => (
+          {(["completed", "rescheduled", "skipped", "contact_opt_out"] as const).map((item) => (
             <Pressable accessibilityRole="radio" accessibilityState={{ checked: status === item }} key={item} onPress={() => { setStatus(item); setNote(""); }} style={choice(status === item)}>
-              {item === "completed" ? <Check color={theme.deed} size={17} /> : item === "rescheduled" ? <CalendarClock color={theme.deed} size={17} /> : <CircleSlash color={theme.deed} size={17} />}
-              <SpText color={status === item ? "deed" : "secondary"}>{item === "completed" ? "Tamamlandı" : item === "rescheduled" ? "Ertele" : "Atla"}</SpText>
+              {item === "completed" ? <Check color={theme.deed} size={17} /> : item === "rescheduled" ? <CalendarClock color={theme.deed} size={17} /> : item === "contact_opt_out" ? <PhoneOff color={theme.ask} size={17} /> : <CircleSlash color={theme.deed} size={17} />}
+              <SpText color={status === item ? item === "contact_opt_out" ? "ask" : "deed" : "secondary"}>{dailyTaskResolutionLabels[item]}</SpText>
             </Pressable>
           ))}
         </View>
@@ -107,15 +107,16 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve, 
             {dayOptions.map((item) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: days === item.days }} key={item.days} onPress={() => setDays(item.days)} style={choice(days === item.days)}><SpText variant="bodySmall" color={days === item.days ? "deed" : "secondary"}>{item.label}</SpText></Pressable>)}
           </View>
         </> : <>
-          <SpText variant="title">{status === "skipped" ? "Neden atlanıyor?" : "Kısa sonuç · isteğe bağlı"}</SpText>
-          <TextInput accessibilityLabel={status === "skipped" ? "Atlama nedeni" : "Kısa sonuç"} multiline placeholder={status === "skipped" ? "Örn. Kişi artık aranmamasını istedi." : "Örn. Görüşüldü, cuma tekrar aranacak."} placeholderTextColor={theme.textTertiary} style={[styles.input, styles.multiline, { backgroundColor: theme.card, borderColor: theme.line, color: theme.textPrimary }]} value={note} onChangeText={setNote} />
+          <SpText variant="title">{status === "contact_opt_out" ? "İletişim tercihi" : status === "skipped" ? "Neden atlanıyor?" : "Kısa sonuç · isteğe bağlı"}</SpText>
+          <TextInput accessibilityLabel={status === "contact_opt_out" ? "İletişim tercihi açıklaması" : status === "skipped" ? "Atlama nedeni" : "Kısa sonuç"} multiline placeholder={status === "contact_opt_out" ? "Örn. Telefon ve WhatsApp üzerinden iletişim istemiyor." : status === "skipped" ? "Örn. Bugün uygun değil, daha sonra tekrar değerlendirilecek." : "Örn. Görüşüldü, cuma tekrar aranacak."} placeholderTextColor={theme.textTertiary} style={[styles.input, styles.multiline, { backgroundColor: theme.card, borderColor: theme.line, color: theme.textPrimary }]} value={note} onChangeText={setNote} />
+          {status === "contact_opt_out" ? <SpText variant="bodySmall" color="ask">Bu kişinin tüm sonraki görevleri kapatılır ve pazarlama izni geri çekilmiş olarak işaretlenir.</SpText> : null}
         </>}
 
         {shownError ? <View accessibilityRole="alert" style={[styles.alert, { backgroundColor: theme.askBg }]}><SpText color="ask">{shownError}</SpText></View> : null}
 
         {task && onOpenRecord ? <Pressable onPress={() => onOpenRecord(task)} style={[styles.secondary, { borderColor: theme.line }]}><SpText color="deed">Teması ayrıntılı kaydet</SpText></Pressable> : null}
         <Pressable disabled={pending} onPress={submit} style={[styles.primary, { backgroundColor: theme.ask, opacity: pending ? .6 : 1 }]}>
-          <SpText style={{ color: theme.onAsk }}>{pending ? "Kaydediliyor…" : status === "rescheduled" ? "Yeni tarihe ertele" : "Sonucu kaydet"}</SpText>
+          <SpText style={{ color: theme.onAsk }}>{pending ? "Kaydediliyor…" : status === "rescheduled" ? "Yeni tarihe ertele" : status === "contact_opt_out" ? "İletişimi kapat" : "Sonucu kaydet"}</SpText>
         </Pressable>
       </ScrollView>
     </SafeAreaView>

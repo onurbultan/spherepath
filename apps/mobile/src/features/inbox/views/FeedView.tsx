@@ -1,9 +1,9 @@
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from "react-native";
-import { Archive, Check, ChevronDown, ChevronUp, MapPin, Mic, Pin, RefreshCw, RotateCcw, Send, Shuffle, Sparkles } from "lucide-react-native";
+import { Archive, Check, ChevronDown, ChevronUp, MapPin, Mic, PhoneOff, Pin, RefreshCw, RotateCcw, Send, Shuffle, Sparkles } from "lucide-react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiQueryKeys, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
+import { apiQueryKeys, dailyTaskResolutionLabels, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useSession } from "@/features/auth/resources/session";
 import { finishDailyTask, loadTodayOverview, replaceDailyTask } from "@/features/today/resources/today";
@@ -84,7 +84,9 @@ export default function FeedView() {
       <SpCard style={styles.dailyCard}>
         <View style={styles.sectionTitle}><View><SpText variant="eyebrow" color="ask">{"BUGÜNÜN 5'İ"}</SpText><SpText variant="title">Önce bunları bitir</SpText></View><SpText variant="bodySmall" color="secondary">{today.data?.completedTaskCount ?? 0}/{today.data?.tasks.length ?? 0}</SpText></View>
         {today.isPending ? <ActivityIndicator color={theme.deed} /> : today.data?.tasks.length ? <View style={styles.taskList}>{today.data.tasks.map((task, index) => {
-          const done = Boolean(task.resolutionStatus); return <View key={task.id} style={[styles.task, { borderTopColor: theme.line }]}><View style={[styles.taskNumber, { backgroundColor: done ? theme.goodBg : theme.deedBg }]}><SpText variant="bodySmall" color="deed">{done ? "✓" : index + 1}</SpText></View><Pressable style={styles.taskCopy} accessibilityLabel={`${task.title} kaydını aç`} onPress={() => router.push(taskRecordRoute(task) as never)}><SpText style={done ? styles.doneText : undefined}>{task.title}</SpText><SpText variant="bodySmall" color="secondary">{task.reason} · {taskDueLabel(task.dueAt)}</SpText></Pressable>{done ? null : <><Pressable accessibilityLabel={`${task.title} görevini bugünkü listeden çıkar`} onPress={() => void replace(task.id)} style={styles.smallAction}><Shuffle size={17} color={theme.textSecondary} /></Pressable><Pressable accessibilityLabel={`${task.title} görevini sonuçlandır`} onPress={() => { setTaskError(null); setActiveTask(task); }} style={[styles.complete, { backgroundColor: theme.goodBg }]}><Check size={19} color={theme.good} /></Pressable></>}</View>;
+          const done = Boolean(task.resolutionStatus);
+          const optedOut = task.resolutionStatus === "contact_opt_out";
+          return <View key={task.id} style={[styles.task, { borderTopColor: theme.line }]}><View style={[styles.taskNumber, { backgroundColor: optedOut ? theme.askBg : done ? theme.goodBg : theme.deedBg }]}>{optedOut ? <PhoneOff size={15} color={theme.ask} /> : <SpText variant="bodySmall" color="deed">{done ? "✓" : index + 1}</SpText>}</View><Pressable style={styles.taskCopy} accessibilityLabel={`${task.title} kaydını aç`} onPress={() => router.push(taskRecordRoute(task) as never)}><SpText style={done && !optedOut ? styles.doneText : undefined}>{task.title}</SpText><SpText variant="bodySmall" color={optedOut ? "ask" : "secondary"}>{task.resolutionStatus ? `${dailyTaskResolutionLabels[task.resolutionStatus]}${task.resolutionNote ? ` · ${task.resolutionNote}` : ""}` : `${task.reason} · ${taskDueLabel(task.dueAt)}`}</SpText></Pressable>{done ? null : <><Pressable accessibilityLabel={`${task.title} görevini bugünkü listeden çıkar`} onPress={() => void replace(task.id)} style={styles.smallAction}><Shuffle size={17} color={theme.textSecondary} /></Pressable><Pressable accessibilityLabel={`${task.title} görevini sonuçlandır`} onPress={() => { setTaskError(null); setActiveTask(task); }} style={[styles.complete, { backgroundColor: theme.goodBg }]}><Check size={19} color={theme.good} /></Pressable></>}</View>;
         })}</View> : <View style={styles.empty}><SpText color="secondary">Henüz planlanacak iş yok. İlk notunu veya kişini ekle.</SpText></View>}
       </SpCard>
 

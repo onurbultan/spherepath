@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildTodayOverview, todayOverviewQuerySchema } from "./build-overview.js";
+import { buildTodayOverview, dailyTaskOutcomeSchema, todayOverviewQuerySchema } from "./build-overview.js";
 
 describe("today overview", () => {
+  it("keeps a one-off skip separate from a permanent communication preference", () => {
+    const base = { taskId: "next-action-contact-1", outcomeNote: null, rescheduledAt: null, rescheduledActionType: null };
+    expect(dailyTaskOutcomeSchema.safeParse({ ...base, status: "skipped", skippedReason: "Bugün uygun değil." }).success).toBe(true);
+    expect(dailyTaskOutcomeSchema.safeParse({ ...base, status: "contact_opt_out", skippedReason: null }).success).toBe(false);
+    expect(dailyTaskOutcomeSchema.parse({ ...base, status: "contact_opt_out", skippedReason: "Telefon ve WhatsApp istemiyor." }).status).toBe("contact_opt_out");
+  });
+
   it("keeps empty legacy queries on the 30 day default", () => {
     expect(todayOverviewQuerySchema.parse(undefined)).toEqual({ period: "30d" });
     expect(todayOverviewQuerySchema.parse(null)).toEqual({ period: "30d" });

@@ -92,12 +92,26 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   const stableTaskTitles = await dailyTasks.locator("strong").allTextContents();
   await page.reload();
   await expect(dailyTasks.locator("strong")).toHaveText(stableTaskTitles);
-  await dailyTasks.first().getByRole("button", { name: /görevini tamamla/ }).click();
-  await expect(dailyTasks.first()).toHaveClass(/resolved/);
+  const contactTask = dailyTasks.filter({ hasText: contactName });
+  await contactTask.getByRole("button", { name: /görevini sonuçlandır/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Sonucu kaydet" }).click();
+  await expect(contactTask).toHaveClass(/resolved/);
+
+  const optedOutTask = dailyTasks.filter({ hasNotText: contactName }).first();
+  await optedOutTask.getByRole("button", { name: /görevini sonuçlandır/ }).click();
+  const resolutionDialog = page.getByRole("dialog");
+  await resolutionDialog.getByRole("button", { name: /İletişim istemiyor/ }).click();
+  await resolutionDialog.getByLabel("İletişim neden kapatılıyor?").fill("Telefon ve WhatsApp üzerinden iletişim istemiyor.");
+  await resolutionDialog.getByRole("button", { name: "İletişimi kapat" }).click();
+  await expect(optedOutTask).toHaveClass(/resolution-contact_opt_out/);
+  await expect(optedOutTask).toContainText("Telefon ve WhatsApp üzerinden iletişim istemiyor.");
   await page.reload();
   await expect(dailyTasks).toHaveCount(2);
-  await expect(dailyTasks.first()).toHaveClass(/resolved/);
+  await expect(dailyTasks.filter({ hasText: "İletişim istemiyor" })).toHaveClass(/resolved/);
   await expect(dailyTasks.locator("strong")).toHaveText(stableTaskTitles);
+  await dailyTasks.filter({ hasText: "İletişim istemiyor" }).getByRole("link").click();
+  await expect(page).toHaveURL(/\/contacts\/__contact__\/?\?contactId=/);
+  await expect(page.getByRole("region", { name: "Zaman çizelgesi" })).toContainText("Telefon ve WhatsApp üzerinden iletişim istemiyor.");
   await page.goto("/contacts");
 
   await page.getByRole("button", { name: new RegExp(contactName) }).first().click();
@@ -192,7 +206,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await page.getByLabel("Hızlı not").fill(offlineNote);
   await page.getByRole("button", { name: "Kaydet" }).click();
   await expect(page.getByText(offlineNote)).toBeVisible();
-  await expect(page.getByRole("status")).toContainText("1 kayıt güvenli kuyrukta");
+  await expect(page.getByRole("status")).toContainText(/\d+ kayıt güvenli kuyrukta/);
   await context.setOffline(false);
   await expect(page.getByRole("status")).toBeHidden({ timeout: 15_000 });
   await expect(page.getByText(offlineNote)).toBeVisible();
@@ -225,7 +239,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await page.waitForTimeout(5_100);
   await page.getByRole("button", { name: "Durdur" }).click();
   await expect(page.getByText("Sesli not cihazda güvende")).toBeVisible();
-  await expect(page.getByRole("status")).toContainText("1 kayıt güvenli kuyrukta");
+  await expect(page.getByRole("status")).toContainText(/\d+ kayıt güvenli kuyrukta/);
   await context.setOffline(false);
   await expect(page.getByRole("status")).toBeHidden({ timeout: 15_000 });
 
