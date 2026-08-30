@@ -319,6 +319,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .capture-form input, .capture-form select, .capture-form textarea,
 .contact-toolbar input, .contact-toolbar select,
 .settings-card input, .settings-card select, .settings-card textarea,
+.task-resolution-sheet input, .task-resolution-sheet select, .task-resolution-sheet textarea,
 .voice-setup select, .voice-review select, .voice-review textarea, .voice-review input {
   width: 100%; min-height: 38px; padding: 0 11px;
   border: 1px solid var(--line); border-radius: var(--radius-md);
@@ -333,6 +334,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .capture-form input:focus, .capture-form select:focus, .capture-form textarea:focus,
 .contact-toolbar input:focus, .contact-toolbar select:focus,
 .settings-card input:focus, .settings-card select:focus, .settings-card textarea:focus,
+.task-resolution-sheet input:focus, .task-resolution-sheet select:focus, .task-resolution-sheet textarea:focus,
 .voice-setup select:focus, .voice-review select:focus, .voice-review textarea:focus, .voice-review input:focus,
 .voice-text-test textarea:focus {
   border-color: var(--focus); outline: 0; box-shadow: 0 0 0 3px var(--focus-halo);
@@ -521,7 +523,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .task-resolution-choices > button strong { color: var(--text-primary); font-size: 12.5px; }
 .task-resolution-choices > button small { font-size: 10.5px; line-height: 1.35; }
 .task-resolution-sheet > label { display: grid; gap: 7px; color: var(--text-secondary); font-size: 12.5px; font-weight: 600; }
-.task-resolution-sheet textarea { min-height: 92px; }
+.task-resolution-sheet textarea { min-height: 92px; padding-block: 10px; resize: vertical; }
 .task-resolution-actions { margin-top: 20px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 
 .today-interactions { margin-top: 8px; }
@@ -1099,7 +1101,10 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .daily-five { display: grid; gap: var(--space-lg); }
 .daily-five ol { display: grid; margin: 0; padding: 0; list-style: none; }
 .daily-five li { min-height: 62px; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: var(--space-md); border-top: 1px solid var(--line); }
-.daily-five li > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
+/* Element-agnostic: the task copy is a link now, and was a span before. */
+.daily-five li > :nth-child(2) { min-width: 0; display: grid; gap: 2px; }
+.daily-task-link { color: inherit; text-decoration: none; }
+.daily-task-link:hover strong { text-decoration: underline; }
 .daily-five li strong, .daily-five li small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .daily-five li small { color: var(--text-secondary); }
 .daily-five li.resolved strong { color: var(--text-tertiary); text-decoration: line-through; }
