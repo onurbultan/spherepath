@@ -11,6 +11,7 @@ export * from "./interactions/manual-interaction.js";
 export * from "./inbox/inbox-item.js";
 export * from "./funnel/build-funnel.js";
 export * from "./listings/index.js";
+export * from "./matching/match-message.js";
 export * from "./matching/portfolio-match.js";
 export * from "./opportunities/index.js";
 export * from "./referrals/index.js";

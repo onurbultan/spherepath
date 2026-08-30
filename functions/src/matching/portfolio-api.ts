@@ -1,8 +1,11 @@
 import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/firestore";
+import { logger } from "firebase-functions";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
+  buildMatchMessageFallback,
   contactMemorySchema,
   createPortfolioItem,
+  matchMessageRequestSchema,
   matchNotificationCommandSchema,
   portfolioItemDraftSchema,
   portfolioItemCommandSchema,
@@ -12,10 +15,13 @@ import {
   type PortfolioItemDraft,
   type PortfolioItemRecord,
   type PortfolioMatchNotificationRecord,
+  type MatchMessageDraft,
   type PortfolioMatchRecord,
 } from "../../../packages/shared/src/index.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 import { requireSpherepathClaims, type SpherepathClaims } from "../auth/claims.js";
+import { maskSensitiveTranscript } from "../voice/privacy.js";
+import { draftMatchMessageWithVertex } from "./vertex-match-message.js";
 import { extractPortfolioDraftWithVertex } from "./vertex-portfolio-extraction.js";
 
 const callableOptions = { region: "europe-west8" as const, cors: true, maxInstances: 10, memory: "256MiB" as const, timeoutSeconds: 60 };
@@ -258,5 +264,68 @@ export const withdrawPortfolioItem = onCall(callableOptions, async (request): Pr
       transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "withdrawPortfolioItem", portfolioItemId: itemRef.id, createdAt: now });
     });
     return { portfolioItemId: parsed.data.portfolioItemId };
+  });
+});
+
+export const draftMatchMessage = onCall(callableOptions, async (request): Promise<MatchMessageDraft> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<unknown>(request.data);
+  const parsed = matchMessageRequestSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Match message input is invalid.", parsed.error.flatten());
+
+  return observeApiRequest("draftMatchMessage", envelope.requestId, async () => {
+    const db = getFirestore();
+    const [contactSnapshot, itemSnapshot, advisorSnapshot] = await Promise.all([
+      db.collection("contacts").doc(parsed.data.contactId).get(),
+      db.collection("portfolioItems").doc(parsed.data.portfolioItemId).get(),
+      db.collection("users").doc(claims.uid).get(),
+    ]);
+    const contact = contactSnapshot.data();
+    const item = itemSnapshot.data();
+    if (!contactSnapshot.exists || !contact || contact.officeId !== claims.officeId || (contact.ownerUid !== claims.uid && claims.role !== "broker") || contact.deletedAt !== null) {
+      throw new HttpsError("permission-denied", "Contact is outside your workspace.");
+    }
+    if (!itemSnapshot.exists || !item || item.officeId !== claims.officeId) {
+      throw new HttpsError("permission-denied", "Portfolio item is outside your workspace.");
+    }
+
+    const portfolioItem = toRecord(itemSnapshot.id, item, (item.sourceAuthorName as string) ?? "Ofis danışmanı");
+    const subject = {
+      contactName: (contact.fullName ?? contact.label ?? "İsimsiz kişi") as string,
+      headline: portfolioItem.headline,
+      location: portfolioItem.location,
+      askingPrice: portfolioItem.askingPrice,
+      listingUrl: portfolioItem.listingUrl,
+    };
+    const fallback: MatchMessageDraft = { message: buildMatchMessageFallback(subject), source: "template" };
+
+    // Same gate as the voice pipeline: a contact who objected to profiling is never
+    // sent through the model, and the plain template still gets the advisor a draft.
+    if (contact.privacy?.profilingObjection === true) return fallback;
+
+    const rawMemory = (contact.memory ?? {}) as DocumentData;
+    const memory = contactMemorySchema.safeParse({ ...rawMemory, updatedAt: rawMemory.updatedAt instanceof Timestamp ? rawMemory.updatedAt.toMillis() : null });
+    const preferences = memory.success
+      ? memory.data.propertySituations.find((situation) => situation.propertyContext === "search_preference")?.propertyPreferences ?? memory.data.propertyPreferences
+      : null;
+    const matchReasons = preferences
+      ? scorePortfolioItem(preferences, portfolioItem).reasons.filter((reason) => reason.status === "match").map((reason) => reason.detail)
+      : [];
+
+    try {
+      const message = await draftMatchMessageWithVertex({
+        ...subject,
+        advisorName: (advisorSnapshot.data()?.displayName as string) ?? "Danışman",
+        memoryNotes: memory.success ? memory.data.keyThingsToRemember : [],
+        matchReasons,
+      });
+      // The model saw the contact's notes; if anything special-category surfaced in the
+      // answer, the draft is discarded rather than repaired.
+      if (maskSensitiveTranscript(message).maskedRanges.length > 0) return fallback;
+      return { message, source: "ai" };
+    } catch (error) {
+      logger.warn("Match message draft fell back to the template", { error: error instanceof Error ? error.message : "unknown" });
+      return fallback;
+    }
   });
 });

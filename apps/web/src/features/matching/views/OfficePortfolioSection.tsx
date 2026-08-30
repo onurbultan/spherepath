@@ -5,15 +5,15 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Check, Copy, ExternalLink, Link as LinkIcon, Network, RefreshCw, Sparkles, X } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  apiQueryKeys, currencyCodes, portfolioAuthorizationLabels, portfolioAuthorizationTypes, portfolioItemDraftSchema,
+  apiQueryKeys, buildMatchMessageFallback, currencyCodes, portfolioAuthorizationLabels, portfolioAuthorizationTypes, portfolioItemDraftSchema,
   portfolioSourceLabels, propertyTypeLabels, propertyTypes, titleDeedTypeLabels, titleDeedTypes,
   type CurrencyCode, type PortfolioAuthorizationType, type PortfolioItemDraft, type PortfolioSource,
-  type PortfolioMatchRecord, type PropertyType, type TitleDeedType,
+  type MatchMessageDraft, type PortfolioMatchRecord, type PropertyType, type TitleDeedType,
 } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
 import { SpCard } from "@/shared/ui/SpCard";
 import { useSheetDismiss } from "@/shared/ui/useSheetDismiss";
-import { analyzePortfolioText, listPortfolioItems, listPortfolioMatches, savePortfolioItem, withdrawPortfolioItem } from "../resources/portfolio";
+import { analyzePortfolioText, draftMatchMessage, listPortfolioItems, listPortfolioMatches, savePortfolioItem, withdrawPortfolioItem } from "../resources/portfolio";
 
 const messageFrom = (error: unknown) => error instanceof Error ? error.message : "Ofis havuzu işlemi tamamlanamadı.";
 const money = (amount: number, currency: CurrencyCode) => new Intl.NumberFormat("tr-TR", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
@@ -41,19 +41,30 @@ function splitPortfolioMessages(raw: string): string[] {
   return normalized.split(/\n\s*\n+/u).map((item) => item.trim()).filter((item) => item.length >= 10).slice(0, 10);
 }
 
-function matchMessage(match: PortfolioMatchRecord): string {
-  const { portfolioItem } = match;
-  const price = portfolioItem.askingPrice ? ` Fiyatı ${money(portfolioItem.askingPrice.amount, portfolioItem.askingPrice.currency)}.` : "";
-  const listing = portfolioItem.listingUrl ? ` İlan: ${portfolioItem.listingUrl}` : "";
-  return `Merhaba ${match.contactName}, arayışınıza uygun olabileceğini düşündüğüm bir portföy var: ${portfolioItem.headline}. ${portfolioItem.location}.${price}${listing}`;
-}
+const matchMessageSubject = (match: PortfolioMatchRecord) => ({
+  contactName: match.contactName,
+  headline: match.portfolioItem.headline,
+  location: match.portfolioItem.location,
+  askingPrice: match.portfolioItem.askingPrice,
+  listingUrl: match.portfolioItem.listingUrl,
+});
 
 function PortfolioMatchCard({ match, nearMiss = false }: { match: PortfolioMatchRecord; nearMiss?: boolean }) {
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [copyState, setCopyState] = useState<"idle" | "drafting" | "copied" | "failed">("idle");
+  const [usedTemplate, setUsedTemplate] = useState(false);
 
   async function copyMessage() {
+    setCopyState("drafting");
+    // The personalised draft is a nicety; a failure must never cost the advisor the message.
+    let draft: MatchMessageDraft = { message: buildMatchMessageFallback(matchMessageSubject(match)), source: "template" };
     try {
-      await navigator.clipboard.writeText(matchMessage(match));
+      draft = await draftMatchMessage({ contactId: match.contactId, portfolioItemId: match.portfolioItem.id });
+    } catch {
+      // keep the template
+    }
+    setUsedTemplate(draft.source === "template");
+    try {
+      await navigator.clipboard.writeText(draft.message);
       setCopyState("copied");
       window.setTimeout(() => setCopyState("idle"), 2500);
     } catch {
@@ -71,8 +82,9 @@ function PortfolioMatchCard({ match, nearMiss = false }: { match: PortfolioMatch
     {match.situationSummary ? <p className="match-situation">Bu talebi için: {match.situationSummary}</p> : null}
     <ul>{shownReasons.map((reason) => <li className={`match-reason-${reason.status}`} key={reason.key}>{reason.status === "unknown" ? "Doğrulanmalı: " : ""}{reason.detail}</li>)}</ul>
     {copyState === "failed" ? <p className="form-error compact-error">Mesaj kopyalanamadı. Tarayıcı pano iznini kontrol edin.</p> : null}
+    {copyState === "copied" && usedTemplate ? <p className="compact-error">Kişiye özel taslak üretilemedi; standart metin kopyalandı.</p> : null}
     <div className="match-card-actions">
-      <button className="secondary-action compact-action" onClick={() => void copyMessage()} type="button">{copyState === "copied" ? <Check size={16} /> : <Copy size={16} />}{copyState === "copied" ? "Kopyalandı" : "Mesaj taslağı"}</button>
+      <button className="secondary-action compact-action" disabled={copyState === "drafting"} onClick={() => void copyMessage()} type="button">{copyState === "copied" ? <Check size={16} /> : <Copy size={16} />}{copyState === "drafting" ? "Taslak hazırlanıyor…" : copyState === "copied" ? "Kopyalandı" : "Mesaj taslağı"}</button>
       <Link className="secondary-action compact-action" href={`/capture?contactId=${encodeURIComponent(match.contactId)}`}>Teması kaydet</Link>
       {match.portfolioItem.listingUrl ? <a className="text-link" href={match.portfolioItem.listingUrl} rel="noreferrer" target="_blank">İlanı aç <ExternalLink size={14} /></a> : null}
     </div>

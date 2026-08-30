@@ -5,6 +5,8 @@ import {
   type PortfolioMatchNotificationRecord,
   type PortfolioMatchRecord,
   type PortfolioSource,
+  type MatchMessageDraft,
+  type MatchMessageRequest,
 } from "@spherepath/shared";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
 import { apiClient } from "@/shared/api/client";
@@ -39,4 +41,8 @@ export async function savePortfolioItem(session: WorkspaceSession, draft: Portfo
 
 export async function withdrawPortfolioItem(session: WorkspaceSession, portfolioItemId: string): Promise<void> {
   await apiClient.command<{ portfolioItemId: string }, { portfolioItemId: string }>("withdrawPortfolioItem", { portfolioItemId }, createCommandId(session.uid));
+}
+
+export async function draftMatchMessage(request: MatchMessageRequest): Promise<MatchMessageDraft> {
+  return apiClient.query<MatchMessageRequest, MatchMessageDraft>("draftMatchMessage", request);
 }
