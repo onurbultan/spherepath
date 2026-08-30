@@ -27,6 +27,7 @@ import {
 import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
 import { ContactCombobox } from "@/shared/ui/ContactCombobox";
+import { ContactMemoryHighlights } from "../components/ContactMemoryHighlights";
 import { useSheetDismiss } from "@/shared/ui/useSheetDismiss";
 import { QuickDateField } from "@/shared/ui/QuickDateField";
 import { useSession } from "@/features/auth/resources/session";
@@ -344,7 +345,7 @@ export function ContactsView() {
             </div>
             <div className="contact-detail-facts"><div><span>Telefon</span><strong>{activeSelectedContact.phone ?? "Eklenmedi"}</strong></div><div><span>Tanışma yeri</span><strong>{activeSelectedContact.metAtPlace || "Belirtilmedi"}</strong></div><div><span>Son temas</span><strong>{relativeDate(activeSelectedContact.relationship.lastTouchAt)}</strong></div><div><span>Sonraki adım</span><strong>{nextActionLabel(activeSelectedContact)}</strong></div></div>
             {activeSelectedContact.memory.keyThingsToRemember.length ? <div className="contact-detail-section"><p className="eyebrow">HATIRLANACAKLAR</p><ul>{activeSelectedContact.memory.keyThingsToRemember.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}
-            {activeSelectedContact.memory.propertyPreferences.preferredLocations.length || activeSelectedContact.memory.propertyPreferences.mustHaves.length ? <div className="contact-detail-section"><p className="eyebrow">GAYRİMENKUL HAFIZASI</p><div className="opportunity-highlights">{activeSelectedContact.memory.propertyPreferences.preferredLocations.map((item) => <span key={item}>{item}</span>)}{activeSelectedContact.memory.propertyPreferences.mustHaves.map((item) => <span key={item}>Olmazsa olmaz: {item}</span>)}</div></div> : null}
+            <div className="contact-detail-section"><p className="eyebrow">GAYRİMENKUL HAFIZASI</p><ContactMemoryHighlights memory={activeSelectedContact.memory} /></div>
             <ContactInteractionTimeline contactId={activeSelectedContact.id} />
             <div className="contact-detail-section"><p className="eyebrow">UYUM</p><div className="privacy-status"><span className={activeSelectedContact.privacy.noticeStatus === "completed" ? "compliant" : "pending"}>{activeSelectedContact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</span><span className={activeSelectedContact.privacy.marketingConsent === "withdrawn" ? "withdrawn" : ""}>{activeSelectedContact.privacy.marketingConsent === "granted" ? "Pazarlama izni var" : activeSelectedContact.privacy.marketingConsent === "withdrawn" ? "İletişim istemiyor" : "Pazarlama izni bilinmiyor"}</span></div></div>
             <div className="contact-detail-footer"><button className="secondary-action inline-action" onClick={() => { closeContactDetail(); setPrivacyEditing(activeSelectedContact); setPrivacy(privacyDraft(activeSelectedContact)); }} type="button"><ShieldCheck size={16} /> Uyumu düzenle</button><button className="secondary-action inline-action" onClick={() => { closeContactDetail(); openEdit(activeSelectedContact); }} type="button"><Pencil size={16} /> Düzenle</button><button className="secondary-action danger-secondary inline-action" onClick={() => requestArchive(activeSelectedContact)} type="button"><Archive size={16} /> Arşivle</button></div>
