@@ -282,6 +282,21 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await context.setOffline(false);
   await expect(page.getByRole("status")).toBeHidden({ timeout: 15_000 });
 
+  await page.goto("/");
+  const allWorkToggle = page.getByRole("button", { name: /Tüm işleri gör/ });
+  if (await allWorkToggle.isVisible()) {
+    await allWorkToggle.click();
+    const allWorkTask = page.locator(".all-work-list .daily-task-link").first();
+    await expect(allWorkTask).toBeVisible();
+    const taskCopyIsSeparated = await allWorkTask.evaluate((link) => {
+      const title = link.querySelector("strong")?.getBoundingClientRect();
+      const detail = link.querySelector("small")?.getBoundingClientRect();
+      if (!title || !detail) return false;
+      return detail.left - title.right >= 4 || detail.top - title.bottom >= 2;
+    });
+    expect(taskCopyIsSeparated).toBe(true);
+  }
+
   await page.goto("/funnel");
   await expect(page.getByRole("heading", { name: "Nerede takılıyor?" })).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));

@@ -1142,6 +1142,9 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .all-work-list { display: grid; gap: var(--space-md); }
 .all-work-list ol { display: grid; gap: var(--space-xs); margin: 0; padding: 0; list-style: none; }
 .all-work-list li { padding: var(--space-sm) 0; border-top: 1px solid var(--line); }
+.all-work-list .daily-task-link { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: var(--space-sm) var(--space-lg); }
+.all-work-list .daily-task-link strong { min-width: 0; overflow-wrap: anywhere; }
+.all-work-list .daily-task-link small { color: var(--text-secondary); text-align: right; white-space: nowrap; }
 .quick-note { display: grid; gap: var(--space-lg); }
 .quick-note textarea { width: 100%; min-height: 116px; resize: vertical; padding: var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--background); color: var(--text-primary); font: inherit; font-size: 16px; line-height: 1.5; }
 .quick-note textarea:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -1249,6 +1252,8 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
   .feed-header h1 { font-size: 30px; }
   .daily-five li { grid-template-columns: 28px minmax(0, 1fr); padding: var(--space-sm) 0; }
   .daily-actions { grid-column: 2; justify-content: flex-end; }
+  .all-work-list .daily-task-link { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .all-work-list .daily-task-link small { text-align: left; white-space: normal; }
   .quick-note-actions { flex-direction: column-reverse; }
   .quick-note-actions > * { width: 100%; }
   .keep-grid { grid-template-columns: minmax(0, 1fr); }
