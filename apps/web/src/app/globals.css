@@ -257,9 +257,16 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .primary-action,
 .secondary-action {
   min-height: var(--control-md); padding: 0 14px; border-radius: var(--radius-md);
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; line-height: 1.2;
   font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap;
   transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease;
 }
+.primary-action > svg,
+.secondary-action > svg,
+.text-link > svg,
+.keep-expand > svg,
+.keep-edit-action > svg,
+.location-prompt > svg { display: block; flex: 0 0 auto; }
 .primary-action { margin-top: auto; border: 0; color: var(--on-deed); background: var(--deed); }
 .primary-action:hover:not(:disabled) { background: color-mix(in srgb, var(--deed) 88%, var(--text-primary)); }
 .primary-action:disabled { opacity: .55; cursor: not-allowed; }
@@ -1156,7 +1163,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .keep-meta small { color: var(--text-tertiary); }
 .keep-card > p { margin: 0; overflow-wrap: anywhere; line-height: 1.5; }
 .keep-card footer { display: flex; align-items: center; justify-content: flex-end; margin-top: auto; }
-.keep-card footer .keep-edit-action { width: auto; padding: 0 10px; display: inline-flex; gap: 6px; margin-right: auto; color: var(--deed); font-size: 12px; font-weight: 700; }
+.keep-card footer .keep-edit-action { width: auto; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; margin-right: auto; color: var(--deed); font-size: 12px; font-weight: 700; }
 .location-prompt { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-md); border-radius: var(--radius-md); background: var(--ask-bg); color: var(--ask); font-size: 12px; }
 .note-processing-sheet { width: min(620px, 100%); }
 .note-extraction-review { display: grid; gap: var(--space-md); padding: var(--space-lg); border: 1px solid var(--good); border-radius: var(--radius-lg); background: var(--good-bg); }

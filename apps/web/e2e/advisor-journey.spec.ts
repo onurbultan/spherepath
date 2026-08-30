@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 async function expectNoSeriousAccessibilityViolations(page: Page) {
   const result = await new AxeBuilder({ page })
@@ -20,6 +20,20 @@ async function swipe(page: Page, selector: string, fromX: number, toX: number) {
     const end = new Touch({ identifier: 1, target, clientX: toX, clientY: y });
     target.dispatchEvent(new TouchEvent("touchend", { bubbles: true, cancelable: true, touches: [], changedTouches: [end] }));
   }, { fromX, toX });
+}
+
+async function expectIconAndTextCentered(action: Locator) {
+  const centerDifference = await action.evaluate((element) => {
+    const icon = element.querySelector("svg");
+    const textNode = Array.from(element.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim());
+    if (!icon || !textNode) return Number.POSITIVE_INFINITY;
+    const iconRect = icon.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(textNode);
+    const textRect = range.getBoundingClientRect();
+    return Math.abs((iconRect.top + iconRect.height / 2) - (textRect.top + textRect.height / 2));
+  });
+  expect(centerDifference).toBeLessThanOrEqual(1.5);
 }
 
 test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır", async ({ context, page }, testInfo) => {
@@ -94,7 +108,9 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await noteDialog.getByLabel("Not türü").selectOption("requirement");
   await noteDialog.getByRole("combobox", { name: "İlgili kişi ara" }).fill(contactName);
   await noteDialog.getByRole("option", { name: contactName }).click();
-  await noteDialog.getByRole("button", { name: "Talep bilgilerini ve tarihi çıkar" }).click();
+  const analyzeRequirementButton = noteDialog.getByRole("button", { name: "Talep bilgilerini ve tarihi çıkar" });
+  await expectIconAndTextCentered(analyzeRequirementButton);
+  await analyzeRequirementButton.click();
   await expect(noteDialog.getByText("Talep bilgileri çıkarıldı")).toBeVisible();
   await noteDialog.getByRole("button", { name: "Talep oluştur" }).click();
   const processedNote = page.locator("article.keep-card").filter({ hasText: "Ayşe Urla'da bahçeli satılık ev arıyor." });
