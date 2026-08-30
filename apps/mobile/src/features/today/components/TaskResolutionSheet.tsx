@@ -1,0 +1,138 @@
+import { useState } from "react";
+import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { CalendarClock, Check, CircleSlash, X } from "lucide-react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { dailyTaskOutcomeSchema, nextActionTypeLabels, nextActionTypes, type DailyTaskOutcome, type NextActionType, type TodayTask } from "@spherepath/shared";
+import { SpText } from "@/shared/ui/SpText";
+import { radius, space } from "@/shared/ui/tokens.generated";
+import { useSpTheme } from "@/shared/ui/theme";
+
+const dayOptions = [
+  { label: "Yarın", days: 1 },
+  { label: "3 gün", days: 3 },
+  { label: "1 hafta", days: 7 },
+] as const;
+
+export function taskDueLabel(value: number | null): string {
+  if (value === null) return "Tarihsiz";
+  const due = new Date(value);
+  const now = new Date();
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  if (due.toDateString() === yesterday.toDateString()) return `Gecikti · dün ${new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(due)}`;
+  if (due.toDateString() === now.toDateString()) return `Bugün ${new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(due)}`;
+  return new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(due);
+}
+
+/** Where the advisor goes to write up what actually happened on this task. */
+export function taskRecordRoute(task: TodayTask): string {
+  return task.opportunityId
+    ? `/(tabs)/opportunities?opportunityId=${encodeURIComponent(task.opportunityId)}`
+    : `/(tabs)/capture?contactId=${encodeURIComponent(task.contactId)}`;
+}
+
+/**
+ * Closing a task is where the next action date, the interaction and the relationship
+ * counters come from, so the daily plan and the feed resolve tasks through this one
+ * sheet rather than each having its own idea of what "done" means.
+ */
+export function TaskResolutionSheet({ task, pending, error, onClose, onResolve, onOpenRecord }: {
+  task: TodayTask | null;
+  pending: boolean;
+  error: string | null;
+  onClose(): void;
+  onResolve(outcome: DailyTaskOutcome): void;
+  onOpenRecord?(task: TodayTask): void;
+}) {
+  const theme = useSpTheme();
+  const [status, setStatus] = useState<DailyTaskOutcome["status"]>("completed");
+  const [note, setNote] = useState("");
+  const [days, setDays] = useState(1);
+  const [actionType, setActionType] = useState<NextActionType>("call");
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  function submit() {
+    if (!task) return;
+    const parsed = dailyTaskOutcomeSchema.safeParse({
+      taskId: task.id,
+      status,
+      outcomeNote: status === "completed" ? note.trim() || null : null,
+      skippedReason: status === "skipped" ? note.trim() || null : null,
+      rescheduledAt: status === "rescheduled" ? Date.now() + days * 86_400_000 : null,
+      rescheduledActionType: status === "rescheduled" ? actionType : null,
+    });
+    if (!parsed.success) {
+      setLocalError(parsed.error.issues[0]?.message ?? "Sonucu kontrol et.");
+      return;
+    }
+    setLocalError(null);
+    onResolve(parsed.data);
+  }
+
+  function close() {
+    setStatus("completed"); setNote(""); setDays(1); setActionType("call"); setLocalError(null);
+    onClose();
+  }
+
+  const choice = (selected: boolean) => [styles.choice, { backgroundColor: selected ? theme.deedBg : theme.card, borderColor: selected ? theme.deed : theme.line }];
+  const shownError = localError ?? error;
+
+  return <Modal animationType="slide" presentationStyle="pageSheet" visible={Boolean(task)} onRequestClose={close}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View style={styles.heading}>
+          <View style={styles.headingCopy}>
+            <SpText variant="eyebrow" color="deed">GÖREV SONUCU</SpText>
+            <SpText variant="hero">{task?.title}</SpText>
+            <SpText color="secondary">{task?.reason} · {taskDueLabel(task?.dueAt ?? null)}</SpText>
+          </View>
+          <Pressable accessibilityLabel="Kapat" disabled={pending} onPress={close} style={[styles.icon, { borderColor: theme.line }]}><X color={theme.textSecondary} size={20} /></Pressable>
+        </View>
+
+        <View accessibilityRole="radiogroup" accessibilityLabel="Görev sonucu" style={styles.options}>
+          {(["completed", "rescheduled", "skipped"] as const).map((item) => (
+            <Pressable accessibilityRole="radio" accessibilityState={{ checked: status === item }} key={item} onPress={() => { setStatus(item); setNote(""); }} style={choice(status === item)}>
+              {item === "completed" ? <Check color={theme.deed} size={17} /> : item === "rescheduled" ? <CalendarClock color={theme.deed} size={17} /> : <CircleSlash color={theme.deed} size={17} />}
+              <SpText color={status === item ? "deed" : "secondary"}>{item === "completed" ? "Tamamlandı" : item === "rescheduled" ? "Ertele" : "Atla"}</SpText>
+            </Pressable>
+          ))}
+        </View>
+
+        {status === "rescheduled" ? <>
+          <SpText variant="title">Yeni aksiyon</SpText>
+          <View accessibilityRole="radiogroup" accessibilityLabel="Yeni aksiyon" style={styles.options}>
+            {nextActionTypes.map((item) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: actionType === item }} key={item} onPress={() => setActionType(item)} style={choice(actionType === item)}><SpText variant="bodySmall" color={actionType === item ? "deed" : "secondary"}>{nextActionTypeLabels[item]}</SpText></Pressable>)}
+          </View>
+          <SpText variant="title">Yeni tarih</SpText>
+          <View accessibilityRole="radiogroup" accessibilityLabel="Yeni tarih" style={styles.options}>
+            {dayOptions.map((item) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: days === item.days }} key={item.days} onPress={() => setDays(item.days)} style={choice(days === item.days)}><SpText variant="bodySmall" color={days === item.days ? "deed" : "secondary"}>{item.label}</SpText></Pressable>)}
+          </View>
+        </> : <>
+          <SpText variant="title">{status === "skipped" ? "Neden atlanıyor?" : "Kısa sonuç · isteğe bağlı"}</SpText>
+          <TextInput accessibilityLabel={status === "skipped" ? "Atlama nedeni" : "Kısa sonuç"} multiline placeholder={status === "skipped" ? "Örn. Kişi artık aranmamasını istedi." : "Örn. Görüşüldü, cuma tekrar aranacak."} placeholderTextColor={theme.textTertiary} style={[styles.input, styles.multiline, { backgroundColor: theme.card, borderColor: theme.line, color: theme.textPrimary }]} value={note} onChangeText={setNote} />
+        </>}
+
+        {shownError ? <View accessibilityRole="alert" style={[styles.alert, { backgroundColor: theme.askBg }]}><SpText color="ask">{shownError}</SpText></View> : null}
+
+        {task && onOpenRecord ? <Pressable onPress={() => onOpenRecord(task)} style={[styles.secondary, { borderColor: theme.line }]}><SpText color="deed">Teması ayrıntılı kaydet</SpText></Pressable> : null}
+        <Pressable disabled={pending} onPress={submit} style={[styles.primary, { backgroundColor: theme.ask, opacity: pending ? .6 : 1 }]}>
+          <SpText style={{ color: theme.onAsk }}>{pending ? "Kaydediliyor…" : status === "rescheduled" ? "Yeni tarihe ertele" : "Sonucu kaydet"}</SpText>
+        </Pressable>
+      </ScrollView>
+    </SafeAreaView>
+  </Modal>;
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1 },
+  content: { padding: space.lg, paddingBottom: 60, gap: space.lg },
+  heading: { flexDirection: "row", alignItems: "flex-start", gap: space.md },
+  headingCopy: { flex: 1, gap: 2 },
+  icon: { width: 44, height: 44, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  options: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
+  choice: { minHeight: 44, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, paddingHorizontal: space.lg, flexDirection: "row", alignItems: "center", gap: space.sm },
+  input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, padding: space.lg, fontFamily: "Karla_400Regular", fontSize: 16, lineHeight: 23 },
+  multiline: { minHeight: 108, textAlignVertical: "top" },
+  alert: { borderRadius: radius.md, padding: space.md },
+  secondary: { minHeight: 48, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  primary: { minHeight: 50, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+});
