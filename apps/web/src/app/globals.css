@@ -1177,7 +1177,8 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .funnel-periods { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--card); }
 .funnel-periods button { min-height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--card); color: var(--text-secondary); cursor: pointer; }
 .funnel-periods button.selected { border-color: var(--deed); background: var(--deed-bg); color: var(--deed); font-weight: 700; }
-.funnel-workspace { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); align-items: start; gap: var(--space-xl); }
+.funnel-workspace { display: grid; gap: var(--space-xl); }
+.funnel-analysis { min-width: 0; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); align-items: start; gap: var(--space-xl); }
 .funnel-panel { display: grid; gap: var(--space-lg); }
 .funnel-panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-lg); }
 .funnel-panel-heading h2, .funnel-panel-heading p { margin: 0; }
@@ -1219,7 +1220,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
   .main-content { padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
   .record-button { display: none; }
   .contact-action-menu > div { z-index: 80; }
-  .funnel-workspace { grid-template-columns: minmax(0, 1fr); }
+  .funnel-analysis { grid-template-columns: minmax(0, 1fr); }
   .coaching-card { position: static; }
   .app-frame.page-swipe-next .main-content { animation: page-swipe-next 200ms ease; }
   .app-frame.page-swipe-previous .main-content { animation: page-swipe-previous 200ms ease; }

@@ -282,6 +282,18 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await context.setOffline(false);
   await expect(page.getByRole("status")).toBeHidden({ timeout: 15_000 });
 
+  await page.goto("/funnel");
+  await expect(page.getByRole("heading", { name: "Nerede takılıyor?" })).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const funnelOverlap = await page.locator(".coaching-card").evaluate((coaching) => {
+    const mirror = document.querySelector<HTMLElement>(".mirror-card");
+    if (!mirror) return Number.POSITIVE_INFINITY;
+    const coachingRect = coaching.getBoundingClientRect();
+    const mirrorRect = mirror.getBoundingClientRect();
+    return Math.max(0, Math.min(coachingRect.bottom, mirrorRect.bottom) - Math.max(coachingRect.top, mirrorRect.top));
+  });
+  expect(funnelOverlap).toBeLessThanOrEqual(1);
+
   const routes = ["/", "/funnel", "/capture", "/contacts", "/opportunities", "/listings", "/closing", "/settings"];
   for (const route of routes) {
     await page.goto(route);

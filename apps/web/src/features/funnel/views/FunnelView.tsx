@@ -56,11 +56,13 @@ export function FunnelView() {
         {target?.periodTarget ? <div className="earnings-bar"><span style={{ width: `${Math.min(100, Math.round((target.ratio ?? 0) * 100))}%` }} /></div> : null}
         {earnings && earnings.incompleteCount > 0 ? <p className="form-error notice">{earnings.incompleteCount} kapanan işlemde tutar veya para birimi eksik; toplamlara katılmadı.</p> : null}
       </section>
+      <div className="funnel-analysis">
       <section className="sp-card funnel-panel" aria-label="Satış hunisi"><div className="funnel-panel-heading"><div><p className="eyebrow">{reportingPeriodLabels[period].toLocaleUpperCase("tr-TR")}</p><h2>Beş adımda durumun</h2></div></div><div className="funnel-stage-list">{stages.map((stage, index) => {
         const previous = stages[index - 1]; const isBottleneck = index === bottleneckIndex;
         return <article key={stage.label} className={`funnel-stage tone-${stage.tone}${isBottleneck ? " is-bottleneck" : ""}`}><span className="funnel-step">{index + 1}</span><span className="funnel-stage-copy"><strong>{stage.label}</strong><small>{stage.detail}</small></span>{previous ? <span className="funnel-conversion"><small>Önceki adımdan</small><strong>{conversion(stage.value, previous.value)}</strong></span> : null}<span className="funnel-value">{stage.value}</span>{isBottleneck ? <span className="bottleneck-label"><TrendingDown size={15} /> Buraya geçemiyor</span> : null}</article>;
       })}</div></section>
       <section className="sp-card coaching-card"><div className="coaching-heading"><span className="coaching-icon"><Target size={21} /></span><div><p className="eyebrow">ŞİMDİKİ DARBOĞAZ</p><h2>{query.data?.coaching.title}</h2></div></div><p>{query.data?.coaching.explanation}</p><blockquote><small>Bir sonraki görüşmede söyle</small><strong>“{query.data?.coaching.script}”</strong></blockquote>{query.data?.coaching.subject ? <p className="coaching-subject"><strong>{query.data.coaching.subject.name}</strong><small>{query.data.coaching.subject.detail}</small></p> : null}{query.data ? <Link className="primary-action" href={coachingHref(query.data.coaching)}>{query.data.coaching.subject ? "Bu kaydı aç" : "Şimdi harekete geç"} <ArrowRight size={17} /></Link> : null}</section>
+      </div>
       <section className="sp-card mirror-card" aria-label="Kendi aynan">
         <div className="feed-section-heading"><div><p className="eyebrow">KENDİ AYNAN</p><h2>Rakamların sana ne diyor</h2></div></div>
         {!metrics ? null : !metrics.sampleSufficient ? <p className="context-sentence">Henüz güvenilir bir sonuç çıkaracak kadar kayıt yok. Birkaç görüşme daha kaydettiğinde buradaki oranlar anlamlı olmaya başlar.</p> : <>
