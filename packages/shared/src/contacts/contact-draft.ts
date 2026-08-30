@@ -85,6 +85,7 @@ export function createContact(draft: ContactDraft, tenant: TenantOwned, now: num
     memory: {
       keyThingsToRemember: [],
       propertyPreferences: emptyVoicePropertyPreferences,
+      propertySituations: [],
       updatedAt: null,
     },
     privacy: {

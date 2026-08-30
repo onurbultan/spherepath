@@ -93,9 +93,13 @@ export const emptyVoiceInsights: VoiceInsights = {
   suggestedActionReason: null,
 };
 
+export const maxContactPropertySituations = 3;
+
 export const contactMemorySchema = z.object({
   keyThingsToRemember: z.array(z.string().trim().min(2).max(180)).max(12),
   propertyPreferences: voicePropertyPreferencesSchema,
+  // Defaulted so contacts stored before situations existed still parse.
+  propertySituations: z.array(voicePropertySituationSchema).max(maxContactPropertySituations).default([]),
   updatedAt: z.number().int().positive().nullable(),
 }).strict();
 
@@ -249,6 +253,29 @@ export function mergeVoiceInsightsIntoContactMemory(
       dealBreakers: shouldMergePreferences ? mergeUnique(next.dealBreakers, previous.dealBreakers, 8) : previous.dealBreakers,
       timeline: shouldMergePreferences ? next.timeline ?? previous.timeline : previous.timeline,
     },
+    propertySituations: mergePropertySituations(current.propertySituations ?? [], insights.propertySituations),
     updatedAt: now,
   });
+}
+
+const situationKey = (situation: VoicePropertySituation): string =>
+  `${situation.propertyContext}:${situation.propertyPreferences.transactionType ?? "unknown"}`;
+
+/**
+ * A contact can be selling one property while looking for another, so situations are
+ * keyed by side and transaction type: the same pairing is refreshed, a new pairing is
+ * appended, and once the cap is reached the least recently touched one falls off.
+ */
+export function mergePropertySituations(
+  current: readonly VoicePropertySituation[],
+  incoming: readonly VoicePropertySituation[],
+): VoicePropertySituation[] {
+  const byKey = new Map<string, VoicePropertySituation>();
+  for (const situation of current) byKey.set(situationKey(situation), situation);
+  for (const situation of incoming) {
+    const key = situationKey(situation);
+    byKey.delete(key);
+    byKey.set(key, situation);
+  }
+  return [...byKey.values()].slice(-maxContactPropertySituations);
 }

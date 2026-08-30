@@ -100,6 +100,8 @@ export interface PortfolioMatchRecord extends PortfolioMatchScore {
   contactId: string;
   contactName: string;
   portfolioItem: PortfolioItemRecord;
+  /** Which side of the contact this match answers, when more than one is on file. */
+  situationSummary?: string | null;
 }
 
 export interface PortfolioMatchNotificationRecord {

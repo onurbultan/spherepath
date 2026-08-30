@@ -64,25 +64,47 @@ async function loadPortfolioMatches(claims: SpherepathClaims): Promise<OwnedPort
     if (data.deletedAt !== null || data.privacy?.profilingObjection === true) continue;
     const rawMemory = (data.memory ?? {}) as DocumentData;
     const memory = contactMemorySchema.safeParse({ ...rawMemory, updatedAt: rawMemory.updatedAt instanceof Timestamp ? rawMemory.updatedAt.toMillis() : null });
-    if (!memory.success || !memory.data.propertyPreferences.transactionType) continue;
-    for (const portfolioItem of portfolioItems) {
-      const result = scorePortfolioItem(memory.data.propertyPreferences, portfolioItem);
-      if (!result.eligible || result.coverage < minimumCoverage || result.score < nearMissScoreFloor) continue;
-      matches.push({
-        ownerUid: data.ownerUid as string,
-        tier: result.score >= matchScoreFloor ? "match" : "near_miss",
-        match: {
-          ...result,
-          contactId: document.id,
-          contactName: (data.fullName ?? data.label ?? "İsimsiz kişi") as string,
-          portfolioItem,
-        },
-      });
+    if (!memory.success) continue;
+    // A contact selling one property while looking for another produces two situations.
+    // Only the searching side is matched against office inventory; when no situation is
+    // stored, the collapsed preferences stand in so older contacts keep working.
+    const searching = memory.data.propertySituations.filter((situation) =>
+      situation.propertyContext === "search_preference" && situation.propertyPreferences.transactionType !== null);
+    const demands = searching.length
+      ? searching.map((situation) => ({ preferences: situation.propertyPreferences, summary: situation.summary }))
+      : memory.data.propertyPreferences.transactionType
+        ? [{ preferences: memory.data.propertyPreferences, summary: null as string | null }]
+        : [];
+    if (!demands.length) continue;
+    for (const demand of demands) {
+      for (const portfolioItem of portfolioItems) {
+        const result = scorePortfolioItem(demand.preferences, portfolioItem);
+        if (!result.eligible || result.coverage < minimumCoverage || result.score < nearMissScoreFloor) continue;
+        matches.push({
+          ownerUid: data.ownerUid as string,
+          tier: result.score >= matchScoreFloor ? "match" : "near_miss",
+          match: {
+            ...result,
+            contactId: document.id,
+            contactName: (data.fullName ?? data.label ?? "İsimsiz kişi") as string,
+            portfolioItem,
+            situationSummary: demands.length > 1 ? demand.summary : null,
+          },
+        });
+      }
     }
   }
   matches.sort((left, right) => right.match.score - left.match.score || right.match.coverage - left.match.coverage || right.match.portfolioItem.updatedAt - left.match.portfolioItem.updatedAt);
+  // Two situations of the same contact can land on one portfolio item. Keep the stronger
+  // one: the pairing is shown once, and the notification id stays unique.
+  const bestByPairing = new Map<string, OwnedPortfolioMatch>();
+  for (const entry of matches) {
+    const key = `${entry.match.contactId}::${entry.match.portfolioItem.id}`;
+    if (!bestByPairing.has(key)) bestByPairing.set(key, entry);
+  }
+  const deduped = [...bestByPairing.values()];
   // Each tier is capped on its own so a flood of near misses cannot push out real matches.
-  return [...matches.filter((item) => item.tier === "match").slice(0, 100), ...matches.filter((item) => item.tier === "near_miss").slice(0, 50)];
+  return [...deduped.filter((item) => item.tier === "match").slice(0, 100), ...deduped.filter((item) => item.tier === "near_miss").slice(0, 50)];
 }
 
 export const extractPortfolioText = onCall(callableOptions, async (request): Promise<{ draft: PortfolioItemDraft }> => {

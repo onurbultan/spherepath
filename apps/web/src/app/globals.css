@@ -1242,3 +1242,5 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .near-miss-heading .context-sentence { margin: 0; }
 .match-card.is-near-miss { border-color: var(--warm); background: color-mix(in srgb, var(--warm-bg) 45%, var(--card)); }
 .match-card.is-near-miss .match-progress > i { background: var(--warm); }
+
+.match-situation { margin: 0; padding: 4px 9px; border-radius: var(--radius-sm); background: var(--deed-bg); color: var(--deed); font-size: 12px; justify-self: start; }

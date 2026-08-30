@@ -87,9 +87,18 @@ export interface PropertyPreferences {
   timeline: string | null;
 }
 
+export interface ContactPropertySituation {
+  propertyContext: "search_preference" | "subject_property";
+  summary: string;
+  propertyPreferences: PropertyPreferences;
+}
+
 export interface ContactMemory {
   keyThingsToRemember: string[];
+  /** The collapsed primary situation, kept for callers that expect a single set. */
   propertyPreferences: PropertyPreferences;
+  /** Every distinct situation, so a seller who is also buying keeps both sides. */
+  propertySituations: ContactPropertySituation[];
   updatedAt: Instant | null;
 }
 export type AuthorizationType = "exclusive" | "open" | "verbal" | "unknown";

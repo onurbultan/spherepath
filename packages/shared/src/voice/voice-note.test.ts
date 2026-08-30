@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   emptyVoicePropertyPreferences,
+  mergePropertySituations,
   mergeVoiceInsightsIntoContactMemory,
   registerVoiceTextTestSchema,
   retryVoiceNoteProcessingSchema,
@@ -47,6 +48,7 @@ describe("voice extraction contract", () => {
     const memory = mergeVoiceInsightsIntoContactMemory({
       keyThingsToRemember: ["Açık mutfak istiyor"],
       propertyPreferences: { ...emptyVoicePropertyPreferences, preferredLocations: ["Kadıköy"] },
+      propertySituations: [],
       updatedAt: 1,
     }, {
       keyThingsToRemember: ["açık mutfak istiyor", "İki araçlık otopark önemli"],
@@ -65,6 +67,7 @@ describe("voice extraction contract", () => {
     const memory = mergeVoiceInsightsIntoContactMemory({
       keyThingsToRemember: [],
       propertyPreferences: { ...emptyVoicePropertyPreferences, preferredLocations: ["Kadıköy"] },
+      propertySituations: [],
       updatedAt: 1,
     }, {
       keyThingsToRemember: ["Ataşehir'de 185 m² bir dairesi var."],
@@ -99,5 +102,33 @@ describe("voice extraction contract", () => {
   it("validates a queued voice-note recovery command", () => {
     expect(retryVoiceNoteProcessingSchema.parse({ voiceNoteId: "voice-note-1" })).toEqual({ voiceNoteId: "voice-note-1" });
     expect(retryVoiceNoteProcessingSchema.safeParse({ voiceNoteId: "" }).success).toBe(false);
+  });
+});
+
+describe("mergePropertySituations", () => {
+  const preferences = (transactionType: "buy" | "sell") => ({ ...emptyVoicePropertyPreferences, transactionType });
+  const selling = { propertyContext: "subject_property" as const, summary: "Bornova'daki 3+1 dairesini satıyor", propertyPreferences: preferences("sell") };
+  const buying = { propertyContext: "search_preference" as const, summary: "Urla'da bahçeli ev arıyor", propertyPreferences: preferences("buy") };
+
+  it("keeps both sides when a contact is selling one home and buying another", () => {
+    const merged = mergePropertySituations([], [selling, buying]);
+    expect(merged).toHaveLength(2);
+    expect(merged.map((situation) => situation.propertyContext)).toEqual(["subject_property", "search_preference"]);
+  });
+
+  it("refreshes a situation instead of duplicating the same side", () => {
+    const updated = { ...buying, summary: "Urla'da bahçeli ev arıyor, bütçe arttı" };
+    const merged = mergePropertySituations([selling, buying], [updated]);
+    expect(merged).toHaveLength(2);
+    expect(merged.find((situation) => situation.propertyContext === "search_preference")?.summary).toContain("bütçe arttı");
+  });
+
+  it("drops the least recently touched situation once the cap is reached", () => {
+    const renting = { propertyContext: "search_preference" as const, summary: "Ofis kiralamak istiyor", propertyPreferences: { ...emptyVoicePropertyPreferences, transactionType: "rent" as const } };
+    const investing = { propertyContext: "search_preference" as const, summary: "Yatırımlık arsa bakıyor", propertyPreferences: { ...emptyVoicePropertyPreferences, transactionType: "invest" as const } };
+    const merged = mergePropertySituations([selling, buying, renting], [investing]);
+    expect(merged).toHaveLength(3);
+    expect(merged.some((situation) => situation.summary === selling.summary)).toBe(false);
+    expect(merged.some((situation) => situation.summary === investing.summary)).toBe(true);
   });
 });
