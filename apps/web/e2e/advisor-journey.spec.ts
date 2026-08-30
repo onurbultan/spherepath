@@ -85,6 +85,9 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
 
   const contactActionMenus = page.locator(".contact-action-menu");
   await expect(contactActionMenus).toHaveCount(2);
+  const firstContactRow = page.locator(".contact-table-row").first();
+  await firstContactRow.hover();
+  await expect(firstContactRow.locator(".contact-row-compliance")).toBeVisible();
   await contactActionMenus.first().locator("summary").click();
   await expect(contactActionMenus.first()).toHaveAttribute("open", "");
   expect(await contactActionMenus.first().locator("xpath=..").evaluate((row) => getComputedStyle(row).zIndex)).toBe("30");

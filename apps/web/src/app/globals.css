@@ -616,7 +616,6 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .contact-action-menu > div { position: absolute; top: 36px; right: 0; z-index: 20; width: 180px; display: grid; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--elevated); box-shadow: var(--shadow-lg); }
 .contact-action-menu button { min-height: 38px; display: flex; align-items: center; gap: var(--space-md); padding: 0 var(--space-lg); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-primary); text-align: left; cursor: pointer; }
 .contact-action-menu button:hover { background: var(--deed-bg); color: var(--deed); }
-.contact-table-row:hover .contact-row-compliance, .contact-table-row:focus-within .contact-row-compliance { opacity: 0; visibility: hidden; }
 .contact-pagination { min-height: 46px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--text-tertiary); font-size: 11.5px; }
 .contact-pagination > div { display: flex; align-items: center; gap: 3px; }
 .contact-pagination button { min-width: 28px; height: 28px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-secondary); display: grid; place-items: center; font-size: 11.5px; cursor: pointer; }
