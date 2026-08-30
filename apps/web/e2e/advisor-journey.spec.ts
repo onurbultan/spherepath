@@ -57,6 +57,28 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await page.getByRole("button", { name: "Kaydet" }).click();
   await expect(page.getByText("Bahçeli satılık bir ev duydum.")).toBeVisible();
   await expect(page.getByText(/Nerede\?/)).toBeVisible();
+  await page.locator(".location-prompt").click();
+  const locationInput = page.getByRole("textbox", { name: "Konum" });
+  const locationInputMetrics = await locationInput.evaluate((input) => {
+    const style = getComputedStyle(input);
+    const bodyStyle = getComputedStyle(document.body);
+    return {
+      height: input.getBoundingClientRect().height,
+      borderWidth: style.borderTopWidth,
+      borderRadius: Number.parseFloat(style.borderTopLeftRadius),
+      backgroundColor: style.backgroundColor,
+      fontFamily: style.fontFamily,
+      bodyFontFamily: bodyStyle.fontFamily,
+    };
+  });
+  expect(locationInputMetrics.height).toBeGreaterThanOrEqual(36);
+  expect(locationInputMetrics.borderWidth).toBe("1px");
+  expect(locationInputMetrics.borderRadius).toBeGreaterThanOrEqual(6);
+  expect(locationInputMetrics.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+  expect(locationInputMetrics.fontFamily).toBe(locationInputMetrics.bodyFontFamily);
+  const addLocationButton = page.getByRole("button", { name: "Ekle" });
+  expect((await addLocationButton.boundingBox())!.height).toBe((await locationInput.boundingBox())!.height);
+  await page.getByRole("button", { name: "Vazgeç" }).click();
   await page.getByRole("link", { name: "Huni" }).click();
   await expect(page.getByRole("heading", { name: "Nerede takılıyor?" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Ana navigasyon" }).getByRole("link", { name: "Huni" })).toHaveAttribute("aria-current", "page");
