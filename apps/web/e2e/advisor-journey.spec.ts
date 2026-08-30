@@ -190,6 +190,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await page.getByRole("main").getByRole("link", { name: "Temas kaydet" }).click();
   await expect(page).toHaveURL(/\/capture\/?\?contactId=/);
   const captureModeTabs = page.getByRole("tablist", { name: "Kayıt yöntemi" });
+  const newContactButton = page.getByRole("button", { name: "Yeni kişi" });
   const voiceModeTab = captureModeTabs.getByRole("tab", { name: "Sesli anlat" });
   const manualModeTab = captureModeTabs.getByRole("tab", { name: "Manuel yaz" });
   const modeTabRects = await Promise.all([voiceModeTab, manualModeTab].map((tab) => tab.boundingBox()));
@@ -199,7 +200,11 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   if ((page.viewportSize()?.width ?? 1_000) <= 620) {
     const tabsWidth = (await captureModeTabs.boundingBox())!.width;
     const voiceCardWidth = (await page.locator(".voice-card").boundingBox())!.width;
+    const newContactButtonRect = (await newContactButton.boundingBox())!;
+    const captureModeTabsRect = (await captureModeTabs.boundingBox())!;
     expect(Math.abs(tabsWidth - voiceCardWidth)).toBeLessThanOrEqual(1);
+    expect(Math.abs(newContactButtonRect.width - tabsWidth)).toBeLessThanOrEqual(1);
+    expect(Math.abs(newContactButtonRect.height - captureModeTabsRect.height)).toBeLessThanOrEqual(2);
   }
   const writtenNoteToggle = page.getByText("Ses yerine yazılı not kullan", { exact: true });
   const writtenNoteToggleMetrics = await writtenNoteToggle.evaluate((summary) => {

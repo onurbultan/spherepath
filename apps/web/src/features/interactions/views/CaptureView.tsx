@@ -157,7 +157,7 @@ export function CaptureView() {
 
   return (
     <AppShell>
-      <header className="page-header contacts-header"><div><p className="eyebrow">HIZLI KAYIT</p><h1>Temas kaydet</h1><p className="context-sentence">Görüşme sonucunu ve kabul edilmiş sonraki adımı kısa biçimde kapat.</p></div><button className="secondary-action inline-action" onClick={() => { setError(null); setQuickContactOpen(true); }} type="button"><UserPlus size={17} /> Yeni kişi</button></header>
+      <header className="page-header contacts-header capture-header"><div><p className="eyebrow">HIZLI KAYIT</p><h1>Temas kaydet</h1><p className="context-sentence">Görüşme sonucunu ve kabul edilmiş sonraki adımı kısa biçimde kapat.</p></div><button className="secondary-action inline-action" onClick={() => { setError(null); setQuickContactOpen(true); }} type="button"><UserPlus size={17} /> Yeni kişi</button></header>
       <div className="capture-mode-tabs" role="tablist" aria-label="Kayıt yöntemi"><button className={captureMode === "voice" ? "selected" : ""} role="tab" aria-selected={captureMode === "voice"} onClick={() => setCaptureMode("voice")} type="button">Sesli anlat</button><button className={captureMode === "manual" ? "selected" : ""} role="tab" aria-selected={captureMode === "manual"} onClick={() => setCaptureMode("manual")} type="button">Manuel yaz</button></div>
       {captureMode === "voice" ? <VoiceCaptureCard key={selectedContactId} session={session!} contacts={contacts} initialContactId={selectedContactId} onSaved={async () => {
         await Promise.all([

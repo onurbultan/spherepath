@@ -1069,6 +1069,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 
 @media (max-width: 620px) {
   .capture-mode-tabs { width: 100%; }
+  .capture-header > .secondary-action { width: 100%; min-height: var(--hit-comfortable); justify-self: stretch; }
   .contact-grid { grid-template-columns: 1fr; }
   .opportunity-filterbar { grid-template-columns: 1fr; }
   .contacts-header { display: grid; }
