@@ -48,7 +48,7 @@ function matchMessage(match: PortfolioMatchRecord): string {
   return `Merhaba ${match.contactName}, arayışınıza uygun olabileceğini düşündüğüm bir portföy var: ${portfolioItem.headline}. ${portfolioItem.location}.${price}${listing}`;
 }
 
-function PortfolioMatchCard({ match }: { match: PortfolioMatchRecord }) {
+function PortfolioMatchCard({ match, nearMiss = false }: { match: PortfolioMatchRecord; nearMiss?: boolean }) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
   async function copyMessage() {
@@ -61,10 +61,14 @@ function PortfolioMatchCard({ match }: { match: PortfolioMatchRecord }) {
     }
   }
 
-  return <SpCard className="match-card">
+  const shownReasons = nearMiss
+    ? [...match.reasons.filter((reason) => reason.status === "mismatch"), ...match.reasons.filter((reason) => reason.status === "match")].slice(0, 3)
+    : match.reasons.filter((reason) => reason.status !== "mismatch").slice(0, 3);
+
+  return <SpCard className={nearMiss ? "match-card is-near-miss" : "match-card"}>
     <div className="match-score"><strong>%{match.score}</strong><span>uyum</span><div className="match-progress" aria-label={`Eşleşme puanı yüzde ${match.score}`}><i style={{ width: `${match.score}%` }} /></div><em>%{match.coverage} veri</em></div>
     <h3>{match.contactName} ↔ {match.portfolioItem.headline}</h3>
-    <ul>{match.reasons.filter((reason) => reason.status !== "mismatch").slice(0, 3).map((reason) => <li className={`match-reason-${reason.status}`} key={reason.key}>{reason.status === "unknown" ? "Doğrulanmalı: " : ""}{reason.detail}</li>)}</ul>
+    <ul>{shownReasons.map((reason) => <li className={`match-reason-${reason.status}`} key={reason.key}>{reason.status === "unknown" ? "Doğrulanmalı: " : ""}{reason.detail}</li>)}</ul>
     {copyState === "failed" ? <p className="form-error compact-error">Mesaj kopyalanamadı. Tarayıcı pano iznini kontrol edin.</p> : null}
     <div className="match-card-actions">
       <button className="secondary-action compact-action" onClick={() => void copyMessage()} type="button">{copyState === "copied" ? <Check size={16} /> : <Copy size={16} />}{copyState === "copied" ? "Kopyalandı" : "Mesaj taslağı"}</button>
@@ -92,7 +96,7 @@ export function OfficePortfolioSection({ openSignal = 0 }: { openSignal?: number
   const [showPool, setShowPool] = useState(false);
   const previousOpenSignal = useRef(openSignal);
   const items = itemsQuery.data ?? [];
-  const matches = matchesQuery.data ?? [];
+  const matches = matchesQuery.data?.matches ?? []; const nearMisses = matchesQuery.data?.nearMisses ?? [];
   const detectedMessageCount = source === "whatsapp_group" ? splitPortfolioMessages(text).length : text.trim().length >= 10 ? 1 : 0;
   const batchTotal = savedBatchCount + draftQueue.length + (draft ? 1 : 0);
 
@@ -153,6 +157,7 @@ export function OfficePortfolioSection({ openSignal = 0 }: { openSignal?: number
   return <section className="office-pool-section" id="office-pool" aria-labelledby="office-pool-title">
     <div className="inline-section-heading"><div><h2 id="office-pool-title">Ofis havuzu eşleşmeleri</h2><span>kayıtlı alıcı taleplerinle ortak havuzun açıklanabilir kesişimi</span></div><div className="office-pool-heading-actions"><button className="text-button" disabled={!items.length} onClick={() => setShowPool((current) => !current)} type="button">{showPool ? "Eşleşmelere dön" : `Tüm havuzu gör · ${items.length}`}</button></div></div>
     {!showPool && matches.length ? <div className="match-strip" aria-label="Uygun eşleşmeler">{matches.slice(0, 3).map((match) => <PortfolioMatchCard key={`${match.contactId}-${match.portfolioItem.id}`} match={match} />)}</div> : null}
+    {!showPool && nearMisses.length ? <div className="near-miss-block"><div className="near-miss-heading"><p className="eyebrow">YAKIN AMA TAM DEĞİL</p><p className="context-sentence">Tek bir kriterde kaçırıyor. Göstermeye değer mi, kararı sende.</p></div><div className="match-strip" aria-label="Yakın eşleşmeler">{nearMisses.slice(0, 3).map((match) => <PortfolioMatchCard key={`near-${match.contactId}-${match.portfolioItem.id}`} match={match} nearMiss />)}</div></div> : null}
     {!showPool && !matches.length && items.length && !matchesQuery.isPending ? <SpCard className="office-pool-empty"><Network size={22} /><div><strong>Henüz uygun eşleşme yok</strong><p>Havuzdaki portföyler kayıtlı alıcı talepleriyle karşılaştırıldı.</p></div></SpCard> : null}
     {error && !open ? <p className="form-error notice">{error}</p> : null}{itemsQuery.isPending || matchesQuery.isPending ? <div className="content-state compact"><RefreshCw className="spin" size={20} /> Ofis havuzu taranıyor…</div> : itemsQuery.error || matchesQuery.error ? <p className="form-error notice">{messageFrom(itemsQuery.error ?? matchesQuery.error)}</p> : items.length === 0 ? <SpCard className="office-pool-empty"><Network size={22} /><div><strong>Ortak havuz henüz boş</strong><p>Bir WhatsApp portföy mesajını yapıştırarak ilk kaydı oluşturabilirsiniz.</p></div></SpCard> : null}
     {showPool && items.length ? <div className="portfolio-pool-grid">{items.slice(0, 12).map((item) => <SpCard className="pool-item-card" key={item.id}><div className="opportunity-top"><span className="stage-badge">{portfolioSourceLabels[item.source]}</span><span>{portfolioAuthorizationLabels[item.authorizationType]}</span></div><h3>{item.headline}</h3><p>{item.location} · {propertyTypeLabels[item.propertyType]}</p><strong>{item.askingPrice ? money(item.askingPrice.amount, item.askingPrice.currency) : "Fiyat belirtilmedi"}</strong><small>{item.sourceAuthorName || item.sharedByName} tarafından paylaşıldı</small><div className="pool-card-actions">{item.listingUrl ? <a className="text-link" href={item.listingUrl} rel="noreferrer" target="_blank">İlanı aç <ExternalLink size={14} /></a> : null}{session && (session.role === "broker" || session.uid === item.ownerUid) ? <button className="text-button danger" disabled={withdrawingId === item.id} onClick={() => void withdraw(item.id)} type="button">{withdrawingId === item.id ? "Kaldırılıyor…" : "Havuzdan kaldır"}</button> : null}</div></SpCard>)}</div> : null}

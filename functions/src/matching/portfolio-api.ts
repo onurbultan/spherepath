@@ -45,7 +45,13 @@ async function loadOfficePortfolio(officeId: string): Promise<PortfolioItemRecor
 interface OwnedPortfolioMatch {
   match: PortfolioMatchRecord;
   ownerUid: string;
+  /** "near_miss" rows are shown on request but never raised as notifications. */
+  tier: "match" | "near_miss";
 }
+
+const matchScoreFloor = 60;
+const nearMissScoreFloor = 35;
+const minimumCoverage = 40;
 
 async function loadPortfolioMatches(claims: SpherepathClaims): Promise<OwnedPortfolioMatch[]> {
   const firestore = getFirestore();
@@ -61,9 +67,10 @@ async function loadPortfolioMatches(claims: SpherepathClaims): Promise<OwnedPort
     if (!memory.success || !memory.data.propertyPreferences.transactionType) continue;
     for (const portfolioItem of portfolioItems) {
       const result = scorePortfolioItem(memory.data.propertyPreferences, portfolioItem);
-      if (!result.eligible || result.score < 60 || result.coverage < 40) continue;
+      if (!result.eligible || result.coverage < minimumCoverage || result.score < nearMissScoreFloor) continue;
       matches.push({
         ownerUid: data.ownerUid as string,
+        tier: result.score >= matchScoreFloor ? "match" : "near_miss",
         match: {
           ...result,
           contactId: document.id,
@@ -74,7 +81,8 @@ async function loadPortfolioMatches(claims: SpherepathClaims): Promise<OwnedPort
     }
   }
   matches.sort((left, right) => right.match.score - left.match.score || right.match.coverage - left.match.coverage || right.match.portfolioItem.updatedAt - left.match.portfolioItem.updatedAt);
-  return matches.slice(0, 100);
+  // Each tier is capped on its own so a flood of near misses cannot push out real matches.
+  return [...matches.filter((item) => item.tier === "match").slice(0, 100), ...matches.filter((item) => item.tier === "near_miss").slice(0, 50)];
 }
 
 export const extractPortfolioText = onCall(callableOptions, async (request): Promise<{ draft: PortfolioItemDraft }> => {
@@ -121,10 +129,16 @@ export const listPortfolioItems = onCall(callableOptions, async (request): Promi
   return observeApiRequest("listPortfolioItems", envelope.requestId, async () => ({ portfolioItems: await loadOfficePortfolio(claims.officeId) }));
 });
 
-export const listPortfolioMatches = onCall(callableOptions, async (request): Promise<{ matches: PortfolioMatchRecord[] }> => {
+export const listPortfolioMatches = onCall(callableOptions, async (request): Promise<{ matches: PortfolioMatchRecord[]; nearMisses: PortfolioMatchRecord[] }> => {
   const claims = requireSpherepathClaims(request);
   const envelope = readApiEnvelope<undefined>(request.data);
-  return observeApiRequest("listPortfolioMatches", envelope.requestId, async () => ({ matches: (await loadPortfolioMatches(claims)).map((item) => item.match) }));
+  return observeApiRequest("listPortfolioMatches", envelope.requestId, async () => {
+    const scored = await loadPortfolioMatches(claims);
+    return {
+      matches: scored.filter((item) => item.tier === "match").map((item) => item.match),
+      nearMisses: scored.filter((item) => item.tier === "near_miss").map((item) => item.match),
+    };
+  });
 });
 
 export const listMatchNotifications = onCall(callableOptions, async (request): Promise<{ notifications: PortfolioMatchNotificationRecord[] }> => {
@@ -132,7 +146,8 @@ export const listMatchNotifications = onCall(callableOptions, async (request): P
   const envelope = readApiEnvelope<undefined>(request.data);
   return observeApiRequest("listMatchNotifications", envelope.requestId, async () => {
     const firestore = getFirestore();
-    const personalMatches = (await loadPortfolioMatches(claims)).filter((item) => item.ownerUid === claims.uid);
+    // Near misses are shown when asked for; they must never raise a notification.
+    const personalMatches = (await loadPortfolioMatches(claims)).filter((item) => item.ownerUid === claims.uid && item.tier === "match");
     const existingSnapshot = await firestore.collection("matchNotifications").where("recipientUid", "==", claims.uid).limit(200).get();
     const existing = new Map(existingSnapshot.docs.map((document) => [document.id, document.data()]));
     const now = Timestamp.now();

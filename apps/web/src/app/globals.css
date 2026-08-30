@@ -1235,3 +1235,10 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .earnings-bar { height: 6px; border-radius: 999px; background: var(--sunk); overflow: hidden; }
 .earnings-bar > span { display: block; height: 100%; border-radius: 999px; background: var(--deed); }
 @media (max-width: 720px) { .earnings-heading { flex-direction: column; } .earnings-target { justify-items: start; } }
+
+.near-miss-block { display: grid; gap: var(--space-lg); }
+.near-miss-heading { display: grid; gap: 2px; }
+.near-miss-heading .eyebrow { color: var(--warm); }
+.near-miss-heading .context-sentence { margin: 0; }
+.match-card.is-near-miss { border-color: var(--warm); background: color-mix(in srgb, var(--warm-bg) 45%, var(--card)); }
+.match-card.is-near-miss .match-progress > i { background: var(--warm); }

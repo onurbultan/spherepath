@@ -50,10 +50,11 @@ describe("portfolio matching", () => {
     expect(result.reasons.find((reason) => reason.key === "must_have")?.status).toBe("match");
   });
 
-  it("rejects items over budget", () => {
+  it("marks an over-budget item as a miss without hiding it from the advisor", () => {
     const result = scorePortfolioItem(demand, { ...item, askingPrice: { amount: 5_500_000, currency: "TRY" } });
-    expect(result.eligible).toBe(false);
     expect(result.reasons.find((reason) => reason.key === "budget")?.status).toBe("mismatch");
+    expect(result.softMismatchKeys).toContain("budget");
+    expect(result.eligible).toBe(true);
   });
 
   it("does not reject a candidate when a portfolio fact is unknown", () => {
@@ -84,5 +85,35 @@ describe("portfolio matching", () => {
     );
     expect(result.eligible).toBe(true);
     expect(result.reasons.find((reason) => reason.key === "deal_breaker")?.status).toBe("match");
+  });
+});
+
+describe("near misses stay visible", () => {
+  it("keeps a portfolio that only overshoots the budget, and says by how much", () => {
+    const result = scorePortfolioItem(demand, { ...item, askingPrice: { amount: 5_400_000, currency: "TRY" } });
+    expect(result.eligible).toBe(true);
+    expect(result.softMismatchKeys).toContain("budget");
+    expect(result.reasons.find((reason) => reason.key === "budget")?.detail).toContain("%8");
+  });
+
+  it("keeps a portfolio in a neighbouring district instead of dropping it", () => {
+    const result = scorePortfolioItem({ ...demand, preferredLocations: ["Kadıköy"] }, { ...item, location: "Moda" });
+    expect(result.eligible).toBe(true);
+    expect(result.softMismatchKeys).toContain("location");
+  });
+
+  it("scores a near miss below a clean match so ordering still favours the real one", () => {
+    const clean = scorePortfolioItem(demand, item);
+    const near = scorePortfolioItem(demand, { ...item, askingPrice: { amount: 5_400_000, currency: "TRY" } });
+    expect(near.score).toBeLessThan(clean.score);
+  });
+
+  it("still disqualifies a genuinely incompatible portfolio", () => {
+    const wrongType = scorePortfolioItem(demand, { ...item, propertyType: "apartment", areaM2: 900, landAreaM2: null });
+    expect(wrongType.eligible).toBe(false);
+    const wrongTransaction = scorePortfolioItem({ ...demand, transactionType: "rent" }, item);
+    expect(wrongTransaction.eligible).toBe(false);
+    const dealBreaker = scorePortfolioItem({ ...demand, dealBreakers: ["Hisse tapu"] }, item);
+    expect(dealBreaker.eligible).toBe(false);
   });
 });

@@ -79,11 +79,21 @@ export interface PortfolioMatchReason {
   detail: string;
 }
 
+/**
+ * Only these three make a portfolio genuinely unshowable: a buyer cannot be sent a
+ * rental, land is not a flat, and a deal breaker is an answer the contact already gave.
+ * Everything else -- price, rooms, area, district, a missing must-have -- is a matter of
+ * degree the advisor should judge, so it lowers the score instead of hiding the record.
+ */
+export const disqualifyingReasonKeys = ["transaction", "property_type", "deal_breaker"] as const satisfies readonly MatchReasonKey[];
+
 export interface PortfolioMatchScore {
   eligible: boolean;
   score: number;
   coverage: number;
   reasons: PortfolioMatchReason[];
+  /** Criteria that missed without disqualifying the portfolio. */
+  softMismatchKeys: MatchReasonKey[];
 }
 
 export interface PortfolioMatchRecord extends PortfolioMatchScore {
@@ -246,11 +256,11 @@ export function scorePortfolioItem(preferences: PropertyPreferences, item: Portf
 
   if (!preferences.preferredLocations.length) addReason(reasons, "location", "unknown", "Talepte bölge belirtilmemiş.");
   else if (preferences.preferredLocations.some((location) => overlaps(location, item.location))) addReason(reasons, "location", "match", `${item.location} aranan bölgelerle örtüşüyor.`);
-  else { hardMismatch = true; addReason(reasons, "location", "mismatch", `${item.location} aranan bölgelerle örtüşmüyor.`); }
+  else addReason(reasons, "location", "mismatch", `${item.location} aranan bölgelerle örtüşmüyor.`);
 
   const budget = preferences.budgetRange;
   if (!budget || !item.askingPrice || budget.currency !== item.askingPrice.currency) addReason(reasons, "budget", "unknown", "Fiyat ve bütçe aynı para biriminde karşılaştırılamıyor.");
-  else if (budget.max !== null && item.askingPrice.amount > budget.max) { hardMismatch = true; addReason(reasons, "budget", "mismatch", "Fiyat, azami bütçenin üzerinde."); }
+  else if (budget.max !== null && item.askingPrice.amount > budget.max) addReason(reasons, "budget", "mismatch", `Fiyat, azami bütçeyi %${Math.round(((item.askingPrice.amount - budget.max) / budget.max) * 100)} aşıyor.`);
   else addReason(reasons, "budget", "match", "Fiyat belirtilen bütçe içinde.");
 
   const requiredBedrooms = preferences.bedroomCountMin ?? preferences.roomCountMin;
@@ -258,20 +268,20 @@ export function scorePortfolioItem(preferences: PropertyPreferences, item: Portf
   if (requiredBedrooms === null && requiredLivingRooms === null) addReason(reasons, "rooms", "unknown", "Talepte oda alt sınırı belirtilmemiş.");
   else if (item.bedroomCount === null || (requiredLivingRooms !== null && item.livingRoomCount === null)) addReason(reasons, "rooms", "unknown", "Portföyün oda bilgisi eksik.");
   else if (item.bedroomCount >= (requiredBedrooms ?? 0) && (item.livingRoomCount ?? 0) >= (requiredLivingRooms ?? 0)) addReason(reasons, "rooms", "match", "Oda düzeni talebi karşılıyor.");
-  else { hardMismatch = true; addReason(reasons, "rooms", "mismatch", "Oda düzeni asgari talebi karşılamıyor."); }
+  else addReason(reasons, "rooms", "mismatch", `Oda düzeni asgari talebi karşılamıyor (${item.bedroomCount ?? 0}+${item.livingRoomCount ?? 0}, istenen ${requiredBedrooms ?? 0}+${requiredLivingRooms ?? 0}).`);
 
   const comparableArea = item.propertyType === "land" ? item.landAreaM2 : item.areaM2;
   if (preferences.areaMinM2 === null && preferences.areaMaxM2 === null) addReason(reasons, "area", "unknown", "Talepte alan sınırı belirtilmemiş.");
   else if (comparableArea === null) addReason(reasons, "area", "unknown", "Portföyün alan bilgisi eksik.");
   else if ((preferences.areaMinM2 === null || comparableArea >= preferences.areaMinM2) && (preferences.areaMaxM2 === null || comparableArea <= preferences.areaMaxM2)) addReason(reasons, "area", "match", "Alan ölçüsü talep aralığında.");
-  else { hardMismatch = true; addReason(reasons, "area", "mismatch", "Alan ölçüsü talep aralığının dışında."); }
+  else addReason(reasons, "area", "mismatch", `Alan ölçüsü talep aralığının dışında (${comparableArea} m²).`);
 
   if (!preferences.mustHaves.length) addReason(reasons, "must_have", "unknown", "Zorunlu özellik belirtilmemiş.");
   else {
     const checks = preferences.mustHaves.map((requirement) => ({ requirement, ...hasKnownRequirement(item, requirement) }));
     const missing = checks.filter((check) => check.known && !check.present);
     const matched = checks.filter((check) => check.present);
-    if (missing.length) { hardMismatch = true; addReason(reasons, "must_have", "mismatch", `Eksik zorunlu özellik: ${missing.map((item) => item.requirement).join(", ")}.`); }
+    if (missing.length) addReason(reasons, "must_have", "mismatch", `Eksik zorunlu özellik: ${missing.map((item) => item.requirement).join(", ")}.`);
     else if (matched.length === checks.length) addReason(reasons, "must_have", "match", "Bilinen zorunlu özelliklerin tamamı karşılanıyor.");
     else addReason(reasons, "must_have", "unknown", "Bazı zorunlu özellikler için portföy bilgisi eksik.");
   }
@@ -289,8 +299,10 @@ export function scorePortfolioItem(preferences: PropertyPreferences, item: Portf
   const assessedWeight = assessed.reduce((sum, reason) => sum + reason.weight, 0);
   const matchedWeight = assessed.filter((reason) => reason.status === "match").reduce((sum, reason) => sum + reason.weight, 0);
   const totalWeight = reasons.reduce((sum, reason) => sum + reason.weight, 0);
+  const disqualifying = new Set<MatchReasonKey>(disqualifyingReasonKeys);
   return {
     eligible: !hardMismatch,
+    softMismatchKeys: reasons.filter((reason) => reason.status === "mismatch" && !disqualifying.has(reason.key)).map((reason) => reason.key),
     // Unknown criteria are not treated as matches. This keeps a partially known
     // candidate from being presented as a misleading 100% fit.
     score: totalWeight ? Math.round((matchedWeight / totalWeight) * 100) : 0,

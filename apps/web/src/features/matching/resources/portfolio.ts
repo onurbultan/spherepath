@@ -13,8 +13,10 @@ export async function listPortfolioItems(): Promise<PortfolioItemRecord[]> {
   return (await apiClient.query<undefined, { portfolioItems: PortfolioItemRecord[] }>("listPortfolioItems", undefined)).portfolioItems;
 }
 
-export async function listPortfolioMatches(): Promise<PortfolioMatchRecord[]> {
-  return (await apiClient.query<undefined, { matches: PortfolioMatchRecord[] }>("listPortfolioMatches", undefined)).matches;
+export interface PortfolioMatchResult { matches: PortfolioMatchRecord[]; nearMisses: PortfolioMatchRecord[] }
+export async function listPortfolioMatches(): Promise<PortfolioMatchResult> {
+  const result = await apiClient.query<undefined, PortfolioMatchResult>("listPortfolioMatches", undefined);
+  return { matches: result.matches ?? [], nearMisses: result.nearMisses ?? [] };
 }
 
 export async function listMatchNotifications(): Promise<PortfolioMatchNotificationRecord[]> {
