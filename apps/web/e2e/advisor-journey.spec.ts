@@ -57,6 +57,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await page.getByRole("button", { name: "Kaydet" }).click();
   await expect(page.getByText("Bahçeli satılık bir ev duydum.")).toBeVisible();
   await expect(page.getByText(/Nerede\?/)).toBeVisible();
+  await expect(page.getByText("Hızlı not · Sınıflandırıldı", { exact: true })).toBeVisible();
   await page.locator(".location-prompt").click();
   const locationInput = page.getByRole("textbox", { name: "Konum" });
   const locationInputMetrics = await locationInput.evaluate((input) => {
@@ -198,13 +199,17 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   expect(Math.abs(modeTabRects[0]!.height - modeTabRects[1]!.height)).toBeLessThanOrEqual(1);
   expect(modeTabRects[0]!.height).toBeLessThanOrEqual(46);
   if ((page.viewportSize()?.width ?? 1_000) <= 620) {
+    const originalViewport = page.viewportSize()!;
+    await page.setViewportSize({ width: 500, height: originalViewport.height });
     const tabsWidth = (await captureModeTabs.boundingBox())!.width;
     const voiceCardWidth = (await page.locator(".voice-card").boundingBox())!.width;
     const newContactButtonRect = (await newContactButton.boundingBox())!;
     const captureModeTabsRect = (await captureModeTabs.boundingBox())!;
     expect(Math.abs(tabsWidth - voiceCardWidth)).toBeLessThanOrEqual(1);
     expect(Math.abs(newContactButtonRect.width - tabsWidth)).toBeLessThanOrEqual(1);
-    expect(Math.abs(newContactButtonRect.height - captureModeTabsRect.height)).toBeLessThanOrEqual(2);
+    expect(newContactButtonRect.height).toBeGreaterThanOrEqual(44);
+    expect(newContactButtonRect.height).toBeLessThan(captureModeTabsRect.height);
+    await page.setViewportSize(originalViewport);
   }
   const writtenNoteToggle = page.getByText("Ses yerine yazılı not kullan", { exact: true });
   const writtenNoteToggleMetrics = await writtenNoteToggle.evaluate((summary) => {
