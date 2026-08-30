@@ -10,13 +10,19 @@ interface SensitivePattern {
   pattern: RegExp;
 }
 
+// Turkish is agglutinative, so these roots must still match their inflected forms
+// ("hastalığı", "dinine", "Lazlar"). The negative lookaheads carve out everyday words
+// that merely share a prefix with a sensitive root -- "lazım", "Türkiye", "Rumeli",
+// "hastane", "dinlenme" -- which would otherwise be masked as special-category data.
 const sensitivePatterns: SensitivePattern[] = [
-  { category: "health", pattern: /\b(hastalık|hasta|kanser|tansiyon|diyabet|depresyon|psikiyatr|engelli|hamile|ilaç|ameliyat|sağlık)\w*/iu },
-  { category: "religion", pattern: /\b(müslüman|hristiyan|yahudi|alevi|sünni|ateist|din(?:i|e|den)?|mezhep|inanç)\w*/iu },
-  { category: "ethnicity", pattern: /\b(etnik|ırk|kürt|türk|rum|ermeni|laz|çerkes)\w*/iu },
-  { category: "political_opinion", pattern: /\b(siyasi|politik|parti(?:li|ye|den)?|muhafazakâr|milliyetçi|sosyalist|liberal)\w*/iu },
+  { category: "health", pattern: /\b(hastalık|hasta(?!ne)|kanser|tansiyon|diyabet|depresyon|psikiyatr|engelli|hamile|ilaç|ameliyat|sağlık)\w*/iu },
+  { category: "religion", pattern: /\b(müslüman|hristiyan|yahudi|alevi|sünni|ateist|din(?!le|len|am|az|gil)(?:i|e|den)?|mezhep|inanç)\w*/iu },
+  { category: "ethnicity", pattern: /\b(etnik|ırk|kürt|türk(?!iye|çe|iyat)|rum(?!eli|uz)|ermeni|laz(?!ım|er)|çerkes)\w*/iu },
+  { category: "political_opinion", pattern: /\b(siyasi|politik|parti(?:li|ye|den)?|muhafazakâr|muhafazakar|milliyetçi|sosyalist|liberal)\w*/iu },
   { category: "union_membership", pattern: /\b(sendika|sendikalı|sendika üyesi)\w*/iu },
 ];
+
+export const sensitiveMask = "[HASSAS İÇERİK MASKELENDİ]";
 
 export interface MaskedTranscript {
   text: string;
@@ -25,37 +31,57 @@ export interface MaskedTranscript {
 }
 
 export function maskSensitiveTranscript(rawTranscript: string): MaskedTranscript {
-  const sentences = rawTranscript
-    .replace(/\s+/gu, " ")
-    .trim()
-    .match(/[^.!?]+[.!?]?/gu) ?? [];
+  const source = rawTranscript.replace(/\s+/gu, " ").trim();
+  const hits: Array<{ start: number; end: number; category: SensitiveDataCategory }> = [];
+
+  for (const { category, pattern } of sensitivePatterns) {
+    const scanner = new RegExp(pattern.source, `${pattern.flags}g`);
+    for (const match of source.matchAll(scanner)) {
+      if (match.index === undefined || !match[0]) continue;
+      hits.push({ start: match.index, end: match.index + match[0].length, category });
+    }
+  }
+  if (!hits.length) return { text: source, categories: [], maskedRanges: [] };
+
+  hits.sort((left, right) => left.start - right.start || left.end - right.end);
+  const spans: Array<{ start: number; end: number; categories: SensitiveDataCategory[] }> = [];
+  for (const hit of hits) {
+    const previous = spans.at(-1);
+    if (previous && hit.start <= previous.end) {
+      previous.end = Math.max(previous.end, hit.end);
+      if (!previous.categories.includes(hit.category)) previous.categories.push(hit.category);
+      continue;
+    }
+    spans.push({ start: hit.start, end: hit.end, categories: [hit.category] });
+  }
+
   const categories = new Set<SensitiveDataCategory>();
   const ranges: MaskedTranscript["maskedRanges"] = [];
   let text = "";
-
-  for (const rawSentence of sentences) {
-    const sentence = rawSentence.trim();
-    const matches = sensitivePatterns.filter(({ pattern }) => pattern.test(sentence));
-    const replacement = matches.length > 0 ? "[HASSAS İÇERİK MASKELENDİ]" : sentence;
-    if (text) text += " ";
+  let cursor = 0;
+  for (const span of spans) {
+    text += source.slice(cursor, span.start);
     const start = text.length;
-    text += replacement;
-    if (matches.length > 0) {
-      for (const match of matches) {
-        categories.add(match.category);
-        ranges.push({ category: match.category, start, end: text.length });
-      }
+    text += sensitiveMask;
+    for (const category of span.categories) {
+      categories.add(category);
+      ranges.push({ category, start, end: text.length });
     }
+    cursor = span.end;
   }
+  text += source.slice(cursor);
 
   return { text, categories: [...categories], maskedRanges: ranges };
 }
 
+// The transcript keeps its surrounding facts, but an extracted value is stored on the
+// contact, so any sensitive hit drops the whole value rather than leaving a fragment.
 function safeExtractedText(value: string | null): string | null {
   if (value === null) return null;
   const masked = maskSensitiveTranscript(value);
+  if (masked.maskedRanges.length > 0) return null;
   const text = masked.text.trim();
-  return text && text !== "[HASSAS İÇERİK MASKELENDİ]" ? text : null;
+  return text ? text : null;
 }
 
 function safeExtractedList(values: string[]): string[] {
