@@ -25,10 +25,12 @@ const statusLabels = {
 } as const;
 
 const messageFrom = (error: unknown) => error instanceof Error ? error.message : "WhatsApp grup işlemi tamamlanamadı.";
+const groupsApiEligibilityUrl = "https://developers.facebook.com/documentation/business-messaging/whatsapp/groups/get-started/";
+const isGroupsApiEligibilityError = (message: string | null) => Boolean(message && (message.includes("#131215") || message.includes("not eligible to access Groups APIs")));
 const readableMetaError = (message: string | null) => {
   if (!message) return null;
-  if (message.includes("#131215") || message.includes("not eligible to access Groups APIs")) {
-    return "Bu WhatsApp telefon numarası Groups API kullanımına uygun değil. Meta tarafından Groups API erişimi verilen bir üretim numarası bağlayın.";
+  if (isGroupsApiEligibilityError(message)) {
+    return "Meta bu numarayı Groups API için henüz uygun bulmuyor. Groups API yalnız Official Business Account (OBA) numaralarında açılır. İşletme doğrulamasını tamamlayın, numarayı WhatsApp Business Platform'da en az 30 gün kullanın ve WhatsApp Manager'dan OBA başvurusu yapın.";
   }
   return message;
 };
@@ -100,6 +102,7 @@ export function WhatsAppGroupSettingsCard() {
         {integration.inviteLink ? <div className="inline-actions"><a className="secondary-action inline-link" href={integration.inviteLink} rel="noreferrer" target="_blank"><ExternalLink size={16} /> Davet bağlantısını aç</a><button className="secondary-action inline-action" onClick={() => void copy(integration.inviteLink!, "invite")} type="button">{copied === "invite" ? <Check size={15} /> : <Copy size={15} />} Kopyala</button></div> : null}
         {integration.lastMessageAt ? <p className="privacy-hint">Son grup mesajı: {new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(integration.lastMessageAt)}</p> : null}
         {integration.lastError ? <p className="form-error">{readableMetaError(integration.lastError)}</p> : null}
+        {isGroupsApiEligibilityError(integration.lastError) ? <a className="secondary-action inline-link" href={groupsApiEligibilityUrl} rel="noreferrer" target="_blank"><ExternalLink size={16} /> Meta uygunluk koşullarını aç</a> : null}
       </SpCard>
     </div>
   </section>;

@@ -875,6 +875,26 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .settings-subnav a em { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10px; font-style: normal; }
 .settings-subnav button:disabled { opacity: .55; cursor: not-allowed; }
 .privacy-policy-list { margin: 0; padding-left: 20px; display: grid; gap: var(--space-md); color: var(--text-secondary); line-height: 1.5; }
+
+.legal-shell { min-height: 100vh; padding: clamp(24px, 5vw, 72px) clamp(16px, 4vw, 40px); background: var(--sunk); }
+.legal-card { width: min(860px, 100%); margin: 0 auto; padding: clamp(24px, 5vw, 64px); border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--background); box-shadow: var(--shadow-card); }
+.legal-header { padding-bottom: var(--space-xl); border-bottom: 1px solid var(--line); }
+.legal-header h1 { max-width: 720px; margin: var(--space-sm) 0 var(--space-md); font-size: clamp(32px, 6vw, 54px); line-height: 1.02; }
+.legal-header > p:last-child { margin: 0; color: var(--text-secondary); }
+.legal-brand { display: inline-flex; margin-bottom: var(--space-xl); color: var(--deed); font-family: var(--font-zilla-slab), serif; font-size: 24px; font-weight: 700; text-decoration: none; }
+.legal-card section { padding-top: var(--space-xl); }
+.legal-card section h2 { margin: 0 0 var(--space-sm); font-size: 23px; }
+.legal-card section p { margin: 0; color: var(--text-secondary); font-size: 16px; line-height: 1.7; }
+.legal-card section p + p { margin-top: var(--space-md); }
+.legal-card section ul, .legal-card section ol { margin: 0; padding-left: 24px; display: grid; gap: var(--space-sm); color: var(--text-secondary); font-size: 16px; line-height: 1.65; }
+.legal-card a { color: var(--deed); text-underline-offset: 3px; }
+.legal-footer { margin-top: calc(var(--space-xl) * 1.5); padding-top: var(--space-lg); border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: var(--space-lg); }
+
+@media (max-width: 640px) {
+  .legal-shell { padding: 0; }
+  .legal-card { border: 0; border-radius: 0; box-shadow: none; }
+  .legal-footer { display: grid; gap: var(--space-md); }
+}
 .settings-main { min-width: 0; display: grid; gap: 14px; }
 .settings-sections { display: grid; gap: 14px; }
 .settings-sections-footer { display: flex; justify-content: flex-end; }
