@@ -9,6 +9,7 @@ import {
 } from "../../../packages/shared/src/index.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 import { requireSpherepathClaims, type SpherepathClaims } from "../auth/claims.js";
+import { contactPhoneFields } from "../contacts/phone-index.js";
 
 const callableOptions = { region: "europe-west8" as const, cors: true, maxInstances: 10, memory: "256MiB" as const, timeoutSeconds: 60 };
 
@@ -131,8 +132,7 @@ export const resolveDataSubjectRequest = onCall(callableOptions, async (request)
       const corrected = parsed.data.correctedContact;
       transaction.update(contactRef, {
         fullName: corrected.fullName,
-        phone: corrected.phone || null,
-        phoneHash: null,
+        ...contactPhoneFields(corrected.phone),
         metAtPlace: corrected.metAtPlace || null,
         source: corrected.source,
         roles: [corrected.role],

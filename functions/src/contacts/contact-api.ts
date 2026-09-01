@@ -12,6 +12,8 @@ import {
 } from "../../../packages/shared/src/index";
 import { requireSpherepathClaims, type SpherepathClaims } from "../auth/claims.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
+import { contactPhoneFields } from "./phone-index.js";
+import { toStoredContact } from "./contact-store.js";
 
 interface ContactRecord extends Contact {
   id: string;
@@ -95,33 +97,6 @@ function toContactRecord(id: string, data: DocumentData): ContactRecord {
   };
 }
 
-function toStoredContact(contact: Contact) {
-  return {
-    ...contact,
-    metAt: timestamp(contact.metAt),
-    createdAt: timestamp(contact.createdAt),
-    updatedAt: timestamp(contact.updatedAt),
-    deletedAt: timestamp(contact.deletedAt),
-    relationship: {
-      ...contact.relationship,
-      lastTouchAt: timestamp(contact.relationship.lastTouchAt),
-      nextActionAt: timestamp(contact.relationship.nextActionAt),
-    },
-    memory: {
-      ...contact.memory,
-      updatedAt: timestamp(contact.memory.updatedAt),
-    },
-    privacy: {
-      ...contact.privacy,
-      purposes: Object.fromEntries(Object.entries(contact.privacy.purposes).map(([key, purpose]) => [key, { ...purpose, startedAt: Timestamp.fromMillis(purpose.startedAt) }])),
-      noticeAt: timestamp(contact.privacy.noticeAt),
-      marketingConsentAt: timestamp(contact.privacy.marketingConsentAt),
-      marketingWithdrawnAt: timestamp(contact.privacy.marketingWithdrawnAt),
-      iysCheckedAt: timestamp(contact.privacy.iysCheckedAt),
-      deletionRequestedAt: timestamp(contact.privacy.deletionRequestedAt),
-    },
-  };
-}
 
 function toInteractionRecord(id: string, data: DocumentData): ContactInteractionRecord {
   return {
@@ -229,7 +204,7 @@ export const createContact = onCall(callableOptions(), async (request): Promise<
     const commandRef = firestore.collection("commands").doc(envelope.commandId!);
     const contactRef = firestore.collection("contacts").doc();
     const now = Date.now();
-    const contact = createContactEntity(draft, { officeId: claims.officeId, ownerUid: claims.uid }, now);
+    const contact = { ...createContactEntity(draft, { officeId: claims.officeId, ownerUid: claims.uid }, now), ...contactPhoneFields(draft.phone) };
     const contactId = await firestore.runTransaction(async (transaction) => {
       const receipt = await transaction.get(commandRef);
       if (receipt.exists) return validateCommandReceipt(receipt.data()!, claims, "createContact");
@@ -274,8 +249,7 @@ export const updateContact = onCall(callableOptions(), async (request): Promise<
     const now = Timestamp.now();
     transaction.update(reference, {
       fullName: draft.fullName,
-      phone: draft.phone || null,
-      phoneHash: null,
+      ...contactPhoneFields(draft.phone),
       metAtPlace: draft.metAtPlace || null,
       source: draft.source,
       roles: [draft.role],

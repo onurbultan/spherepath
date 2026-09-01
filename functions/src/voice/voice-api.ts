@@ -30,10 +30,19 @@ import { extractVoiceDraftWithVertex } from "./vertex-extraction.js";
 import { normalizeVoiceActionTiming } from "./temporal.js";
 import { normalizeVoiceExtraction } from "./normalization.js";
 import { buildVoiceDiscardQualitySnapshot, isPossiblyIncompleteTranscription } from "./quality.js";
-import { emergencySpeechTarget, fallbackSpeechTarget, primarySpeechTarget, type SpeechTarget } from "./transcription-config.js";
+import {
+  emergencySpeechTarget,
+  fallbackSpeechTarget,
+  primarySpeechTarget,
+  separateChannelRecognition,
+  syncRecognitionLimitMs,
+  type SpeechTarget,
+} from "./transcription-config.js";
 
 const speechClients = new Map<string, speech.SpeechClient>();
-const processingLeaseMs = 150_000;
+// The lease has to outlast the longest processing run, otherwise a batch
+// transcription still in flight looks abandoned and is picked up twice.
+const processingLeaseMs = 600_000;
 
 function timestamp(value: number | null): Timestamp | null {
   return value === null ? null : Timestamp.fromMillis(value);
@@ -59,7 +68,9 @@ function voiceView(id: string, data: FirebaseFirestore.DocumentData): VoiceNoteV
   return {
     id,
     contactId: data.contactId as string,
-    inputMode: data.inputMode === "manual_text" ? "manual_text" : data.inputMode === "text_test" ? "text_test" : "audio",
+    inputMode: data.inputMode === "manual_text" ? "manual_text"
+      : data.inputMode === "text_test" ? "text_test"
+        : data.inputMode === "call" ? "call" : "audio",
     status: data.status as VoiceNoteStatus,
     durationMs: data.durationMs as number,
     maskedTranscript,
@@ -97,31 +108,59 @@ function transcriptWordCount(value: string): number {
   return text ? text.split(/\s+/u).length : 0;
 }
 
+type SpeechResults = Array<{ alternatives?: Array<{ transcript?: string | null } | null> | null } | null>;
+
+function joinTranscript(results: SpeechResults | null | undefined): string {
+  return (results ?? [])
+    .map((result) => result?.alternatives?.[0]?.transcript?.trim() ?? "")
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+}
+
 async function transcribe(storagePath: string, durationMs: number): Promise<TranscriptionResult> {
   const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
   if (!projectId) throw new Error("speech_project_missing");
-  const [content] = await getStorage().bucket().file(storagePath).download();
+  const bucket = getStorage().bucket();
+  // A phone call runs far past the synchronous limit, so long audio is handed to
+  // batchRecognize by object reference instead of being downloaded and inlined.
+  const useBatch = durationMs > syncRecognitionLimitMs;
+  const gcsUri = `gs://${bucket.name}/${storagePath}`;
+  const [content] = useBatch ? [null] : await bucket.file(storagePath).download();
   const recognize = async (target: SpeechTarget) => {
     let client = speechClients.get(target.apiEndpoint);
     if (!client) {
       client = new speech.SpeechClient({ apiEndpoint: target.apiEndpoint });
       speechClients.set(target.apiEndpoint, client);
     }
-    const [response] = await client.recognize({
-      recognizer: `projects/${projectId}/locations/${target.location}/recognizers/_`,
-      config: {
-        autoDecodingConfig: {},
-        languageCodes: ["tr-TR"],
-        model: target.model,
-        features: { enableAutomaticPunctuation: true },
+    const recognizer = `projects/${projectId}/locations/${target.location}/recognizers/_`;
+    const config = {
+      autoDecodingConfig: {},
+      languageCodes: ["tr-TR"],
+      model: target.model,
+      features: {
+        enableAutomaticPunctuation: true,
+        ...(separateChannelRecognition && useBatch
+          ? { multiChannelMode: "SEPARATE_RECOGNITION_PER_CHANNEL" as const }
+          : {}),
       },
-      content,
+    };
+    if (!useBatch) {
+      const [response] = await client.recognize({ recognizer, config, content });
+      return joinTranscript(response.results as SpeechResults);
+    }
+    const [operation] = await client.batchRecognize({
+      recognizer,
+      config,
+      files: [{ uri: gcsUri }],
+      // Inline output keeps the transcript in the operation result, so no
+      // second bucket has to be provisioned or cleaned up afterwards.
+      recognitionOutputConfig: { inlineResponseConfig: {} },
     });
-    return (response.results ?? [])
-      .map((result) => result.alternatives?.[0]?.transcript?.trim() ?? "")
-      .filter(Boolean)
-      .join(" ")
-      .trim();
+    const [response] = await operation.promise();
+    const fileResult = response.results?.[gcsUri];
+    if (fileResult?.error?.message) throw new Error(fileResult.error.message);
+    return joinTranscript(fileResult?.transcript?.results as SpeechResults);
   };
 
   let target: SpeechTarget = primarySpeechTarget;
@@ -189,7 +228,7 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
     // Written notes are processed synchronously by their callable with a raw
     // transcript. The Firestore create trigger can race that callable, but it
     // must never try to download a non-existent audio object.
-    const isAudioNote = data.inputMode === "audio"
+    const isAudioNote = data.inputMode === "audio" || data.inputMode === "call"
       || (data.inputMode == null && typeof data.storagePath === "string" && data.storagePath.length > 0);
     if (!isAudioNote && rawOverride === undefined) return null;
     if ((data.emulatorImmediate === true || data.textTestImmediate === true || data.textImmediate === true) && rawOverride === undefined) return null;
@@ -512,12 +551,12 @@ export const registerInteractionText = onCall(
 );
 
 export const processVoiceNote = onDocumentCreated(
-  { document: "voiceNotes/{voiceNoteId}", region: "europe-west8", retry: true, memory: "512MiB", timeoutSeconds: 120 },
+  { document: "voiceNotes/{voiceNoteId}", region: "europe-west8", retry: true, memory: "512MiB", timeoutSeconds: 540 },
   async (event) => processVoiceNoteDocument(event.params.voiceNoteId, event.id),
 );
 
 export const retryVoiceNoteProcessing = onCall(
-  { region: "europe-west8", cors: true, maxInstances: 10, memory: "512MiB", timeoutSeconds: 180 },
+  { region: "europe-west8", cors: true, maxInstances: 10, memory: "512MiB", timeoutSeconds: 540 },
   async (request): Promise<{ voiceNoteId: string }> => {
     const claims = requireSpherepathClaims(request);
     const envelope = readApiEnvelope<unknown>(request.data, { command: true });
@@ -583,17 +622,18 @@ export const getLatestReviewableVoiceNote = onCall(
     const claims = requireSpherepathClaims(request);
     const envelope = readApiEnvelope<unknown>(request.data);
     return observeApiRequest("getLatestReviewableVoiceNote", envelope.requestId, async () => {
+      // Filtering in memory over an unordered page silently loses the newest note
+      // once an advisor has more than a page of them, which call volume reaches in
+      // days. The index does the work instead.
       const snapshot = await getFirestore()
         .collection("voiceNotes")
+        .where("officeId", "==", claims.officeId)
         .where("ownerUid", "==", claims.uid)
-        .limit(100)
+        .where("status", "in", ["queued", "processing", "needs_review"])
+        .orderBy("createdAt", "desc")
+        .limit(1)
         .get();
-      const note = snapshot.docs
-        .filter((document) => {
-          const data = document.data();
-          return data.officeId === claims.officeId && ["queued", "processing", "needs_review"].includes(data.status as string);
-        })
-        .sort((left, right) => milliseconds(right.data().createdAt) - milliseconds(left.data().createdAt))[0];
+      const note = snapshot.docs[0];
       return { voiceNote: note ? voiceView(note.id, note.data()) : null };
     });
   },

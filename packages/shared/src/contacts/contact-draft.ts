@@ -11,6 +11,7 @@ export const contactSources = [
   "door",
   "area",
   "address_book",
+  "inbound_call",
   "other",
 ] as const satisfies readonly ContactSource[];
 
@@ -34,6 +35,7 @@ export const contactSourceLabels: Record<ContactSource, string> = {
   door: "Kapı çalışması",
   area: "Bölge çalışması",
   address_book: "Rehber",
+  inbound_call: "Gelen arama",
   other: "Diğer",
 };
 
@@ -71,6 +73,8 @@ export function createContact(draft: ContactDraft, tenant: TenantOwned, now: num
   return {
     ...tenant,
     phone: parsed.phone || null,
+    // Deriving the lookup key needs a digest, which this package cannot reach;
+    // the trusted API fills it in from `normalizePhone` before the contact is stored.
     phoneHash: null,
     fullName: parsed.fullName,
     label: null,

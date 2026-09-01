@@ -11,6 +11,7 @@ export type ContactSource =
   | "door"
   | "area"
   | "address_book"
+  | "inbound_call"
   | "other";
 export type ContactRole =
   | "buyer"

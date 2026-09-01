@@ -11,7 +11,8 @@ import { opportunityDraftSchema } from "../opportunities/opportunity-draft.js";
 
 export const voiceNoteStatuses = ["queued", "processing", "needs_review", "confirmed", "discarded", "failed"] as const;
 export type VoiceNoteStatus = (typeof voiceNoteStatuses)[number];
-export type VoiceNoteInputMode = "audio" | "manual_text" | "text_test";
+/** `call` is a recording the switch produced, not something the advisor captured in the app. */
+export type VoiceNoteInputMode = "audio" | "call" | "manual_text" | "text_test";
 
 export const sensitiveDataCategories = [
   "health",

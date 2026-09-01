@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Archive, BookUser, ContactRound, LogOut, Pencil, Plus, Search, ShieldCheck, UserRoundPlus, X } from "lucide-react-native";
+import { Archive, BookUser, ContactRound, History, LogOut, Pencil, Plus, Search, ShieldCheck, UserRoundPlus, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   apiQueryKeys,
@@ -37,6 +37,8 @@ import { useSession } from "@/features/auth/resources/session";
 import { SpCard } from "@/shared/ui/SpCard";
 import { SpText } from "@/shared/ui/SpText";
 import { ContactPicker } from "@/shared/ui/ContactPicker";
+import { ContactCallAction } from "../components/ContactCallAction";
+import { ContactHistorySheet } from "../components/ContactHistorySheet";
 import { radius, space } from "@/shared/ui/tokens.generated";
 import { useSpTheme } from "@/shared/ui/theme";
 import { archiveContact, listContacts, saveContact, saveContactPrivacy, type ContactRecord } from "../resources/contacts";
@@ -75,6 +77,7 @@ export default function ContactsView() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [referralSource, setReferralSource] = useState<ContactRecord | null>(null);
+  const [historyContact, setHistoryContact] = useState<ContactRecord | null>(null);
   const [referredContactId, setReferredContactId] = useState("");
   const [referredLabel, setReferredLabel] = useState("");
   const [privacyEditing, setPrivacyEditing] = useState<ContactRecord | null>(null);
@@ -186,16 +189,17 @@ export default function ContactsView() {
           <SpCard style={styles.empty}><View style={[styles.largeIcon, { backgroundColor: theme.deedBg }]}><ContactRound color={theme.deed} size={24} /></View><SpText variant="title">İlk kişini ekle</SpText><SpText color="secondary">Ad veya tanımlayıcı, kaynak ve rol başlangıç için yeterli.</SpText></SpCard>
         ) : visibleContacts.length === 0 ? <SpCard><SpText color="secondary">Aramana uyan kişi bulunamadı.</SpText></SpCard> : visibleContacts.map((contact) => (
           <SpCard key={contact.id} style={styles.card}>
-            <View style={styles.contactTop}><View style={[styles.avatar, { backgroundColor: theme.deedBg }]}><SpText variant="title" color="deed">{(contact.fullName ?? contact.label ?? "?").slice(0, 1).toLocaleUpperCase("tr-TR")}</SpText></View><View style={styles.contactCopy}><SpText variant="title">{contact.fullName ?? contact.label}</SpText><SpText variant="bodySmall" color="secondary">{contact.phone ?? "Telefon eklenmedi"}</SpText></View></View>
+            <View style={styles.contactTop}><View style={[styles.avatar, { backgroundColor: theme.deedBg }]}><SpText variant="title" color="deed">{(contact.fullName ?? contact.label ?? "?").slice(0, 1).toLocaleUpperCase("tr-TR")}</SpText></View><View style={styles.contactCopy}><SpText variant="title">{contact.fullName ?? contact.label}</SpText><SpText variant="bodySmall" color="secondary">{contact.phone ?? "Telefon eklenmedi"}</SpText></View>{contact.phone ? <ContactCallAction contactId={contact.id} /> : null}</View>
             <View style={styles.chips}><View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="bodySmall" color="secondary">{contactRoleLabels[contact.roles[0] ?? "unknown"]}</SpText></View><View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="bodySmall" color="secondary">{contactSourceLabels[contact.source]}</SpText></View></View>
             <SpText variant="bodySmall" color="secondary">{contact.metAtPlace || "Tanışma yeri belirtilmedi"}</SpText>
             {(contact.memory?.keyThingsToRemember?.length ?? 0) > 0 ? <View style={[styles.memory, { backgroundColor: theme.deedBg }]}><SpText variant="caption" color="deed">HATIRLANACAKLAR</SpText>{contact.memory.keyThingsToRemember.slice(0, 3).map((item) => <SpText key={item} variant="caption" color="secondary">{item}</SpText>)}</View> : null}
-            <View style={styles.compliance}><View style={[styles.complianceChip, { backgroundColor: contact.privacy.noticeStatus === "completed" ? theme.deedBg : theme.askBg }]}><SpText variant="bodySmall" color={contact.privacy.noticeStatus === "completed" ? "deed" : "ask"}>{contact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</SpText></View>{contact.privacy.marketingConsent === "withdrawn" ? <View style={[styles.complianceChip, { backgroundColor: theme.askBg }]}><SpText variant="bodySmall" color="ask">İletişim istemiyor</SpText></View> : null}</View><View style={[styles.actions, { borderTopColor: theme.line }]}><Pressable onPress={() => { setReferralSource(contact); setError(null); }} style={styles.action}><UserRoundPlus color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Referans</SpText></Pressable><Pressable onPress={() => { setPrivacyEditing(contact); setPrivacy(privacyDraft(contact)); setError(null); }} style={styles.action}><ShieldCheck color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Uyum</SpText></Pressable><Pressable onPress={() => openEdit(contact)} style={styles.action}><Pencil color={theme.textSecondary} size={16} /></Pressable><Pressable onPress={() => remove(contact)} style={styles.action}><Archive color={theme.textSecondary} size={16} /></Pressable></View>
+            <View style={styles.compliance}><View style={[styles.complianceChip, { backgroundColor: contact.privacy.noticeStatus === "completed" ? theme.deedBg : theme.askBg }]}><SpText variant="bodySmall" color={contact.privacy.noticeStatus === "completed" ? "deed" : "ask"}>{contact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</SpText></View>{contact.privacy.marketingConsent === "withdrawn" ? <View style={[styles.complianceChip, { backgroundColor: theme.askBg }]}><SpText variant="bodySmall" color="ask">İletişim istemiyor</SpText></View> : null}</View><View style={[styles.actions, { borderTopColor: theme.line }]}><Pressable onPress={() => setHistoryContact(contact)} style={styles.action}><History color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Geçmiş</SpText></Pressable><Pressable onPress={() => { setReferralSource(contact); setError(null); }} style={styles.action}><UserRoundPlus color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Referans</SpText></Pressable><Pressable onPress={() => { setPrivacyEditing(contact); setPrivacy(privacyDraft(contact)); setError(null); }} style={styles.action}><ShieldCheck color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Uyum</SpText></Pressable><Pressable onPress={() => openEdit(contact)} style={styles.action}><Pencil color={theme.textSecondary} size={16} /></Pressable><Pressable onPress={() => remove(contact)} style={styles.action}><Archive color={theme.textSecondary} size={16} /></Pressable></View>
           </SpCard>
         ))}
         {visibleContacts.length < filteredContacts.length ? <Pressable accessibilityRole="button" onPress={() => setVisibleCount((count) => count + 40)} style={[styles.loadMore, { borderColor: theme.line }]}><SpText color="deed">40 kişi daha göster</SpText><SpText variant="caption" color="secondary">{visibleContacts.length}/{filteredContacts.length}</SpText></Pressable> : null}
       </ScrollView>
 
+      <ContactHistorySheet contactId={historyContact?.id ?? null} contactName={historyContact?.fullName ?? historyContact?.label ?? "Kişi"} onClose={() => setHistoryContact(null)} />
       <Modal animationType="slide" onRequestClose={() => setPanelOpen(false)} presentationStyle="pageSheet" visible={panelOpen}>
         <SafeAreaView style={[styles.safe, { backgroundColor: theme.card }]}>
           <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">

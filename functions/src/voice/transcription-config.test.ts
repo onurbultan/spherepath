@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { emergencySpeechTarget, fallbackSpeechTarget, primarySpeechTarget } from "./transcription-config.js";
+import {
+  emergencySpeechTarget,
+  fallbackSpeechTarget,
+  primarySpeechTarget,
+  separateChannelRecognition,
+  syncRecognitionLimitMs,
+} from "./transcription-config.js";
 
 describe("voice transcription configuration", () => {
   it("uses the EU multi-region endpoint and recognizer for Chirp 3", () => {
@@ -21,5 +27,13 @@ describe("voice transcription configuration", () => {
       location: "global",
       apiEndpoint: "speech.googleapis.com",
     });
+  });
+
+  it("keeps the synchronous limit under the minute the recognize call accepts", () => {
+    expect(syncRecognitionLimitMs).toBeLessThan(60_000);
+  });
+
+  it("leaves per-channel recognition off until recordings actually arrive in stereo", () => {
+    expect(separateChannelRecognition).toBe(false);
   });
 });
