@@ -349,6 +349,15 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
   border-color: var(--focus); outline: 0; box-shadow: 0 0 0 3px var(--focus-halo);
 }
 .form-stack input:disabled, .capture-form input:disabled, .settings-card input:disabled { opacity: .55; cursor: not-allowed; background: var(--background); }
+
+/* Grouped phone and price fields: digits line up so a misread zero is visible. */
+.money-field { position: relative; display: block; }
+.money-field > input { padding-right: 46px; }
+.money-field > input, input[inputmode="numeric"], input[inputmode="tel"] { font-variant-numeric: tabular-nums; }
+.money-field-currency {
+  position: absolute; inset-block: 0; right: 11px; display: flex; align-items: center;
+  color: var(--text-secondary); font-size: 12px; font-weight: 700; pointer-events: none;
+}
 .contact-combobox > .contact-combobox-input,
 .contact-combobox > .contact-combobox-input:hover,
 .contact-combobox > .contact-combobox-input:focus {

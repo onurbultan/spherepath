@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizePhone } from "./phone.js";
+import { formatPhoneAsTyped, normalizePhone } from "./phone.js";
 
 describe("normalizePhone", () => {
   it("collapses every way an advisor types a Turkish mobile number", () => {
@@ -45,5 +45,29 @@ describe("normalizePhone", () => {
 
   it("is stable, so a saved contact and an inbound caller resolve to one value", () => {
     expect(normalizePhone("0532 123 45 67")).toBe(normalizePhone("+905321234567"));
+  });
+});
+
+describe("formatPhoneAsTyped", () => {
+  it("groups a Turkish mobile number the way it is written", () => {
+    expect(formatPhoneAsTyped("05321234567")).toBe("0532 123 45 67");
+    expect(formatPhoneAsTyped("5321234567")).toBe("532 123 45 67");
+    expect(formatPhoneAsTyped("+905321234567")).toBe("+90 532 123 45 67");
+  });
+
+  it("keeps a half-typed number readable", () => {
+    expect(formatPhoneAsTyped("0532")).toBe("0532");
+    expect(formatPhoneAsTyped("053212")).toBe("0532 12");
+    expect(formatPhoneAsTyped("0532123456")).toBe("0532 123 45 6");
+  });
+
+  it("re-groups from the digits, ignoring what the advisor typed between them", () => {
+    expect(formatPhoneAsTyped("0532 123 45 67")).toBe("0532 123 45 67");
+    expect(formatPhoneAsTyped("(0532) 123-45-67")).toBe("0532 123 45 67");
+  });
+
+  it("leaves an empty field empty and keeps a lone plus", () => {
+    expect(formatPhoneAsTyped("")).toBe("");
+    expect(formatPhoneAsTyped("+")).toBe("+");
   });
 });

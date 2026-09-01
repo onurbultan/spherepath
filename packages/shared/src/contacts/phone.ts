@@ -32,6 +32,37 @@ export function normalizePhone(raw: string | null | undefined): string | null {
   return null;
 }
 
+/**
+ * Groups a number the way it is written on a Turkish business card, while it is
+ * still being typed. A half-entered number stays readable, so the advisor can
+ * check it against the one in front of them without counting digits.
+ */
+export function formatPhoneAsTyped(raw: string): string {
+  const international = raw.trimStart().startsWith("+");
+  const digits = raw.replace(/\D/gu, "");
+  if (!digits) return international ? "+" : "";
+
+  if (international) {
+    const country = digits.slice(0, 2);
+    return group(digits.slice(2), [3, 3, 2, 2], `+${country}`);
+  }
+  // A leading zero is part of how the number is written here, so it takes its
+  // own group and the rest shifts with it.
+  return digits.startsWith("0") ? group(digits, [4, 3, 2, 2], "") : group(digits, [3, 3, 2, 2], "");
+}
+
+function group(digits: string, sizes: number[], prefix: string): string {
+  const parts: string[] = [];
+  let rest = digits;
+  for (const size of sizes) {
+    if (!rest) break;
+    parts.push(rest.slice(0, size));
+    rest = rest.slice(size);
+  }
+  if (rest) parts.push(rest);
+  return [prefix, ...parts].filter(Boolean).join(" ");
+}
+
 function turkishSubscriber(digits: string, hasPlus: boolean): string | null {
   const length = turkishSubscriberLength;
   const prefixed = `00${turkishCountryCode}`;

@@ -34,6 +34,7 @@ import { useSession } from "@/features/auth/resources/session";
 import { ContactInteractionTimeline } from "../components/ContactInteractionTimeline";
 import { archiveContact, listContacts, saveContact, saveContactPrivacy, type ContactRecord } from "../resources/contacts";
 import { listReferrals, saveReferral } from "@/features/referrals/resources/referrals";
+import { PhoneField } from "@/shared/ui/MaskedFields";
 
 const emptyDraft: ContactDraft = {
   fullName: "",
@@ -360,7 +361,7 @@ export function ContactsView() {
             <div className="sheet-heading"><div><p className="eyebrow">HIZLI KAYIT</p><h2 id="contact-form-title">{editing ? "Kişiyi düzenle" : "Yeni kişi"}</h2></div><button className="icon-action" aria-label="Kapat" type="button" onClick={() => setPanelOpen(false)}><X size={20} /></button></div>
             <form className="form-stack" onSubmit={submit}>
               <label>Ad, soyad veya tanımlayıcı<input autoFocus value={draft.fullName} onChange={(event) => setDraft({ ...draft, fullName: event.target.value })} required /></label>
-              <label>Telefon <span className="optional">isteğe bağlı</span><input inputMode="tel" value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} /></label>
+              <label>Telefon <span className="optional">isteğe bağlı</span><PhoneField value={draft.phone} onChange={(phone) => setDraft({ ...draft, phone })} /></label>
               <label>Tanışma yeri <span className="optional">isteğe bağlı</span><input value={draft.metAtPlace} onChange={(event) => setDraft({ ...draft, metAtPlace: event.target.value })} placeholder="Örn. Marina açık ev etkinliği" /></label>
               <div className="form-row">
                 <label>Kaynak<select value={draft.source} onChange={(event) => setDraft({ ...draft, source: event.target.value as ContactDraft["source"] })}>{contactSources.map((source) => <option key={source} value={source}>{contactSourceLabels[source]}</option>)}</select></label>

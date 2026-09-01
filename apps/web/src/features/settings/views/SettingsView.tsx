@@ -32,6 +32,7 @@ import {
   resolveDataSubjectRequest,
   saveWorkspaceSettings,
 } from "../resources/settings";
+import { PhoneField } from "@/shared/ui/MaskedFields";
 
 const settingsSections = ["advisor-profile", "reminders", "whatsapp-group", "data-controller", "voice-privacy", "data-requests"] as const;
 
@@ -189,7 +190,7 @@ export function SettingsView() {
     <form className="settings-sections" id="workspace-settings-form" onSubmit={save}>
       <SpCard className="settings-card" id="advisor-profile">
         <div className="settings-title"><UserRoundCog size={20} /><div><p className="eyebrow">PROFİL</p><h2>Danışman ayarları</h2></div></div>
-        <div className="form-row"><label>Ad soyad<input value={draft.displayName} onChange={(event) => setDraft({ ...draft, displayName: event.target.value })} /></label><label>Telefon<input value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} /></label></div>
+        <div className="form-row"><label>Ad soyad<input value={draft.displayName} onChange={(event) => setDraft({ ...draft, displayName: event.target.value })} /></label><label>Telefon<PhoneField value={draft.phone} onChange={(phone) => setDraft({ ...draft, phone })} /></label></div>
         <label>Varsayılan bölgeler <span className="optional">virgülle ayır</span><input value={draft.defaultRegions.join(", ")} onChange={(event) => setDraft({ ...draft, defaultRegions: event.target.value.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 5) })} /></label>
         <div className="form-row"><label>Aylık portföy hedefi<input type="number" min="1" max="100" value={draft.monthlyPortfolioTarget ?? ""} onChange={(event) => setDraft({ ...draft, monthlyPortfolioTarget: event.target.value ? Number(event.target.value) : null })} /></label><label>Haftalık kapasite<input type="number" min="1" max="100" value={draft.weeklyCapacity ?? ""} onChange={(event) => setDraft({ ...draft, weeklyCapacity: event.target.value ? Number(event.target.value) : null })} /></label></div>
       </SpCard>
