@@ -43,9 +43,6 @@ a { color: inherit; text-decoration: none; }
   .spin { animation: none; }
 }
 
-.contact-combobox-label { display: grid; gap: 7px; }
-.contact-combobox { position: relative; gap: 8px; padding: 0 12px; }
-.contact-combobox > .sp-control-inner { padding: 0; }
 .contact-combobox-value { position: absolute; left: 38px; right: 38px; overflow: hidden; pointer-events: none; text-overflow: ellipsis; white-space: nowrap; }
 .contact-combobox-clear { display: grid; width: 28px; height: 28px; place-items: center; border: 0; background: transparent; color: var(--text-secondary); }
 .contact-combobox-list { position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; left: 0; display: grid; max-height: 300px; overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--elevated); box-shadow: var(--shadow-lg); }
@@ -405,8 +402,15 @@ textarea.sp-control.is-compact { min-height: 80px; }
   border: 0; border-radius: 0; background: transparent; box-shadow: none; outline: 0;
 }
 
+/* The picker pads its own box because the search icon sits inside it, and it
+   must not clip: its result list is positioned against this element. */
+.sp-control.is-composite.contact-combobox { position: relative; gap: 8px; padding: 0 12px; }
+.sp-control.is-composite.contact-combobox > .sp-control-inner { padding: 0; }
+
+/* The dialling code is a full-height segment, so the box clips to its radius. */
+.sp-control.is-composite.phone-field { align-items: stretch; overflow: hidden; }
+
 /* Grouped phone and price fields: digits line up so a misread zero is visible. */
-.phone-field { align-items: stretch; overflow: hidden; }
 .phone-field-country {
   position: relative; display: flex; align-items: center; gap: 6px; flex: 0 0 auto;
   padding: 0 11px; border-right: 1px solid var(--line);
@@ -440,12 +444,6 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .money-field-currency {
   position: absolute; inset-block: 0; right: 11px; display: flex; align-items: center;
   color: var(--text-secondary); font-size: 12px; font-weight: 700; pointer-events: none;
-}
-.contact-combobox > .contact-combobox-input,
-.contact-combobox > .contact-combobox-input:hover,
-.contact-combobox > .contact-combobox-input:focus {
-  width: auto; min-width: 0; min-height: 0; height: 44px; flex: 1; padding: 0;
-  border: 0; border-radius: 0; background: transparent; outline: 0; box-shadow: none;
 }
 .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--space-lg); align-items: start; }
 .form-stack fieldset { margin: 0; padding: 0; border: 0; }
