@@ -35,7 +35,7 @@ export function PhoneField({
   const dialCode = value ? parsed.dialCode : pendingDialCode;
 
   return (
-    <span className="phone-field">
+    <span className="sp-control is-composite phone-field">
       <span className="phone-field-country">
         <span aria-hidden className="phone-field-flag">
           {phoneCountryFlag(phoneCountries.find((country) => country.dialCode === dialCode)?.code ?? defaultPhoneCountry.code)}
@@ -59,7 +59,7 @@ export function PhoneField({
       <input
         autoComplete="tel-national"
         autoFocus={autoFocus}
-        className="phone-field-number"
+        className="sp-control-inner phone-field-number"
         id={id}
         inputMode="tel"
         onChange={(event) => onChange(joinPhone(dialCode, formatNationalAsTyped(event.target.value, dialCode)))}
@@ -89,6 +89,7 @@ export function MoneyField({
   return (
     <span className="money-field">
       <input
+        className="sp-control"
         id={id}
         inputMode="numeric"
         onChange={(event) => onChange(formatMoneyAsTyped(event.target.value))}

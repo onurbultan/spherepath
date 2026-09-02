@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { ArrowRight, LockKeyhole } from "lucide-react";
 import { useSession } from "../resources/session";
+import { SpInput } from "@/shared/ui/SpField";
 
 export function AuthView() {
   const { signIn, createAccount, resetPassword } = useSession();
@@ -42,10 +43,10 @@ export function AuthView() {
         <h2 id="auth-title">{mode === "signin" ? "Tekrar hoş geldin" : "Çalışma alanını oluştur"}</h2>
         <form className="form-stack" onSubmit={submit}>
           {mode === "register" ? (
-            <><label>Ad soyad<input autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} required minLength={2} /></label><label>Ofis davet kodu <span className="optional">isteğe bağlı</span><input autoCapitalize="characters" maxLength={8} placeholder="ABCD2345" value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toLocaleUpperCase("tr-TR").replace(/[^A-Z2-9]/gu, ""))} /></label></>
+            <><label>Ad soyad<SpInput autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} required minLength={2} /></label><label>Ofis davet kodu <span className="optional">isteğe bağlı</span><SpInput autoCapitalize="characters" maxLength={8} placeholder="ABCD2345" value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toLocaleUpperCase("tr-TR").replace(/[^A-Z2-9]/gu, ""))} /></label></>
           ) : null}
-          <label>E-posta<input autoComplete="email" inputMode="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
-          <label>Şifre<input autoComplete={mode === "register" ? "new-password" : "current-password"} type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={6} /></label>
+          <label>E-posta<SpInput autoComplete="email" inputMode="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+          <label>Şifre<SpInput autoComplete={mode === "register" ? "new-password" : "current-password"} type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={6} /></label>
           {formError ? <p className="form-error" role="alert">{formError}</p> : null}
           {formSuccess ? <p className="form-success" role="status">{formSuccess}</p> : null}
           <button className="primary-action auth-submit" disabled={pending} type="submit">

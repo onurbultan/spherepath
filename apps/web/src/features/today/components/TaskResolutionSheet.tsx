@@ -6,6 +6,7 @@ import { CalendarClock, Check, CircleSlash, PhoneOff, X } from "lucide-react";
 import { dailyTaskOutcomeSchema, nextActionTypeLabels, nextActionTypes, type DailyTaskOutcome, type TodayTask } from "@spherepath/shared";
 import { QuickDateField } from "@/shared/ui/QuickDateField";
 import { useSheetDismiss } from "@/shared/ui/useSheetDismiss";
+import { SpSelect, SpTextarea } from "@/shared/ui/SpField";
 
 export function taskDueLabel(value: number | null): string {
   if (value === null) return "Tarihsiz";
@@ -82,8 +83,8 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve }
         <button className={`danger-choice${status === "contact_opt_out" ? " selected" : ""}`} onClick={() => { setStatus("contact_opt_out"); setNote(""); }} type="button"><PhoneOff size={17} /><span><strong>İletişim istemiyor</strong><small>Gelecek iletişimleri kapat</small></span></button>
       </div>
       {status === "rescheduled"
-        ? <div className="form-stack"><label>Yeni aksiyon<select value={rescheduledActionType} onChange={(event) => setRescheduledActionType(event.target.value as NonNullable<DailyTaskOutcome["rescheduledActionType"]>)}>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</select></label><QuickDateField label="Yeni tarih" value={rescheduledAt} onChange={setRescheduledAt} /></div>
-        : <label>{status === "contact_opt_out" ? "İletişim neden kapatılıyor?" : status === "skipped" ? "Neden atlanıyor?" : "Kısa sonuç"} <span className="optional">{status === "completed" ? "isteğe bağlı" : ""}</span><textarea required={status === "skipped" || status === "contact_opt_out"} value={note} onChange={(event) => setNote(event.target.value)} placeholder={status === "contact_opt_out" ? "Örn. Kişi telefon ve WhatsApp üzerinden iletişim kurulmasını istemiyor." : status === "skipped" ? "Örn. Bugün uygun değil; bu görevi kapatıyorum." : "Örn. Görüşüldü, teklif cuma günü paylaşılacak."} /></label>}
+        ? <div className="form-stack"><label>Yeni aksiyon<SpSelect value={rescheduledActionType} onChange={(event) => setRescheduledActionType(event.target.value as NonNullable<DailyTaskOutcome["rescheduledActionType"]>)}>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</SpSelect></label><QuickDateField label="Yeni tarih" value={rescheduledAt} onChange={setRescheduledAt} /></div>
+        : <label>{status === "contact_opt_out" ? "İletişim neden kapatılıyor?" : status === "skipped" ? "Neden atlanıyor?" : "Kısa sonuç"} <span className="optional">{status === "completed" ? "isteğe bağlı" : ""}</span><SpTextarea required={status === "skipped" || status === "contact_opt_out"} value={note} onChange={(event) => setNote(event.target.value)} placeholder={status === "contact_opt_out" ? "Örn. Kişi telefon ve WhatsApp üzerinden iletişim kurulmasını istemiyor." : status === "skipped" ? "Örn. Bugün uygun değil; bu görevi kapatıyorum." : "Örn. Görüşüldü, teklif cuma günü paylaşılacak."} /></label>}
       {localError ?? error ? <p className="form-error" role="alert">{localError ?? error}</p> : null}
       <div className="task-resolution-actions">
         <Link className="secondary-action inline-link" href={taskRecordHref(task)}>Teması ayrıntılı kaydet</Link>

@@ -112,13 +112,13 @@ export function QuickDateField({
   const chosen = triggerLabel(value);
 
   return (
-    <div className="quick-date-field" ref={root}>
-      <span className="quick-date-label">{label}</span>
+    <div className="sp-field quick-date-field" ref={root}>
+      <span className="sp-field-label">{label}</span>
       <div className="quick-date-control">
         <button
           aria-expanded={open}
           aria-haspopup="dialog"
-          className={`quick-date-trigger${chosen ? "" : " is-empty"}${required && !chosen ? " is-required" : ""}`}
+          className={`sp-control quick-date-trigger${chosen ? "" : " is-empty"}${required && !chosen ? " is-required" : ""}`}
           disabled={disabled}
           onClick={() => {
             if (!open) {

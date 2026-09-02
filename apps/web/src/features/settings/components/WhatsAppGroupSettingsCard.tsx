@@ -15,6 +15,7 @@ import {
   createWhatsAppOfficeGroup,
   loadWhatsAppGroupIntegration,
 } from "../resources/settings";
+import { SpInput, SpSelect, SpTextarea } from "@/shared/ui/SpField";
 
 const statusLabels = {
   not_configured: "Kurulum bekliyor",
@@ -85,10 +86,10 @@ export function WhatsAppGroupSettingsCard() {
       <SpCard className="settings-card">
         <div className="settings-title"><MessageCircleMore size={20} /><div><p className="eyebrow">GRUP KURULUMU</p><h2>Meta bağlantısı</h2></div></div>
         <form className="form-stack" onSubmit={save}>
-          <label>Business Phone Number ID<input disabled={!isBroker || integration.status === "active"} inputMode="numeric" placeholder="12784358810" value={draft.businessPhoneNumberId} onChange={(event) => setEdited({ ...draft, businessPhoneNumberId: event.target.value.replace(/\D/gu, "") })} /></label>
-          <label>Grup adı<input disabled={!isBroker || integration.status === "active"} maxLength={128} value={draft.subject} onChange={(event) => setEdited({ ...draft, subject: event.target.value })} /></label>
-          <label>Açıklama<textarea disabled={!isBroker || integration.status === "active"} maxLength={2048} value={draft.description} onChange={(event) => setEdited({ ...draft, description: event.target.value })} /></label>
-          <label>Katılım<select disabled={!isBroker || integration.status === "active"} value={draft.joinApprovalMode} onChange={(event) => setEdited({ ...draft, joinApprovalMode: event.target.value as WhatsAppGroupConfiguration["joinApprovalMode"] })}><option value="approval_required">Yönetici onayı gerekli</option><option value="auto_approve">Davet bağlantısıyla otomatik katılım</option></select></label>
+          <label>Business Phone Number ID<SpInput disabled={!isBroker || integration.status === "active"} inputMode="numeric" placeholder="12784358810" value={draft.businessPhoneNumberId} onChange={(event) => setEdited({ ...draft, businessPhoneNumberId: event.target.value.replace(/\D/gu, "") })} /></label>
+          <label>Grup adı<SpInput disabled={!isBroker || integration.status === "active"} maxLength={128} value={draft.subject} onChange={(event) => setEdited({ ...draft, subject: event.target.value })} /></label>
+          <label>Açıklama<SpTextarea disabled={!isBroker || integration.status === "active"} maxLength={2048} value={draft.description} onChange={(event) => setEdited({ ...draft, description: event.target.value })} /></label>
+          <label>Katılım<SpSelect disabled={!isBroker || integration.status === "active"} value={draft.joinApprovalMode} onChange={(event) => setEdited({ ...draft, joinApprovalMode: event.target.value as WhatsAppGroupConfiguration["joinApprovalMode"] })}><option value="approval_required">Yönetici onayı gerekli</option><option value="auto_approve">Davet bağlantısıyla otomatik katılım</option></SpSelect></label>
           {error ? <p className="form-error">{error}</p> : null}{message ? <p className="form-success">{message}</p> : null}
           {isBroker && integration.status !== "active" ? <div className="inline-actions"><button className="secondary-action inline-action" disabled={pending || !edited} type="submit"><Save size={16} /> Ayarları kaydet</button><button className="primary-action inline-action" disabled={pending || integration.status === "not_configured" || Boolean(edited)} onClick={() => void createGroup()} type="button"><MessageCircleMore size={16} /> Meta grubunu oluştur</button></div> : null}
           {!isBroker ? <p className="privacy-hint">Bu bağlantıyı yalnız ofis brokerı yönetebilir.</p> : null}

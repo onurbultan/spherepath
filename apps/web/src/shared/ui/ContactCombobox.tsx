@@ -26,9 +26,9 @@ export function ContactCombobox({ contacts, value, onChange, label = "Kişi", pl
     return (normalized ? ranked.filter((contact) => contactName(contact).toLocaleLowerCase("tr-TR").includes(normalized)) : ranked).slice(0, normalized ? 12 : 5);
   }, [contacts, query]);
 
-  return <label className="contact-combobox-label"><span>{label}</span><div className="contact-combobox" ref={rootRef} onBlur={(event) => { if (!rootRef.current?.contains(event.relatedTarget as Node | null)) setOpen(false); }}>
+  return <label className="sp-field contact-combobox-label"><span className="sp-field-label">{label}</span><div className="sp-control is-composite contact-combobox" ref={rootRef} onBlur={(event) => { if (!rootRef.current?.contains(event.relatedTarget as Node | null)) setOpen(false); }}>
     <Search size={16} aria-hidden />
-    <input className="contact-combobox-input" aria-autocomplete="list" aria-controls={listId} aria-expanded={open} aria-label={`${label} ara`} placeholder={selected ? "" : placeholder} required={required && !value} role="combobox" value={query} onChange={(event) => { setQuery(event.target.value); setOpen(true); if (selected) onChange(""); }} onFocus={() => setOpen(true)} />
+    <input className="sp-control-inner contact-combobox-input" aria-autocomplete="list" aria-controls={listId} aria-expanded={open} aria-label={`${label} ara`} placeholder={selected ? "" : placeholder} required={required && !value} role="combobox" value={query} onChange={(event) => { setQuery(event.target.value); setOpen(true); if (selected) onChange(""); }} onFocus={() => setOpen(true)} />
     {value ? <button aria-label="Kişi seçimini temizle" className="contact-combobox-clear" type="button" onClick={() => { onChange(""); setQuery(""); setOpen(true); }}><X size={14} /></button> : null}
     {selected && !query ? <strong className="contact-combobox-value">{contactName(selected)}</strong> : null}
     {open ? <div className="contact-combobox-list" id={listId} role="listbox">

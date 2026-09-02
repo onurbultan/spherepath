@@ -44,8 +44,8 @@ a { color: inherit; text-decoration: none; }
 }
 
 .contact-combobox-label { display: grid; gap: 7px; }
-.contact-combobox { position: relative; min-height: var(--control-field); display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--card); }
-.contact-combobox:focus-within { border-color: var(--deed); box-shadow: 0 0 0 3px var(--focus-halo); }
+.contact-combobox { position: relative; gap: 8px; padding: 0 12px; }
+.contact-combobox > .sp-control-inner { padding: 0; }
 .contact-combobox-value { position: absolute; left: 38px; right: 38px; overflow: hidden; pointer-events: none; text-overflow: ellipsis; white-space: nowrap; }
 .contact-combobox-clear { display: grid; width: 28px; height: 28px; place-items: center; border: 0; background: transparent; color: var(--text-secondary); }
 .contact-combobox-list { position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; left: 0; display: grid; max-height: 300px; overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--elevated); box-shadow: var(--shadow-lg); }
@@ -359,50 +359,54 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .settings-card label,
 .voice-setup > label:not(.voice-confirm),
 .voice-review label { display: grid; gap: 6px; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
-.form-stack input, .form-stack select, .form-stack textarea,
-.capture-form input, .capture-form select, .capture-form textarea,
-.contact-toolbar input, .contact-toolbar select,
-.settings-card input, .settings-card select, .settings-card textarea,
-.task-resolution-sheet input, .task-resolution-sheet select, .task-resolution-sheet textarea,
-.voice-setup select, .voice-review select, .voice-review textarea, .voice-review input,
-.quick-date-trigger {
+/* --- one control ----------------------------------------------------------
+   A field looks the way it does because of what it is, not where it sits. Every
+   form control carries .sp-control and reads its size, border and focus ring
+   from here, so a new screen cannot invent a slightly different input. The
+   components in shared/ui apply it; nothing should hand-write these properties.
+   -------------------------------------------------------------------------- */
+
+.sp-control {
   width: 100%; min-height: var(--control-field); padding: 0 11px;
   border: 1px solid var(--line); border-radius: var(--radius-md);
   background: var(--card); color: var(--text-primary); font: inherit; font-size: 13px;
   transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
 }
-.form-stack select, .capture-form select, .contact-toolbar select,
-.settings-card select, .task-resolution-sheet select, .voice-setup select, .voice-review select {
-  appearance: none; padding-right: 30px;
+.sp-control:hover:not(:disabled):not(:focus) { border-color: var(--line-strong); }
+.sp-control:focus, .sp-control:focus-visible, .sp-control:focus-within {
+  border-color: var(--focus); outline: 0; box-shadow: 0 0 0 3px var(--focus-halo);
+}
+.sp-control:disabled, .sp-control[aria-disabled="true"] {
+  opacity: .55; cursor: not-allowed; background: var(--background);
+}
+
+/* The browser draws its own arrow inside the field's padding, which pins it to
+   the edge; a drawn one gets room of its own. */
+select.sp-control {
+  appearance: none; padding-right: 30px; cursor: pointer;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' fill='none' stroke='%238A96A0' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 11px center;
 }
-.form-stack textarea, .capture-form textarea { min-height: 88px; padding-block: 10px; resize: vertical; }
-.settings-card textarea { min-height: 84px; padding-block: 10px; }
-.voice-review textarea { min-height: 80px; padding-block: 10px; resize: vertical; }
-.form-stack input:hover, .capture-form input:hover, .settings-card input:hover, .contact-toolbar input:hover,
-.quick-date-trigger:hover:not(:disabled) { border-color: var(--line-strong); }
-.form-stack input:focus, .form-stack select:focus, .form-stack textarea:focus,
-.capture-form input:focus, .capture-form select:focus, .capture-form textarea:focus,
-.contact-toolbar input:focus, .contact-toolbar select:focus,
-.settings-card input:focus, .settings-card select:focus, .settings-card textarea:focus,
-.task-resolution-sheet input:focus, .task-resolution-sheet select:focus, .task-resolution-sheet textarea:focus,
-.voice-setup select:focus, .voice-review select:focus, .voice-review textarea:focus, .voice-review input:focus,
-.voice-text-test textarea:focus,
-.quick-date-trigger:focus-visible {
-  border-color: var(--focus); outline: 0; box-shadow: 0 0 0 3px var(--focus-halo);
+textarea.sp-control { min-height: 88px; padding-block: 10px; line-height: 1.5; resize: vertical; }
+textarea.sp-control.is-compact { min-height: 80px; }
+
+/* Label and control as one unit, so the pairing cannot drift either. */
+.sp-field { display: grid; gap: 6px; }
+.sp-field-label { display: flex; align-items: baseline; gap: 6px; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.sp-field-hint { color: var(--text-tertiary); font-size: 11.5px; font-weight: 400; }
+.sp-field-error { color: var(--ask); font-size: 11.5px; font-weight: 600; }
+
+/* A control that is a composite of several elements rather than one input. */
+.sp-control.is-composite { display: flex; align-items: center; padding: 0; }
+.sp-control.is-composite > .sp-control-inner,
+.sp-control.is-composite > .sp-control-inner:hover,
+.sp-control.is-composite > .sp-control-inner:focus {
+  flex: 1; min-width: 0; width: auto; min-height: 0; padding: 0 11px;
+  border: 0; border-radius: 0; background: transparent; box-shadow: none; outline: 0;
 }
-.form-stack input:disabled, .capture-form input:disabled, .settings-card input:disabled,
-.quick-date-trigger:disabled { opacity: .55; cursor: not-allowed; background: var(--background); }
 
 /* Grouped phone and price fields: digits line up so a misread zero is visible. */
-.phone-field {
-  display: flex; align-items: stretch; width: 100%; min-height: 38px; overflow: hidden;
-  border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--card);
-  transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
-}
-.phone-field:hover { border-color: var(--line-strong); }
-.phone-field:focus-within { border-color: var(--focus); box-shadow: 0 0 0 3px var(--focus-halo); }
+.phone-field { align-items: stretch; overflow: hidden; }
 .phone-field-country {
   position: relative; display: flex; align-items: center; gap: 6px; flex: 0 0 auto;
   padding: 0 11px; border-right: 1px solid var(--line);
@@ -1089,12 +1093,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 
 @media (pointer: coarse) {
   .primary-action, .secondary-action, .icon-action { min-height: var(--hit-min); }
-  .form-stack input, .form-stack select, .form-stack textarea,
-  .capture-form input, .capture-form select, .capture-form textarea,
-  .contact-toolbar input, .contact-toolbar select,
-  .settings-card input, .settings-card select, .settings-card textarea,
-  .voice-setup select, .voice-review select, .voice-review input,
-  .quick-date-trigger { min-height: var(--hit-min); }
+  .sp-control { min-height: var(--hit-min); }
 }
 
 @media (max-width: 1100px) {
