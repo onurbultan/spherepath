@@ -6,10 +6,12 @@ import {
   ChevronDown,
   LoaderCircle,
   Mic,
+  PenLine,
   SlidersHorizontal,
   Square,
   Trash2,
 } from "lucide-react-native";
+import { SpButton, SpTextarea } from "@/shared/ui/SpField";
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -44,7 +46,7 @@ import type { ContactRecord } from "@/features/contacts/resources/contacts";
 import { SpCard } from "@/shared/ui/SpCard";
 import { SpText } from "@/shared/ui/SpText";
 import { ContactPicker } from "@/shared/ui/ContactPicker";
-import { radius, space } from "@/shared/ui/tokens.generated";
+import { hit, radius, space } from "@/shared/ui/tokens.generated";
 import { useSpTheme } from "@/shared/ui/theme";
 import {
   confirmVoiceNote,
@@ -53,6 +55,7 @@ import {
   getVoiceNote,
   retryVoiceNoteProcessing,
   uploadAndRegisterVoiceNote,
+  submitInteractionText,
 } from "../resources/interactions";
 
 type VoiceStep =
@@ -186,6 +189,8 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
     voiceSafetyConfirmedForSession,
   );
   const [contactId, setContactId] = useState("");
+  const [writtenOpen, setWrittenOpen] = useState(false);
+  const [writtenText, setWrittenText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [voiceNote, setVoiceNote] = useState<VoiceNoteView | null>(null);
   const [channel, setChannel] =
@@ -312,6 +317,26 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
       activeRef.current = false;
     };
   }, [applyReview, pollVoiceNote]);
+
+  async function submitWritten() {
+    const transcript = writtenText.trim();
+    if (transcript.length < 2) {
+      setError("Kısa bir görüşme özeti yazın veya yapıştırın.");
+      return;
+    }
+    if (!contactId) return;
+    setError(null);
+    setStep("processing");
+    try {
+      const voiceNoteId = await submitInteractionText(session, contactId, transcript);
+      setWrittenOpen(false);
+      setWrittenText("");
+      await pollVoiceNote(voiceNoteId);
+    } catch (nextError) {
+      setError(messageFrom(nextError));
+      setStep("idle");
+    }
+  }
 
   async function startRecording() {
     if (!confirmedAlone) {
@@ -605,6 +630,37 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
             <Mic color={theme.onAsk} size={18} />
             <SpText style={{ color: theme.onAsk }}>Kaydı başlat</SpText>
           </Pressable>
+
+          {/* Somewhere too loud or too public to talk still has to reach the same
+              review path, so the note can be written instead of spoken. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: writtenOpen }}
+            onPress={() => { setWrittenOpen((current) => !current); setError(null); }}
+            style={styles.writtenToggle}
+          >
+            <PenLine color={theme.deed} size={16} />
+            <SpText variant="bodySmall" color="deed">
+              {writtenOpen ? "Yazmaktan vazgeç" : "Konuşamıyorsan yazarak anlat"}
+            </SpText>
+          </Pressable>
+
+          {writtenOpen ? (
+            <View style={styles.written}>
+              <SpTextarea
+                accessibilityLabel="Görüşme özeti"
+                onChangeText={setWrittenText}
+                placeholder="Örn. Ayşe Hanım'la konuştuk, bütçeyi 5,5 milyona çıkardı, asansörsüz istemiyor, salı tekrar arayacağım."
+                value={writtenText}
+              />
+              <SpButton
+                disabled={!contactId || writtenText.trim().length < 2}
+                label="Yazdığımı işle"
+                onPress={() => void submitWritten()}
+                size="lg"
+              />
+            </View>
+          ) : null}
         </View>
       ) : null}
       {step === "recording" ? (
@@ -1165,6 +1221,8 @@ function VoiceInsightsReview({
 }
 
 const styles = StyleSheet.create({
+  writtenToggle: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.xs, minHeight: hit.min },
+  written: { gap: space.md },
   card: { gap: space.lg },
   heading: { flexDirection: "row", alignItems: "center", gap: space.md },
   icon: {

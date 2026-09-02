@@ -5,6 +5,7 @@ import {
   type DiscardVoiceNoteInput,
   type ManualInteractionDraft,
   type OpportunityDraft,
+  type RegisterInteractionTextInput,
   type RegisterVoiceNoteInput,
   type RetryVoiceNoteProcessingInput,
   type VoiceInsights,
@@ -67,6 +68,23 @@ export async function uploadAndRegisterVoiceNote(
   if (!(await online())) { await enqueue({ id: commandId, ownerUid: session.uid, kind: "voice", commandId, contactId, localUri, durationMs }); return null; }
   try { return await sendVoice(session, contactId, localUri, durationMs, commandId); }
   catch (error) { if (!networkFailure(error)) throw error; await enqueue({ id: commandId, ownerUid: session.uid, kind: "voice", commandId, contactId, localUri, durationMs }); return null; }
+}
+
+/**
+ * A note typed rather than spoken. It runs the same masking, extraction and
+ * review path as a recording, so an advisor who cannot talk -- in a meeting, in
+ * noise -- is not shut out of the feature entirely.
+ */
+export async function submitInteractionText(
+  session: WorkspaceSession,
+  contactId: string,
+  transcript: string,
+): Promise<string> {
+  const input: RegisterInteractionTextInput = { contactId, transcript };
+  const response = await apiClient.command<RegisterInteractionTextInput, { voiceNoteId: string }>(
+    "registerInteractionText", input, createCommandId(session.uid),
+  );
+  return response.voiceNoteId;
 }
 
 export async function getVoiceNote(voiceNoteId: string): Promise<VoiceNoteView> {
