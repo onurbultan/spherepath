@@ -1546,4 +1546,6 @@ textarea.sp-control.is-compact { min-height: 80px; }
   color: var(--deed);
   background: var(--deed-bg);
 }
-.contact-history-tags .contact-history-review:hover { background: var(--deed); color: var(--surface); }
+/* deed-bg is already the highlighted look here, so hover rings it rather than
+   inverting it -- an inset ring also keeps the chip exactly its siblings' size. */
+.contact-history-tags .contact-history-review:hover { box-shadow: inset 0 0 0 1px var(--deed); }
