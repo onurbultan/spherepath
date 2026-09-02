@@ -6,6 +6,7 @@ import { useSession } from "../resources/session";
 import { SpText } from "@/shared/ui/SpText";
 import { radius, space } from "@/shared/ui/tokens.generated";
 import { useSpTheme } from "@/shared/ui/theme";
+import { controlMetrics, largeButtonMetrics } from "@/shared/ui/SpField";
 
 export function AuthView() {
   const theme = useSpTheme();
@@ -64,8 +65,8 @@ const styles = StyleSheet.create({
   logo: { width: 46, height: 46, borderRadius: radius.md, alignItems: "center", justifyContent: "center", marginBottom: "auto" },
   form: { padding: space["3xl"], gap: space.lg },
   icon: { width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
-  input: { minHeight: 50, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, paddingHorizontal: space.lg, fontFamily: "Karla_400Regular", fontSize: 16 },
+  input: { ...controlMetrics },
   error: { padding: space.md, borderRadius: radius.md },
-  primary: { minHeight: 50, borderRadius: radius.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm },
+  primary: { ...largeButtonMetrics },
   center: { textAlign: "center", paddingVertical: space.sm },
 });

@@ -7,6 +7,7 @@ import { SpText } from "@/shared/ui/SpText";
 import { SpDateField } from "@/shared/ui/SpDateField";
 import { radius, space } from "@/shared/ui/tokens.generated";
 import { useSpTheme } from "@/shared/ui/theme";
+import { buttonMetrics, choiceMetrics, largeButtonMetrics, textareaMetrics } from "@/shared/ui/SpField";
 
 /** Tomorrow morning, which is what an advisor picks unprompted more often than not. */
 function defaultFollowUp(): string {
@@ -130,10 +131,10 @@ const styles = StyleSheet.create({
   headingCopy: { flex: 1, gap: 2 },
   icon: { width: 44, height: 44, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
   options: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
-  choice: { minHeight: 44, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, paddingHorizontal: space.lg, flexDirection: "row", alignItems: "center", gap: space.sm },
-  input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, padding: space.lg, fontFamily: "Karla_400Regular", fontSize: 16, lineHeight: 23 },
+  choice: { ...choiceMetrics },
+  input: { ...textareaMetrics },
   multiline: { minHeight: 108, textAlignVertical: "top" },
   alert: { borderRadius: radius.md, padding: space.md },
-  secondary: { minHeight: 48, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
-  primary: { minHeight: 50, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  secondary: { ...buttonMetrics },
+  primary: { ...largeButtonMetrics },
 });

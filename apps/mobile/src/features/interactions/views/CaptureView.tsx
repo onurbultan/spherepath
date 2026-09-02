@@ -36,6 +36,7 @@ import { radius, space } from "@/shared/ui/tokens.generated";
 import { useSpTheme } from "@/shared/ui/theme";
 import { saveManualInteraction } from "../resources/interactions";
 import { VoiceCaptureCard } from "../components/VoiceCaptureCard";
+import { choiceMetrics, controlMetrics, largeButtonMetrics } from "@/shared/ui/SpField";
 
 /** Tomorrow morning, which is what an advisor picks unprompted more often than not. */
 function defaultFollowUp(): string {
@@ -164,9 +165,9 @@ export default function CaptureView() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 }, content: { padding: space.xl, paddingBottom: space["5xl"], gap: space.lg }, header: { gap: space.sm, marginBottom: space.md },
-  section: { gap: space.md }, choices: { flexDirection: "row", flexWrap: "wrap", gap: space.sm }, choice: { minHeight: 40, borderRadius: radius.sm, borderWidth: StyleSheet.hairlineWidth, justifyContent: "center", paddingHorizontal: space.md },
-  input: { minHeight: 50, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, padding: space.md, fontFamily: "Karla_400Regular", fontSize: 16 }, multiline: { minHeight: 94, textAlignVertical: "top" },
-  primary: { minHeight: 52, borderRadius: radius.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm }, error: { padding: space.md, borderRadius: radius.md },
+  section: { gap: space.md }, choices: { flexDirection: "row", flexWrap: "wrap", gap: space.sm }, choice: { ...choiceMetrics },
+  input: { ...controlMetrics }, multiline: { minHeight: 94, textAlignVertical: "top" },
+  primary: { ...largeButtonMetrics }, error: { padding: space.md, borderRadius: radius.md },
   state: { minHeight: 250, alignItems: "center", justifyContent: "center", gap: space.md }, icon: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" },
   divider: { flexDirection: "row", alignItems: "center", gap: space.md, marginVertical: space.sm }, line: { height: StyleSheet.hairlineWidth, flex: 1 },
   modeTabs: { minHeight: 52, padding: 4, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, flexDirection: "row", gap: 4 },

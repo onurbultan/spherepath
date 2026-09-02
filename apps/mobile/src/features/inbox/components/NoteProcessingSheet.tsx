@@ -28,6 +28,7 @@ import { useSpTheme } from "@/shared/ui/theme";
 import { analyzePortfolioText } from "@/features/matching/resources/portfolio";
 import { analyzeInboxItem, changeInboxItem, processInboxItem as processItem } from "../resources/inbox";
 import { PhoneInput } from "@/shared/ui/MaskedInputs";
+import { buttonMetrics, choiceMetrics, controlMetrics, largeButtonMetrics } from "@/shared/ui/SpField";
 
 /** Tomorrow morning, which is what an advisor picks unprompted more often than not. */
 function defaultFollowUp(): string {
@@ -82,4 +83,4 @@ export function NoteProcessingSheet({ item, contacts, onClose, onChanged }: { it
   </ScrollView></SafeAreaView></Modal>;
 }
 
-const styles = StyleSheet.create({ safe: { flex: 1 }, content: { padding: space.xl, paddingBottom: 80, gap: space.lg }, header: { flexDirection: "row", alignItems: "flex-start", gap: space.md }, flex: { flex: 1 }, icon: { width: 44, height: 44, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, alignItems: "center", justifyContent: "center" }, input: { minHeight: 48, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, padding: space.md, fontFamily: "Karla_400Regular", fontSize: 16 }, multiline: { minHeight: 120, textAlignVertical: "top" }, choices: { flexDirection: "row", flexWrap: "wrap", gap: space.sm }, choice: { minHeight: 44, justifyContent: "center", paddingHorizontal: space.md, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md }, review: { gap: space.sm, padding: space.lg, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md }, actions: { gap: space.sm, marginTop: space.md }, primary: { minHeight: 50, borderRadius: radius.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm }, secondary: { minHeight: 50, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm } });
+const styles = StyleSheet.create({ safe: { flex: 1 }, content: { padding: space.xl, paddingBottom: 80, gap: space.lg }, header: { flexDirection: "row", alignItems: "flex-start", gap: space.md }, flex: { flex: 1 }, icon: { width: 44, height: 44, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, alignItems: "center", justifyContent: "center" }, input: { ...controlMetrics }, multiline: { minHeight: 120, textAlignVertical: "top" }, choices: { flexDirection: "row", flexWrap: "wrap", gap: space.sm }, choice: { ...choiceMetrics }, review: { gap: space.sm, padding: space.lg, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md }, actions: { gap: space.sm, marginTop: space.md }, primary: { ...largeButtonMetrics }, secondary: { ...buttonMetrics } });

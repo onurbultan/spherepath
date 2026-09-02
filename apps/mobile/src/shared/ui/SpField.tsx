@@ -23,6 +23,54 @@ import { hit, radius, space } from "./tokens.generated";
  * both, rather than two numbers that happen to be close.
  */
 
+/**
+ * The metrics behind every control, exported so a screen that still keeps its
+ * own StyleSheet derives from this rather than restating a height. Colours stay
+ * at the call site because they come from the theme.
+ */
+export const controlMetrics = {
+  minHeight: hit.min,
+  borderWidth: StyleSheet.hairlineWidth,
+  borderRadius: radius.md,
+  paddingHorizontal: space.lg,
+  fontFamily: "Karla_400Regular",
+  fontSize: 16,
+} as const;
+
+/** A long-form field: the same control, given room and a top-aligned caret. */
+export const textareaMetrics = {
+  ...controlMetrics,
+  minHeight: 108,
+  paddingVertical: space.md,
+  textAlignVertical: "top",
+  lineHeight: 23,
+} as const;
+
+export const choiceMetrics = {
+  minHeight: hit.min,
+  paddingHorizontal: space.lg,
+  borderWidth: StyleSheet.hairlineWidth,
+  borderRadius: radius.md,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: space.sm,
+} as const;
+
+export const buttonMetrics = {
+  minHeight: hit.min,
+  paddingHorizontal: space.xl,
+  borderWidth: StyleSheet.hairlineWidth,
+  borderRadius: radius.md,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: space.sm,
+} as const;
+
+/** The full-width action that closes a sheet. */
+export const largeButtonMetrics = { ...buttonMetrics, minHeight: hit.comfortable } as const;
+
 export function SpField({
   label,
   optional,
@@ -55,17 +103,7 @@ export function SpField({
 
 export function useControlStyle(): TextStyle {
   const theme = useSpTheme();
-  return {
-    minHeight: hit.min,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.line,
-    borderRadius: radius.md,
-    paddingHorizontal: space.lg,
-    backgroundColor: theme.background,
-    color: theme.textPrimary,
-    fontFamily: "Karla_400Regular",
-    fontSize: 16,
-  };
+  return { ...controlMetrics, borderColor: theme.line, backgroundColor: theme.background, color: theme.textPrimary };
 }
 
 export function SpInput({ style, multiline, ...props }: TextInputProps) {
@@ -183,24 +221,7 @@ export function SpButton({
 const styles = StyleSheet.create({
   field: { gap: space.sm },
   labelRow: { flexDirection: "row", alignItems: "baseline", gap: space.xs },
-  multiline: { minHeight: 108, paddingVertical: space.md, textAlignVertical: "top", lineHeight: 23 },
-  choice: {
-    minHeight: hit.min,
-    paddingHorizontal: space.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.md,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: space.sm,
-  },
-  button: {
-    paddingHorizontal: space.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.md,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: space.sm,
-  },
+  multiline: { minHeight: textareaMetrics.minHeight, paddingVertical: textareaMetrics.paddingVertical, textAlignVertical: "top", lineHeight: textareaMetrics.lineHeight },
+  choice: choiceMetrics,
+  button: buttonMetrics,
 });

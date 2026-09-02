@@ -11,7 +11,7 @@ import {
   Square,
   Trash2,
 } from "lucide-react-native";
-import { SpButton, SpTextarea } from "@/shared/ui/SpField";
+import { SpButton, SpTextarea, buttonMetrics, choiceMetrics, controlMetrics, largeButtonMetrics } from "@/shared/ui/SpField";
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -1235,13 +1235,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   stack: { gap: space.md },
   choices: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
-  choice: {
-    minHeight: 38,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    justifyContent: "center",
-    paddingHorizontal: space.md,
-  },
+  choice: { ...choiceMetrics },
   confirm: {
     minHeight: 68,
     borderRadius: radius.md,
@@ -1259,24 +1253,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  primary: {
-    minHeight: 50,
-    borderRadius: radius.md,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: space.sm,
-  },
-  secondary: {
-    minHeight: 50,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: space.sm,
-    paddingHorizontal: space.md,
-  },
+  primary: { ...largeButtonMetrics },
+  secondary: { ...buttonMetrics },
   detailsToggle: {
     minHeight: 68,
     borderRadius: radius.md,
@@ -1346,14 +1324,7 @@ const styles = StyleSheet.create({
     gap: space.sm,
     padding: space.md,
   },
-  input: {
-    minHeight: 48,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: space.md,
-    fontFamily: "Karla_400Regular",
-    fontSize: 16,
-  },
+  input: { ...controlMetrics },
   multiline: { minHeight: 84, textAlignVertical: "top" },
   insights: { gap: space.md, padding: space.md, borderRadius: radius.md },
   memoryItem: {

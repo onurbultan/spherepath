@@ -45,6 +45,7 @@ import { useSpTheme } from "@/shared/ui/theme";
 import { archiveContact, listContacts, saveContact, saveContactPrivacy, type ContactRecord } from "../resources/contacts";
 import { listReferrals, saveReferral } from "@/features/referrals/resources/referrals";
 import { PhoneInput } from "@/shared/ui/MaskedInputs";
+import { choiceMetrics, controlMetrics, largeButtonMetrics } from "@/shared/ui/SpField";
 
 const emptyDraft: ContactDraft = {
   fullName: "",
@@ -237,7 +238,7 @@ const styles = StyleSheet.create({
   searchBox: { minHeight: 50, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: space.md, flexDirection: "row", alignItems: "center", gap: space.sm },
   searchInput: { minHeight: 48, flex: 1, fontFamily: "Karla_400Regular", fontSize: 16 },
   loadMore: { minHeight: 50, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: space.lg, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  primary: { minHeight: 50, borderRadius: radius.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm },
+  primary: { ...largeButtonMetrics },
   state: { minHeight: 220, alignItems: "center", justifyContent: "center", gap: space.md },
   empty: { minHeight: 240, gap: space.md, justifyContent: "center" }, largeIcon: { width: 48, height: 48, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
   card: { gap: space.md }, contactTop: { flexDirection: "row", gap: space.md, alignItems: "center" }, contactCopy: { flex: 1, gap: space.xs }, memory: { gap: space.xs, padding: space.md, borderRadius: radius.sm },
@@ -247,7 +248,7 @@ const styles = StyleSheet.create({
   actions: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: space.md, flexDirection: "row", gap: space.xl }, action: { minHeight: 40, flexDirection: "row", alignItems: "center", gap: space.sm },
   error: { padding: space.md, borderRadius: radius.md }, form: { padding: space.xl, paddingBottom: space["5xl"], gap: space.md },
   sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: space.md, marginBottom: space.lg },
-  input: { minHeight: 50, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: space.lg, fontFamily: "Karla_400Regular", fontSize: 16 },
-  choice: { minHeight: 40, borderRadius: radius.sm, borderWidth: StyleSheet.hairlineWidth, justifyContent: "center", paddingHorizontal: space.md },
+  input: { ...controlMetrics },
+  choice: { ...choiceMetrics },
   addressBook: { minHeight: 64, borderRadius: radius.md, padding: space.md, flexDirection: "row", alignItems: "center", gap: space.md },
 });
