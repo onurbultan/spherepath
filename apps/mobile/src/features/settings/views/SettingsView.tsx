@@ -23,6 +23,7 @@ import { SpCard } from "@/shared/ui/SpCard";
 import { OfficeTeamPanel } from "../components/OfficeTeamPanel";
 import { PhoneNormalizationCard } from "../components/PhoneNormalizationCard";
 import { WhatsAppGroupSettingsCard } from "../components/WhatsAppGroupSettingsCard";
+import { TelephonySettingsCard } from "../components/TelephonySettingsCard";
 import { SpText } from "@/shared/ui/SpText";
 import { ContactPicker } from "@/shared/ui/ContactPicker";
 import { radius, space } from "@/shared/ui/tokens.generated";
@@ -149,6 +150,7 @@ export default function SettingsView() {
       ))}
     </SpCard>
     <WhatsAppGroupSettingsCard />
+    {session?.role === "broker" ? <TelephonySettingsCard /> : null}
     {session?.role === "broker" ? <PhoneNormalizationCard /> : null}
     <SpCard style={styles.card}><SpText variant="eyebrow" color="deed">VERİ SAHİBİ HAKLARI</SpText><SpText variant="title">Yeni talep</SpText><ContactPicker contacts={contacts} value={selectedContactId} onChange={setContactId} placeholder="Kişi ara ve seç" /><View style={styles.row}>{dataSubjectRequestTypes.map((type) => <Pressable key={type} onPress={() => setRequestType(type)} style={[styles.choice, { borderColor: requestType === type ? theme.deed : theme.line }]}><SpText variant="bodySmall" color={requestType === type ? "deed" : "secondary"}>{dataSubjectRequestTypeLabels[type]}</SpText></Pressable>)}</View><TextInput multiline placeholder="Talebin açıklaması" placeholderTextColor={theme.textTertiary} style={[...inputStyle, styles.textarea]} value={requestDetails} onChangeText={setRequestDetails} /><Pressable disabled={pending || !selectedContactId} onPress={() => void createRequest()} style={[styles.secondary, { borderColor: theme.line }]}><SpText color="deed">Talebi kaydet</SpText></Pressable></SpCard>
     {(requestsQuery.data ?? []).map((item) => <SpCard key={item.id} style={styles.request}><SpText variant="title">{item.contactName}</SpText><SpText variant="bodySmall" color="secondary">{dataSubjectRequestTypeLabels[item.type]} · {item.status}</SpText><View style={styles.row}>{item.type === "access" ? <Pressable onPress={() => void shareExport(item.contactId)} style={[styles.smallAction, { borderColor: theme.line }]}><Download color={theme.deed} size={15} /><SpText variant="bodySmall" color="deed">Paylaş</SpText></Pressable> : null}{item.status === "pending_verification" ? <Pressable onPress={() => void approve(item.id, item.type)} style={[styles.smallAction, { borderColor: theme.line }]}><SpText variant="bodySmall" color="deed">Onayla</SpText></Pressable> : null}</View></SpCard>)}

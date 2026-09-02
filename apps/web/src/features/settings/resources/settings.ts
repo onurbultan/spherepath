@@ -95,3 +95,23 @@ export async function normalizeContactPhones(session: WorkspaceSession, cursor: 
     "normalizeContactPhones", { cursor }, createCommandId(session.uid),
   );
 }
+
+export interface CallIntegrationView {
+  integrationId: string;
+  webhookToken: string;
+  extensionOwners: Record<string, string>;
+  active: boolean;
+}
+
+export async function loadCallIntegration(): Promise<CallIntegrationView | null> {
+  return apiClient.query<undefined, CallIntegrationView | null>("getCallIntegration", undefined);
+}
+
+export async function configureCallIntegration(
+  session: WorkspaceSession,
+  input: { extensionOwners?: Record<string, string>; rotateToken?: boolean; outboundCallerId?: string | null; defaultRoutingTarget?: string | null; recordingNoticeAnnouncementId?: number | null },
+): Promise<{ integrationId: string; webhookToken: string }> {
+  return apiClient.command<typeof input, { integrationId: string; webhookToken: string }>(
+    "configureCallIntegration", input, createCommandId(session.uid),
+  );
+}

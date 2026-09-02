@@ -92,3 +92,23 @@ export async function resolveDataSubjectRequest(session: WorkspaceSession, input
 export async function getContactDataExport(contactId: string): Promise<ContactDataExport> {
   return (await apiClient.query<{ contactId: string }, { export: ContactDataExport }>("getContactDataExport", { contactId })).export;
 }
+
+export interface CallIntegrationView {
+  integrationId: string;
+  webhookToken: string;
+  extensionOwners: Record<string, string>;
+  active: boolean;
+}
+
+export async function loadCallIntegration(): Promise<CallIntegrationView | null> {
+  return apiClient.query<undefined, CallIntegrationView | null>("getCallIntegration", undefined);
+}
+
+export async function configureCallIntegration(
+  session: WorkspaceSession,
+  input: { extensionOwners?: Record<string, string>; rotateToken?: boolean; outboundCallerId?: string | null; defaultRoutingTarget?: string | null; recordingNoticeAnnouncementId?: number | null },
+): Promise<{ integrationId: string; webhookToken: string }> {
+  return apiClient.command<typeof input, { integrationId: string; webhookToken: string }>(
+    "configureCallIntegration", input, createCommandId(session.uid),
+  );
+}

@@ -153,6 +153,7 @@ export const apiQueryKeys = {
   contacts: ["contacts"] as const,
   contactInteractions: (contactId: string) => ["contacts", contactId, "interactions"] as const,
   contactCalls: (contactId: string) => ["contacts", contactId, "calls"] as const,
+  callIntegration: ["call-integration"] as const,
   opportunities: ["opportunities"] as const,
   opportunityDetail: (opportunityId: string) => ["opportunities", opportunityId] as const,
   listings: ["listings"] as const,
