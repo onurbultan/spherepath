@@ -73,6 +73,7 @@ function splitPortfolioMessages(raw: string): string[] {
 function MatchCard({ match, nearMiss }: { match: PortfolioMatchRecord; nearMiss?: boolean }) {
   const theme = useSpTheme();
   const [sending, setSending] = useState(false);
+  const [draftText, setDraftText] = useState<string | null>(null);
   const item = match.portfolioItem;
 
   /**
@@ -91,7 +92,9 @@ function MatchCard({ match, nearMiss }: { match: PortfolioMatchRecord; nearMiss?
     try {
       const draft = await draftMatchMessage({ ...subject, contactId: match.contactId, portfolioItemId: item.id })
         .catch(() => ({ message: buildMatchMessageFallback(subject), source: "template" as const }));
-      await Share.share({ message: draft.message });
+      // Shown before it is shared: this text goes to a customer over the
+      // advisor's own name, and a dismissed share used to take it with it.
+      setDraftText(draft.message);
     } finally {
       setSending(false);
     }
@@ -121,12 +124,26 @@ function MatchCard({ match, nearMiss }: { match: PortfolioMatchRecord; nearMiss?
           </View>
         ))}
       </View>
-      <SpButton
-        disabled={sending}
-        icon={<Send color={theme.onDeed} size={16} />}
-        label={sending ? "Hazırlanıyor…" : "Mesajı gönder"}
-        onPress={() => void shareMessage()}
-      />
+      {draftText === null ? (
+        <SpButton
+          disabled={sending}
+          icon={<Send color={theme.onDeed} size={16} />}
+          label={sending ? "Hazırlanıyor…" : "Mesajı gönder"}
+          onPress={() => void shareMessage()}
+        />
+      ) : (
+        <View style={styles.draft}>
+          <SpField label="Müşteriye gidecek mesaj">
+            <SpTextarea onChangeText={setDraftText} value={draftText} />
+          </SpField>
+          <SpButton
+            icon={<Send color={theme.onDeed} size={16} />}
+            label="Paylaş"
+            onPress={() => void Share.share({ message: draftText })}
+          />
+          <SpButton label="Kapat" onPress={() => setDraftText(null)} tone="secondary" />
+        </View>
+      )}
     </SpCard>
   );
 }
@@ -428,6 +445,7 @@ const styles = StyleSheet.create({
   heading: { flexDirection: "row", alignItems: "center", gap: space.md },
   flex: { flex: 1 },
   banner: { flexDirection: "row", alignItems: "center", gap: space.sm, padding: space.lg, borderRadius: radius.md },
+  draft: { gap: space.sm },
   state: { alignItems: "center", gap: space.sm, paddingVertical: space.xl },
   match: { gap: space.sm },
   matchTop: { flexDirection: "row", alignItems: "flex-start", gap: space.md },

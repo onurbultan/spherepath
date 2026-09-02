@@ -55,10 +55,12 @@ const matchMessageSubject = (match: PortfolioMatchRecord) => ({
 
 function PortfolioMatchCard({ match, nearMiss = false }: { match: PortfolioMatchRecord; nearMiss?: boolean }) {
   const [copyState, setCopyState] = useState<"idle" | "drafting" | "copied" | "failed">("idle");
+  const [draftText, setDraftText] = useState<string | null>(null);
   const [usedTemplate, setUsedTemplate] = useState(false);
 
   async function copyMessage() {
     setCopyState("drafting");
+    setDraftText(null);
     // The personalised draft is a nicety; a failure must never cost the advisor the message.
     let draft: MatchMessageDraft = { message: buildMatchMessageFallback(matchMessageSubject(match)), source: "template" };
     try {
@@ -67,8 +69,23 @@ function PortfolioMatchCard({ match, nearMiss = false }: { match: PortfolioMatch
       // keep the template
     }
     setUsedTemplate(draft.source === "template");
+    // Shown before it is copied: this text goes to a customer over the advisor's
+    // own name, and a clipboard that refuses used to take the whole draft with it.
+    setDraftText(draft.message);
+    setCopyState("idle");
     try {
       await navigator.clipboard.writeText(draft.message);
+      setCopyState("copied");
+      window.setTimeout(() => setCopyState("idle"), 2500);
+    } catch {
+      setCopyState("failed");
+    }
+  }
+
+  async function copyDraft() {
+    if (!draftText) return;
+    try {
+      await navigator.clipboard.writeText(draftText);
       setCopyState("copied");
       window.setTimeout(() => setCopyState("idle"), 2500);
     } catch {
@@ -85,7 +102,14 @@ function PortfolioMatchCard({ match, nearMiss = false }: { match: PortfolioMatch
     <h3>{match.contactName} ↔ {match.portfolioItem.headline}</h3>
     {match.situationSummary ? <p className="match-situation">Bu talebi için: {match.situationSummary}</p> : null}
     <ul>{shownReasons.map((reason) => <li className={`match-reason-${reason.status}`} key={reason.key}>{reason.status === "unknown" ? "Doğrulanmalı: " : ""}{reason.detail}</li>)}</ul>
-    {copyState === "failed" ? <p className="form-error compact-error">Mesaj kopyalanamadı. Tarayıcı pano iznini kontrol edin.</p> : null}
+    {draftText !== null ? <div className="match-draft">
+      <label>Müşteriye gidecek mesaj<textarea className="sp-control" onChange={(event) => setDraftText(event.target.value)} rows={5} value={draftText} /></label>
+      <div className="match-draft-actions">
+        <button className="secondary-action compact-action" onClick={() => void copyDraft()} type="button"><Copy size={15} /> {copyState === "copied" ? "Kopyalandı" : "Kopyala"}</button>
+        <button className="text-button" onClick={() => { setDraftText(null); setCopyState("idle"); }} type="button">Kapat</button>
+      </div>
+    </div> : null}
+    {copyState === "failed" ? <p className="form-error compact-error">Panoya kopyalanamadı; metni yukarıdan seçip alabilirsiniz.</p> : null}
     {copyState === "copied" && usedTemplate ? <p className="compact-error">Kişiye özel taslak üretilemedi; standart metin kopyalandı.</p> : null}
     <div className="match-card-actions">
       <button className="secondary-action compact-action" disabled={copyState === "drafting"} onClick={() => void copyMessage()} type="button">{copyState === "copied" ? <Check size={16} /> : <Copy size={16} />}{copyState === "drafting" ? "Taslak hazırlanıyor…" : copyState === "copied" ? "Kopyalandı" : "Mesaj taslağı"}</button>

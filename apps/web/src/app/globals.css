@@ -1549,3 +1549,8 @@ textarea.sp-control.is-compact { min-height: 80px; }
 /* deed-bg is already the highlighted look here, so hover rings it rather than
    inverting it -- an inset ring also keeps the chip exactly its siblings' size. */
 .contact-history-tags .contact-history-review:hover { box-shadow: inset 0 0 0 1px var(--deed); }
+
+/* The draft is read before it is sent, so it gets room rather than a toast. */
+.match-draft { margin-top: 10px; display: grid; gap: 8px; }
+.match-draft textarea { min-height: 96px; resize: vertical; }
+.match-draft-actions { display: flex; align-items: center; gap: 10px; }

@@ -1,3 +1,4 @@
+export * from "./validation/locale.js";
 export * from "./analytics/events.js";
 export * from "./auth/error-message.js";
 export * from "./calls/call-record.js";
