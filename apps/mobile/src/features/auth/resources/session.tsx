@@ -38,6 +38,8 @@ interface SessionContextValue {
   signIn(email: string, password: string): Promise<void>;
   createAccount(displayName: string, email: string, password: string): Promise<void>;
   resetPassword(email: string): Promise<void>;
+  /** Joining an office rewrites the claims, so the token has to be re-read before the next call. */
+  refreshSession(): Promise<void>;
   signOut(): Promise<void>;
 }
 
@@ -149,9 +151,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     catch (nextError) { throw new Error(authErrorMessage(nextError)); }
   }, []);
 
+  const refreshSession = useCallback(async () => {
+    const { auth } = firebaseServices();
+    if (!auth.currentUser) throw new Error("Oturum bulunamadı.");
+    await getIdTokenResult(auth.currentUser, true);
+    setSession(await workspaceFor(auth.currentUser));
+  }, []);
+
   const value = useMemo(
-    () => ({ session, status, error, signIn, createAccount, resetPassword, signOut }),
-    [session, status, error, signIn, createAccount, resetPassword, signOut],
+    () => ({ session, status, error, signIn, createAccount, resetPassword, refreshSession, signOut }),
+    [session, status, error, signIn, createAccount, resetPassword, refreshSession, signOut],
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
