@@ -4,6 +4,7 @@ import {
   contactMemorySchema,
   createOpportunity as createOpportunityEntity,
   opportunityDraftSchema,
+  opportunityImpliedRole,
   type Contact,
   type StageEvent,
   type Opportunity,
@@ -207,6 +208,16 @@ export const createOpportunity = onCall(callableOptions, async (request): Promis
       const opportunity = createOpportunityEntity(parsed.data, { officeId: contact.officeId, ownerUid: contact.ownerUid }, now);
       const nowTimestamp = Timestamp.fromMillis(now);
       transaction.create(opportunityRef, toStoredOpportunity(opportunity));
+      // The opportunity states the role, so the contact should stop saying it
+      // does not know one. An advisor-set role is never overwritten.
+      const impliedRole = opportunityImpliedRole(parsed.data.type);
+      const storedRoles = (contact.roles ?? []) as string[];
+      if (!storedRoles.includes(impliedRole)) {
+        transaction.update(contactSnapshot.ref, {
+          roles: [...storedRoles.filter((role) => role !== "unknown"), impliedRole],
+          updatedAt: Timestamp.fromMillis(now),
+        });
+      }
       transaction.create(eventRef, {
         officeId: contact.officeId,
         ownerUid: contact.ownerUid,

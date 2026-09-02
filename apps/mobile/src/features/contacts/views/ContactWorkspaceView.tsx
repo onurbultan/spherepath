@@ -82,6 +82,20 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
 
   const contact = contactsQuery.data?.find((item) => item.id === contactId);
   const opportunities = (opportunitiesQuery.data ?? []).filter((item) => item.subjectContactId === contactId);
+  // The card used to say "Belirlenmedi" while two opportunities underneath it
+  // carried dated steps, so a contact with work waiting read as a contact with none.
+  const nextStep = (() => {
+    const own = contact?.relationship.nextActionType
+      ? { type: contact.relationship.nextActionType, at: contact.relationship.nextActionAt, fromOpportunity: false }
+      : null;
+    const fromOpportunities = opportunities
+      .filter((item) => item.stage !== "won" && item.stage !== "lost" && item.nextActionType !== null)
+      .map((item) => ({ type: item.nextActionType!, at: item.nextActionAt, fromOpportunity: true }))
+      .sort((left, right) => (left.at ?? Infinity) - (right.at ?? Infinity))[0] ?? null;
+    if (!own) return fromOpportunities;
+    if (!fromOpportunities) return own;
+    return (own.at ?? Infinity) <= (fromOpportunities.at ?? Infinity) ? own : fromOpportunities;
+  })();
   const entries: Entry[] = [
     ...(callsQuery.data ?? []).map((call) => ({ kind: "call" as const, at: call.startedAt ?? call.createdAt, call })),
     ...(interactionsQuery.data ?? []).map((interaction) => ({ kind: "interaction" as const, at: interaction.occurredAt, interaction })),
@@ -136,7 +150,8 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
           </SpCard>
           <SpCard style={styles.summaryCard}>
             <SpText variant="caption" color="secondary">Sonraki adım</SpText>
-            <SpText variant="bodySmall">{contact.relationship.nextActionType ? nextActionTypeLabels[contact.relationship.nextActionType] : "Belirlenmedi"}</SpText>
+            <SpText variant="bodySmall">{nextStep ? nextActionTypeLabels[nextStep.type] : "Belirlenmedi"}</SpText>
+            {nextStep?.at ? <SpText variant="caption" color="secondary">{new Intl.DateTimeFormat("tr-TR", { dateStyle: "short", timeStyle: "short" }).format(nextStep.at)}{nextStep.fromOpportunity ? " · fırsattan" : ""}</SpText> : null}
           </SpCard>
           <SpCard style={styles.summaryCard}>
             <SpText variant="caption" color="secondary">Açık fırsat</SpText>

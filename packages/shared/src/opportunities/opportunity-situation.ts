@@ -1,4 +1,4 @@
-import type { ContactMemory, ContactPropertySituation, OpportunityType } from "../domain/entities.js";
+import type { ContactMemory, ContactPropertySituation, ContactRole, OpportunityType } from "../domain/entities.js";
 
 /** A seller or landlord opportunity is about a property the contact already owns. */
 export function isOwnerOpportunity(type: OpportunityType): boolean {
@@ -17,4 +17,18 @@ export function opportunitySituation(memory: ContactMemory, type: OpportunityTyp
   return memory.propertySituations.find((situation) => situation.propertyContext === wanted)
     // One situation and no match still beats showing the other side's criteria.
     ?? (memory.propertySituations.length === 1 ? null : null);
+}
+
+/**
+ * What an opportunity says about the person it belongs to. A contact whose
+ * seller opportunity is open is a seller, and leaving the role "unknown" makes
+ * the contact list unable to filter for the very people being worked.
+ */
+export function opportunityImpliedRole(type: OpportunityType): ContactRole {
+  switch (type) {
+    case "seller_listing": return "seller";
+    case "landlord_listing": return "landlord";
+    case "buyer_requirement": return "buyer";
+    case "tenant_requirement": return "tenant";
+  }
 }
