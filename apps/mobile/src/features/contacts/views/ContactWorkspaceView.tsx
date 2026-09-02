@@ -172,7 +172,18 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
                   </SpText>
                   <View style={styles.chips}>
                     {call.answered ? <View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="caption" color="secondary">{callRecordingStatusLabels[call.recordingStatus]}</SpText></View> : null}
-                    {callSummaryLabel(call) ? <View style={[styles.chip, { backgroundColor: theme.deedBg }]}><Sparkles color={theme.deed} size={12} /><SpText variant="caption" color="deed">{callSummaryLabel(call)}</SpText></View> : null}
+                    {callSummaryLabel(call) ? (
+                      // Saying a summary is waiting without a way to reach it
+                      // leaves the advisor hunting for the capture screen.
+                      <Pressable
+                        disabled={call.noteStatus !== "needs_review" || !call.contactId}
+                        onPress={() => router.push(`/capture?contactId=${encodeURIComponent(call.contactId!)}`)}
+                        style={[styles.chip, { backgroundColor: theme.deedBg }]}
+                      >
+                        <Sparkles color={theme.deed} size={12} />
+                        <SpText variant="caption" color="deed">{callSummaryLabel(call)}</SpText>
+                      </Pressable>
+                    ) : null}
                     {call.contactCreatedFromCall ? <View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="caption" color="secondary">Bu aramayla eklendi</SpText></View> : null}
                   </View>
                 </SpCard>

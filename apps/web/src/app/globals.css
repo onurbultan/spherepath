@@ -1535,3 +1535,14 @@ textarea.sp-control.is-compact { min-height: 80px; }
   .note-heading-controls > .note-view-toggle { flex: 1 1 auto; }
   .note-heading-controls > .note-view-toggle button { flex: 1; justify-content: center; }
 }
+
+/* The review badge is a link; it keeps the tag's shape so the row stays even. */
+.contact-history-tags .contact-history-review {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  text-decoration: none;
+  color: var(--deed);
+  background: var(--deed-bg);
+}
+.contact-history-tags .contact-history-review:hover { text-decoration: underline; }

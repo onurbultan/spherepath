@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { apiQueryKeys, callRecordingStatusLabels, callSummaryLabel, type CallRecordView } from "@spherepath/shared";
 import { PhoneIncoming, PhoneMissed, PhoneOutgoing, RefreshCw, Sparkles } from "lucide-react";
@@ -65,7 +66,11 @@ export function ContactCallHistory({ contactId }: { contactId: string }) {
                   <p>{call.answered ? `${spokenFor(call.talkDurationMs)} görüşüldü.` : "Görüşme gerçekleşmedi; geri dönülmeyi bekliyor."}</p>
                   <div className="contact-history-tags">
                     {call.answered ? <span>{callRecordingStatusLabels[call.recordingStatus]}</span> : null}
-                    {summary ? <span><Sparkles size={12} aria-hidden /> {summary}</span> : null}
+                    {summary && call.noteStatus === "needs_review" && call.contactId
+                      // Saying a summary is waiting without a way to reach it leaves
+                      // the advisor hunting for the capture screen.
+                      ? <Link className="contact-history-review" href={`/capture?contactId=${encodeURIComponent(call.contactId)}`}><Sparkles size={12} aria-hidden /> {summary}</Link>
+                      : summary ? <span><Sparkles size={12} aria-hidden /> {summary}</span> : null}
                     {call.contactCreatedFromCall ? <span>Bu aramayla eklendi</span> : null}
                   </div>
                 </div>

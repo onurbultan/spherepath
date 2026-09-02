@@ -124,7 +124,9 @@ export function ContactsView() {
   const linkedContact = requestedContactId && dismissedDeepLink !== requestedContactId
     ? contacts.find((contact) => contact.id === requestedContactId) ?? null
     : null;
-  const activeSelectedContact = selectedContact ?? linkedContact;
+  // An edit link carries a contactId too, but it asks for the form, not the
+  // detail sheet; honouring both stacked one panel on top of the other.
+  const activeSelectedContact = selectedContact ?? (requestedEdit ? null : linkedContact);
   // The workspace page has no form of its own, so its edit action arrives here as
   // a link. Opening the sheet is an adjustment to a changed input rather than a
   // synchronisation with anything outside React, so it belongs in render and is
