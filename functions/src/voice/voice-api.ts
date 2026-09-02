@@ -244,6 +244,8 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
       contactId: data.contactId as string,
       durationMs: typeof data.durationMs === "number" ? data.durationMs : 0,
       attempts: Number(data.attempts ?? 0) + 1,
+      // A call is a two-party recording; extraction has to read it differently.
+      source: data.inputMode === "call" ? "call" as const : "note" as const,
     };
   });
   if (!acquired) return;
@@ -262,7 +264,7 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
     const shouldUseVertex = process.env.FUNCTIONS_EMULATOR !== "true" && !profilingObjected;
     if (shouldUseVertex && !extraction.isUnclear) {
       try {
-        extraction = sanitizeVoiceExtraction(await extractVoiceDraftWithVertex(masked.text, processingDate));
+        extraction = sanitizeVoiceExtraction(await extractVoiceDraftWithVertex(masked.text, processingDate, acquired.source));
       } catch (error) {
         logger.warn("Vertex voice extraction failed; deterministic fallback retained", {
           voiceNoteId,
