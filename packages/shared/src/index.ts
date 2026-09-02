@@ -3,6 +3,7 @@ export * from "./auth/error-message.js";
 export * from "./calls/call-record.js";
 export * from "./contacts/contact-draft.js";
 export * from "./contacts/phone.js";
+export * from "./contacts/phone-country.js";
 export * from "./closing/index.js";
 export * from "./daily-plan/rank-tasks.js";
 export * from "./daily-plan/stable-plan.js";

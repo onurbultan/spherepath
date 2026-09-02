@@ -1,11 +1,20 @@
 "use client";
 
-import { formatMoneyAsTyped, formatPhoneAsTyped } from "@spherepath/shared";
+import { useState } from "react";
+import {
+  defaultPhoneCountry,
+  formatMoneyAsTyped,
+  formatNationalAsTyped,
+  joinPhone,
+  phoneCountries,
+  phoneCountryFlag,
+  splitPhone,
+} from "@spherepath/shared";
 
 /**
- * Both fields keep the advisor's own text as the source of truth and only
- * re-group it, so the caret never jumps and a half-typed value stays editable.
- * What they store is still the plain string the drafts already expect.
+ * Both fields re-group what the advisor typed rather than replacing it, so the
+ * caret never jumps and a half-entered value stays editable. What they hand back
+ * is still the single string the drafts already carry.
  */
 
 export function PhoneField({
@@ -13,24 +22,51 @@ export function PhoneField({
   onChange,
   autoFocus,
   id,
-  placeholder = "0532 123 45 67",
 }: {
   value: string;
   onChange: (value: string) => void;
   autoFocus?: boolean;
   id?: string;
-  placeholder?: string;
 }) {
+  const parsed = splitPhone(value);
+  // The dialling code lives in the stored value once a number exists; the local
+  // choice only has to survive an empty field.
+  const [pendingDialCode, setPendingDialCode] = useState(parsed.dialCode);
+  const dialCode = value ? parsed.dialCode : pendingDialCode;
+
   return (
-    <input
-      autoComplete="tel"
-      autoFocus={autoFocus}
-      id={id}
-      inputMode="tel"
-      onChange={(event) => onChange(formatPhoneAsTyped(event.target.value))}
-      placeholder={placeholder}
-      value={value}
-    />
+    <span className="phone-field">
+      <span className="phone-field-country">
+        <span aria-hidden className="phone-field-flag">
+          {phoneCountryFlag(phoneCountries.find((country) => country.dialCode === dialCode)?.code ?? defaultPhoneCountry.code)}
+        </span>
+        <span className="phone-field-code">+{dialCode}</span>
+        <select
+          aria-label="Ülke kodu"
+          onChange={(event) => {
+            setPendingDialCode(event.target.value);
+            onChange(joinPhone(event.target.value, parsed.national));
+          }}
+          value={dialCode}
+        >
+          {phoneCountries.map((country) => (
+            <option key={country.code} value={country.dialCode}>
+              {phoneCountryFlag(country.code)} +{country.dialCode} · {country.name}
+            </option>
+          ))}
+        </select>
+      </span>
+      <input
+        autoComplete="tel-national"
+        autoFocus={autoFocus}
+        className="phone-field-number"
+        id={id}
+        inputMode="tel"
+        onChange={(event) => onChange(joinPhone(dialCode, formatNationalAsTyped(event.target.value, dialCode)))}
+        placeholder="507 872 70 22"
+        value={parsed.national}
+      />
+    </span>
   );
 }
 
@@ -44,7 +80,7 @@ export function MoneyField({
 }: {
   value: string;
   onChange: (value: string) => void;
-  /** Shown beside the field so the grouped digits are never read as a bare number. */
+  /** Shown beside the field so grouped digits are never read as a bare number. */
   currency?: string;
   id?: string;
   placeholder?: string;

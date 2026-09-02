@@ -351,8 +351,42 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .form-stack input:disabled, .capture-form input:disabled, .settings-card input:disabled { opacity: .55; cursor: not-allowed; background: var(--background); }
 
 /* Grouped phone and price fields: digits line up so a misread zero is visible. */
+.phone-field {
+  display: flex; align-items: stretch; width: 100%; min-height: 38px; overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--card);
+  transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
+}
+.phone-field:hover { border-color: var(--line-strong); }
+.phone-field:focus-within { border-color: var(--focus); box-shadow: 0 0 0 3px var(--focus-halo); }
+.phone-field-country {
+  position: relative; display: flex; align-items: center; gap: 6px; flex: 0 0 auto;
+  padding: 0 11px; border-right: 1px solid var(--line);
+  color: var(--text-secondary); font-size: 12px; font-weight: 700;
+}
+/* Marks the segment as a menu; the native select sits over it and takes the click. */
+.phone-field-country::after {
+  content: ""; width: 5px; height: 5px; margin-left: -1px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg); opacity: .55;
+}
+.phone-field-flag { font-size: 14px; line-height: 1; }
+.phone-field-code { font-variant-numeric: tabular-nums; }
+/* The native control carries the menu and keyboard behaviour; the flag and code
+   above are what is actually seen. */
+.phone-field-country > select {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent;
+  color: transparent; opacity: 0; cursor: pointer; appearance: none;
+}
+.phone-field > .phone-field-number,
+.phone-field > .phone-field-number:hover,
+.phone-field > .phone-field-number:focus {
+  flex: 1; min-width: 0; width: auto; min-height: 0; height: auto; padding: 0 11px;
+  border: 0; border-radius: 0; background: transparent; box-shadow: none; outline: 0;
+  font-variant-numeric: tabular-nums;
+}
 .money-field { position: relative; display: block; }
-.money-field > input { padding-right: 46px; }
+.money-field > input, .money-field > input:hover, .money-field > input:focus { padding-right: 46px; }
 .money-field > input, input[inputmode="numeric"], input[inputmode="tel"] { font-variant-numeric: tabular-nums; }
 .money-field-currency {
   position: absolute; inset-block: 0; right: 11px; display: flex; align-items: center;
