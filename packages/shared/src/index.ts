@@ -20,6 +20,7 @@ export * from "./funnel/funnel-metrics.js";
 export * from "./listings/index.js";
 export * from "./matching/match-message.js";
 export * from "./matching/portfolio-match.js";
+export * from "./opportunities/opportunity-situation.js";
 export * from "./opportunities/index.js";
 export * from "./referrals/index.js";
 export * from "./privacy/index.js";
