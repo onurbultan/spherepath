@@ -59,6 +59,7 @@ function contactMemory(data?: DocumentData): Contact["memory"] {
   const memory = (data?.memory ?? {}) as DocumentData;
   return contactMemorySchema.parse({
     keyThingsToRemember: memory.keyThingsToRemember ?? [],
+    propertySituations: memory.propertySituations ?? [],
     propertyPreferences: memory.propertyPreferences ?? {
       transactionType: null,
       propertyTypes: [],

@@ -777,6 +777,7 @@ export const confirmVoiceNote = onCall(
       const storedMemory = (contact.memory ?? {}) as FirebaseFirestore.DocumentData;
       const currentMemory = contactMemorySchema.parse({
         keyThingsToRemember: storedMemory.keyThingsToRemember ?? [],
+        propertySituations: storedMemory.propertySituations ?? [],
         propertyPreferences: storedMemory.propertyPreferences ?? {
           transactionType: null,
           propertyTypes: [],

@@ -69,6 +69,7 @@ function toContactRecord(id: string, data: DocumentData): ContactRecord {
     },
     memory: contactMemorySchema.parse({
       keyThingsToRemember: memory.keyThingsToRemember ?? [],
+      propertySituations: memory.propertySituations ?? [],
       propertyPreferences: memory.propertyPreferences ?? {
         transactionType: null,
         propertyTypes: [],
