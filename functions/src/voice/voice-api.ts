@@ -266,10 +266,13 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
       try {
         extraction = sanitizeVoiceExtraction(await extractVoiceDraftWithVertex(masked.text, processingDate, acquired.source));
       } catch (error) {
+        // An Error's `message` is not enumerable, so logging the object alone
+        // reduced a specific API complaint to `{name, status}`.
         logger.warn("Vertex voice extraction failed; deterministic fallback retained", {
           voiceNoteId,
           eventId,
-          error,
+          reason: error instanceof Error ? error.message : String(error),
+          status: (error as { status?: unknown })?.status ?? null,
         });
       }
     }

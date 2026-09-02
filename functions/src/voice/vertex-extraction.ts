@@ -13,7 +13,7 @@ export const voiceExtractionPromptVersion = "voice-extraction-v2";
 const extractionModel = defineString("VOICE_EXTRACTION_MODEL", { default: "gemini-3.7-flash" });
 const vertexLocation = defineString("VERTEX_AI_LOCATION", { default: "global" });
 
-const responseJsonSchema = {
+export const responseJsonSchema = {
   type: "object",
   additionalProperties: false,
   required: ["isUnclear", "interaction", "insights", "confidence"],
@@ -174,6 +174,49 @@ export type TranscriptSource = "note" | "call";
 export const instructionFor = (source: TranscriptSource) =>
   `${source === "call" ? callFraming : noteFraming}\n${sharedInstruction}`;
 
+/**
+ * Vertex accepts a narrower schema language than JSON Schema. Sent the full
+ * thing as `responseJsonSchema` it answers 400 "invalid argument" with no clue
+ * which construct it disliked, and the extraction silently falls back to the
+ * deterministic draft -- which copies raw sentences instead of reading facts
+ * out of them. Translating to the supported subset is what makes structured
+ * extraction work at all: nullable unions collapse to a flag, and the
+ * validation-only keywords are dropped, since the response is validated again
+ * by the zod schema after parsing.
+ */
+const vertexSchemaKeywords = new Set(["type", "enum", "items", "properties", "required", "nullable", "description"]);
+
+export function toVertexSchema(node: unknown): unknown {
+  if (!node || typeof node !== "object") return node;
+  const source = node as Record<string, unknown>;
+
+  // `anyOf: [X, {type: "null"}]` is how the JSON Schema spells an optional
+  // field; Vertex spells the same thing as `nullable`.
+  if (Array.isArray(source.anyOf)) {
+    const branches = source.anyOf as Array<Record<string, unknown>>;
+    const nullable = branches.some((branch) => branch?.type === "null");
+    const concrete = branches.find((branch) => branch?.type !== "null") ?? { type: "string" };
+    return { ...(toVertexSchema(concrete) as Record<string, unknown>), ...(nullable ? { nullable: true } : {}) };
+  }
+
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (!vertexSchemaKeywords.has(key)) continue;
+    if (key === "properties") {
+      out.properties = Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([name, child]) => [name, toVertexSchema(child)]),
+      );
+    } else if (key === "items") {
+      out.items = toVertexSchema(value);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+const vertexResponseSchema = toVertexSchema(responseJsonSchema);
+
 let cachedClient: { key: string; client: GoogleGenAI } | null = null;
 
 function clientFor(project: string, location: string): GoogleGenAI {
@@ -204,7 +247,7 @@ export async function extractVoiceDraftWithVertex(
       temperature: 0,
       maxOutputTokens: 8_192,
       responseMimeType: "application/json",
-      responseJsonSchema,
+      responseSchema: vertexResponseSchema,
       httpOptions: { timeout: 30_000 },
     },
   });
