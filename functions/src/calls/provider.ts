@@ -39,7 +39,12 @@ export interface FetchedRecording {
  * is recorded like any inbound one.
  */
 export interface OriginateRequest {
-  extension: string;
+  /**
+   * The advisor's own phone, dialled first. Verimor's `originate` needs a
+   * registered SIP device on the extension, which an advisor carrying only
+   * their mobile does not have; `bridge` calls two ordinary numbers instead.
+   */
+  source: string;
   /** Digits with country code, no plus. */
   destination: string;
   callerId: string | null;

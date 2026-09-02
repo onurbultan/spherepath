@@ -100,6 +100,8 @@ export interface CallIntegrationView {
   integrationId: string;
   webhookToken: string;
   extensionOwners: Record<string, string>;
+  /** The advisor's own phone, which the switch rings first on an outbound call. */
+  advisorNumbers: Record<string, string>;
   active: boolean;
 }
 
@@ -109,7 +111,7 @@ export async function loadCallIntegration(): Promise<CallIntegrationView | null>
 
 export async function configureCallIntegration(
   session: WorkspaceSession,
-  input: { extensionOwners?: Record<string, string>; rotateToken?: boolean; outboundCallerId?: string | null; defaultRoutingTarget?: string | null; recordingNoticeAnnouncementId?: number | null },
+  input: { extensionOwners?: Record<string, string>; advisorNumbers?: Record<string, string>; rotateToken?: boolean; outboundCallerId?: string | null; defaultRoutingTarget?: string | null; recordingNoticeAnnouncementId?: number | null },
 ): Promise<{ integrationId: string; webhookToken: string }> {
   return apiClient.command<typeof input, { integrationId: string; webhookToken: string }>(
     "configureCallIntegration", input, createCommandId(session.uid),

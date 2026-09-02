@@ -7,6 +7,7 @@ import { PhoneCall, RefreshCw } from "lucide-react";
 import { useSession } from "@/features/auth/resources/session";
 import { SpCard } from "@/shared/ui/SpCard";
 import { SpInput } from "@/shared/ui/SpField";
+import { PhoneField } from "@/shared/ui/MaskedFields";
 import { loadCallIntegration, configureCallIntegration, connectCallProvider } from "../resources/settings";
 import { loadOfficeTeam } from "../resources/settings";
 
@@ -25,6 +26,7 @@ export function TelephonySettingsCard() {
   const integrationQuery = useQuery({ queryKey: apiQueryKeys.callIntegration, queryFn: loadCallIntegration });
   const teamQuery = useQuery({ queryKey: apiQueryKeys.officeTeam, queryFn: loadOfficeTeam });
   const [extensions, setExtensions] = useState<Record<string, string> | null>(null);
+  const [numbers, setNumbers] = useState<Record<string, string> | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -37,6 +39,10 @@ export function TelephonySettingsCard() {
     members.map((member) => [member.uid, Object.entries(integration?.extensionOwners ?? {}).find(([, uid]) => uid === member.uid)?.[0] ?? ""]),
   );
 
+  const byAdvisorNumber = numbers ?? Object.fromEntries(
+    members.map((member) => [member.uid, integration?.advisorNumbers?.[member.uid] ?? ""]),
+  );
+
   async function save(rotateToken = false) {
     if (!session) return;
     setPending(true); setError(null); setMessage(null);
@@ -44,8 +50,12 @@ export function TelephonySettingsCard() {
       const extensionOwners = Object.fromEntries(
         Object.entries(byAdvisor).filter(([, extension]) => extension.trim()).map(([uid, extension]) => [extension.trim(), uid]),
       );
-      await configureCallIntegration(session, { extensionOwners, rotateToken });
+      const advisorNumbers = Object.fromEntries(
+        Object.entries(byAdvisorNumber).filter(([, phone]) => phone.trim()),
+      );
+      await configureCallIntegration(session, { extensionOwners, advisorNumbers, rotateToken });
       setExtensions(null);
+      setNumbers(null);
       if (rotateToken) setConnected(null);
       setMessage(rotateToken ? "Yeni webhook adresi üretildi; Verimor panelindeki adresi güncelleyin." : "Telefon ayarları kaydedildi.");
       await queryClient.invalidateQueries({ queryKey: apiQueryKeys.callIntegration });
@@ -90,8 +100,8 @@ export function TelephonySettingsCard() {
         </div>
       </div>
       <p className="privacy-copy">
-        Gelen çağrı, arayan numaranın kayıtlı olduğu danışmana yönlendirilir. Bunun için her
-        danışmanın santraldeki dahili numarası burada eşlenir.
+        Giden aramada santral önce danışmanın kendi telefonunu arar, o açınca müşteriye bağlar.
+        Dahili numara ise gelen çağrının hangi danışmana düşeceğini belirler.
       </p>
 
       {integrationQuery.isPending ? (
@@ -99,15 +109,26 @@ export function TelephonySettingsCard() {
       ) : (
         <>
           {members.map((member) => (
-            <label key={member.uid}>
-              {member.displayName} · dahili
-              <SpInput
-                inputMode="numeric"
-                onChange={(event) => setExtensions({ ...byAdvisor, [member.uid]: event.target.value })}
-                placeholder="1001"
-                value={byAdvisor[member.uid] ?? ""}
-              />
-            </label>
+            <div className="form-row" key={member.uid}>
+              <label>
+                {member.displayName} · telefonu
+                {/* Rung first on an outbound call, so the advisor is already on
+                    the line before the customer's phone starts ringing. */}
+                <PhoneField
+                  onChange={(value) => setNumbers({ ...byAdvisorNumber, [member.uid]: value })}
+                  value={byAdvisorNumber[member.uid] ?? ""}
+                />
+              </label>
+              <label>
+                Dahili
+                <SpInput
+                  inputMode="numeric"
+                  onChange={(event) => setExtensions({ ...byAdvisor, [member.uid]: event.target.value })}
+                  placeholder="1001"
+                  value={byAdvisor[member.uid] ?? ""}
+                />
+              </label>
+            </div>
           ))}
 
           {integration ? (

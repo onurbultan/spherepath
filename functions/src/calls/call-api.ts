@@ -320,11 +320,23 @@ export const configureCallIntegration = onCall(callableOptions, async (request):
   if (claims.role !== "broker") throw new HttpsError("permission-denied", "Only a broker can configure telephony.");
   const envelope = readApiEnvelope<{
     extensionOwners?: unknown;
+    advisorNumbers?: unknown;
     rotateToken?: unknown;
     outboundCallerId?: unknown;
     defaultRoutingTarget?: unknown;
     recordingNoticeAnnouncementId?: unknown;
   }>(request.data, { command: true });
+  const advisorNumbers = envelope.data?.advisorNumbers;
+  if (advisorNumbers !== undefined && (typeof advisorNumbers !== "object" || advisorNumbers === null || Array.isArray(advisorNumbers))) {
+    throw new HttpsError("invalid-argument", "Advisor numbers must be a mapping of user to phone.");
+  }
+  for (const value of Object.values((advisorNumbers ?? {}) as Record<string, unknown>)) {
+    // A number the switch cannot dial would fail only at call time, by which
+    // point the advisor is staring at a button that does nothing.
+    if (typeof value !== "string" || !normalizePhone(value)) {
+      throw new HttpsError("invalid-argument", "Advisor phone number is not dialable.");
+    }
+  }
   const extensionOwners = envelope.data?.extensionOwners;
   if (extensionOwners !== undefined && (typeof extensionOwners !== "object" || extensionOwners === null || Array.isArray(extensionOwners))) {
     throw new HttpsError("invalid-argument", "Extension owners must be a mapping of extension to user.");
@@ -350,6 +362,7 @@ export const configureCallIntegration = onCall(callableOptions, async (request):
       webhookToken,
       defaultOwnerUid: claims.uid,
       extensionOwners: (extensionOwners as Record<string, string> | undefined) ?? existing.data()?.extensionOwners ?? {},
+      advisorNumbers: (advisorNumbers as Record<string, string> | undefined) ?? existing.data()?.advisorNumbers ?? {},
       outboundCallerId: (envelope.data?.outboundCallerId as string | undefined) ?? existing.data()?.outboundCallerId ?? null,
       defaultRoutingTarget: (routingTarget as string | undefined) ?? existing.data()?.defaultRoutingTarget ?? null,
       recordingNoticeAnnouncementId: typeof envelope.data?.recordingNoticeAnnouncementId === "number"
@@ -363,7 +376,7 @@ export const configureCallIntegration = onCall(callableOptions, async (request):
   });
 });
 
-export const getCallIntegration = onCall(callableOptions, async (request): Promise<{ integrationId: string; webhookToken: string; extensionOwners: Record<string, string>; active: boolean } | null> => {
+export const getCallIntegration = onCall(callableOptions, async (request): Promise<{ integrationId: string; webhookToken: string; extensionOwners: Record<string, string>; advisorNumbers: Record<string, string>; active: boolean } | null> => {
   const claims = requireSpherepathClaims(request);
   if (claims.role !== "broker") throw new HttpsError("permission-denied", "Only a broker can read telephony settings.");
   const envelope = readApiEnvelope<unknown>(request.data);
@@ -375,6 +388,7 @@ export const getCallIntegration = onCall(callableOptions, async (request): Promi
       integrationId: snapshot.id,
       webhookToken: data.webhookToken as string,
       extensionOwners: (data.extensionOwners ?? {}) as Record<string, string>,
+      advisorNumbers: (data.advisorNumbers ?? {}) as Record<string, string>,
       active: data.active === true,
     };
   });
@@ -458,18 +472,19 @@ export const startContactCall = onCall({ ...callableOptions, secrets: [verimorAp
 
     const destination = toDialableNumber(normalizePhone(contact.phone as string | null));
     if (!destination) throw new HttpsError("failed-precondition", "Contact has no dialable phone number.");
-    const extension = extensionFor(integration, claims.uid);
-    if (!extension) throw new HttpsError("failed-precondition", "No extension is assigned to you.");
+    const advisorNumbers = (integration.advisorNumbers ?? {}) as Record<string, string>;
+    const source = toDialableNumber(normalizePhone(advisorNumbers[claims.uid] ?? null));
+    if (!source) throw new HttpsError("failed-precondition", "Telefon numaranız santral ayarlarında tanımlı değil.");
 
-    const source = sources[integration.provider as string]?.();
-    if (!source) throw new HttpsError("failed-precondition", "Telephony provider is not supported.");
-    const providerCallId = await source.startCall({
-      extension,
+    const callSource = sources[integration.provider as string]?.();
+    if (!callSource) throw new HttpsError("failed-precondition", "Telephony provider is not supported.");
+    const providerCallId = await callSource.startCall({
+      source,
       destination,
       callerId: (integration.outboundCallerId as string | undefined) ?? null,
       announcementId: typeof integration.recordingNoticeAnnouncementId === "number" ? integration.recordingNoticeAnnouncementId : null,
     });
-    logger.info("Outbound call started", { officeId: claims.officeId, extension, providerCallId });
+    logger.info("Outbound call started", { officeId: claims.officeId, providerCallId });
     // The call record itself arrives on the hangup event, which carries the
     // duration and recording state this response cannot know yet.
     return { providerCallId };

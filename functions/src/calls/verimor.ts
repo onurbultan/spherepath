@@ -12,7 +12,7 @@ import {
 
 const apiBase = "https://api.bulutsantralim.com";
 const recordingUrlEndpoint = `${apiBase}/recording_url/`;
-const originateEndpoint = `${apiBase}/originate`;
+const bridgeEndpoint = `${apiBase}/bridge`;
 const crmIntegrationEndpoint = `${apiBase}/crm_integrations`;
 /** The switch caps ring time at a minute; long enough for an advisor to reach the handset. */
 // Verimor allows 10-60s of ringing. An advisor carrying their own phone needs
@@ -109,26 +109,29 @@ export function createVerimorSource(apiKey: () => string): CallRecordingSource {
     async startCall(request): Promise<string> {
       const key = apiKey();
       if (!key) throw new Error("verimor_api_key_missing");
+      // bridge rings `source`, waits for a human to answer, then dials
+      // `destination` -- the order this product needs, with no handset involved.
       const query = new URLSearchParams({
         key,
-        extension: request.extension,
+        source: request.source,
         destination: request.destination,
+        recording_enabled: "true",
         timeout: String(originateTimeoutSeconds),
-        // The advisor's leg is their own mobile, reached by forwarding the
-        // extension, and a mobile cannot auto-answer. Without this the switch
-        // treats the leg as answered and dials the customer while the advisor's
-        // phone is still ringing, so the customer hears the advisor arrive late.
-        manual_answer: "true",
       });
       if (request.callerId) query.set("caller_id", request.callerId);
       // Played to the customer once they pick up, which is where the recording
       // notice belongs.
       if (request.announcementId !== null) query.set("announcement_to_callee", String(request.announcementId));
 
-      const response = await fetch(`${originateEndpoint}?${query.toString()}`);
-      if (!response.ok) throw new Error(`verimor_originate_failed_${response.status}`);
+      const response = await fetch(`${bridgeEndpoint}?${query.toString()}`);
+      if (!response.ok) {
+        // The switch explains itself in the body ("extension 1001 is not
+        // registered"); dropping it turns every failure into the same 400.
+        const reason = (await response.text()).trim().slice(0, 200);
+        throw new Error(`verimor_bridge_failed_${response.status}: ${reason}`);
+      }
       const providerCallId = (await response.text()).trim();
-      if (!providerCallId) throw new Error("verimor_originate_no_call_id");
+      if (!providerCallId) throw new Error("verimor_bridge_no_call_id");
       return providerCallId;
     },
     async connectEvents(notificationUrl: string): Promise<void> {
