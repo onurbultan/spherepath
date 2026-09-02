@@ -10,14 +10,25 @@
     {
       "source": "functions",
       "codebase": "default",
-      "predeploy": ["pnpm --filter @spherepath/functions build"],
-      "ignore": ["node_modules", ".git", "firebase-debug.log", "*.local"]
+      "predeploy": [
+        "pnpm --filter @spherepath/functions build"
+      ],
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "*.local"
+      ]
     }
   ],
   "hosting": {
     "site": "spherepath-96ecd",
     "public": "apps/web/out",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
     "cleanUrls": true,
     "trailingSlash": false,
     "rewrites": [
@@ -25,14 +36,28 @@
         "source": "/contacts/**",
         "destination": "/contacts/__contact__/index.html"
       }
+    ],
+    "predeploy": [
+      "pnpm --filter @spherepath/web build"
     ]
   },
   "emulators": {
-    "auth": { "port": 9099 },
-    "functions": { "port": 5001 },
-    "firestore": { "port": 8080 },
-    "storage": { "port": 9199 },
-    "ui": { "enabled": true, "port": 4000 },
+    "auth": {
+      "port": 9099
+    },
+    "functions": {
+      "port": 5001
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "storage": {
+      "port": 9199
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    },
     "singleProjectMode": true
   }
 }
