@@ -380,6 +380,54 @@ export const getCallIntegration = onCall(callableOptions, async (request): Promi
   });
 });
 
+/**
+ * The address the switch has to call back on. Built here rather than typed into
+ * a panel by hand: the token is 43 random characters, and a single wrong one
+ * fails closed with a 401 that looks, from the switch's side, like silence.
+ */
+function eventWebhookUrl(integrationId: string, webhookToken: string): string {
+  const project = process.env.GCLOUD_PROJECT ?? process.env.GCP_PROJECT ?? "";
+  const query = new URLSearchParams({ integration: integrationId, token: webhookToken });
+  return `https://${callableOptions.region}-${project}.cloudfunctions.net/verimorCallWebhook?${query.toString()}`;
+}
+
+/**
+ * Points the switch at us over its own API, then reads back what it stored. The
+ * read-back matters: a POST that returns OK is not proof the address took, and
+ * the difference between "connected" and "silently not connected" is every call
+ * the office makes.
+ */
+export const connectCallProvider = onCall(
+  { ...callableOptions, secrets: [verimorApiKey] },
+  async (request): Promise<{ notificationUrl: string | null; events: string[]; connected: boolean }> => {
+    const claims = requireSpherepathClaims(request);
+    if (claims.role !== "broker") throw new HttpsError("permission-denied", "Only a broker can connect the switch.");
+    const envelope = readApiEnvelope<unknown>(request.data, { command: true });
+
+    return observeApiRequest("connectCallProvider", envelope.requestId, async () => {
+      const snapshot = await getFirestore().collection(integrationCollection).doc(claims.officeId).get();
+      const integration = snapshot.data();
+      if (!integration) throw new HttpsError("failed-precondition", "Telefon ayarlarını önce kaydedin.");
+
+      const source = sources[integration.provider as string]?.();
+      if (!source) throw new HttpsError("failed-precondition", "Bu santral için bağlantı desteklenmiyor.");
+
+      const expected = eventWebhookUrl(snapshot.id, integration.webhookToken as string);
+      try {
+        await source.connectEvents(expected);
+        const stored = await source.readEventConnection();
+        return { ...stored, connected: stored.notificationUrl === expected };
+      } catch (error) {
+        logger.error("Call provider connection failed", { officeId: claims.officeId, error });
+        const reason = error instanceof Error && error.message === "verimor_api_key_missing"
+          ? "Santral API anahtarı tanımlı değil."
+          : "Santrala bağlanılamadı; API anahtarını ve paket durumunu kontrol edin.";
+        throw new HttpsError("failed-precondition", reason);
+      }
+    });
+  },
+);
+
 function extensionFor(integration: FirebaseFirestore.DocumentData, uid: string): string | null {
   const owners = (integration.extensionOwners ?? {}) as Record<string, string>;
   return Object.entries(owners).find(([, owner]) => owner === uid)?.[0] ?? null;

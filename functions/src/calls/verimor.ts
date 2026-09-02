@@ -13,6 +13,7 @@ import {
 const apiBase = "https://api.bulutsantralim.com";
 const recordingUrlEndpoint = `${apiBase}/recording_url/`;
 const originateEndpoint = `${apiBase}/originate`;
+const crmIntegrationEndpoint = `${apiBase}/crm_integrations`;
 /** The switch caps ring time at a minute; long enough for an advisor to reach the handset. */
 const originateTimeoutSeconds = 45;
 
@@ -122,6 +123,27 @@ export function createVerimorSource(apiKey: () => string): CallRecordingSource {
       const providerCallId = (await response.text()).trim();
       if (!providerCallId) throw new Error("verimor_originate_no_call_id");
       return providerCallId;
+    },
+    async connectEvents(notificationUrl: string): Promise<void> {
+      const key = apiKey();
+      if (!key) throw new Error("verimor_api_key_missing");
+      // All three events are wanted: ringing and answer drive what the app shows
+      // during a call, hangup is what produces the durable record.
+      const query = new URLSearchParams({ key, notification_url: notificationUrl, ringing: "on", answered: "on", hangup: "on" });
+      const response = await fetch(`${crmIntegrationEndpoint}?${query.toString()}`, { method: "POST" });
+      if (!response.ok) throw new Error(`verimor_connect_failed_${response.status}`);
+      logger.info("Call provider pointed at the event endpoint", { notificationUrl });
+    },
+    async readEventConnection() {
+      const key = apiKey();
+      if (!key) throw new Error("verimor_api_key_missing");
+      const response = await fetch(`${crmIntegrationEndpoint}?${new URLSearchParams({ key }).toString()}`);
+      if (!response.ok) throw new Error(`verimor_connection_read_failed_${response.status}`);
+      const body = await response.json() as Record<string, string>;
+      return {
+        notificationUrl: body.notification_url?.trim() || null,
+        events: ["ringing", "answered", "hangup"].filter((event) => body[event] === "on"),
+      };
     },
   };
 }

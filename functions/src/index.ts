@@ -7,7 +7,7 @@ export { advanceDeal, advancePresentation, createDeal, createPresentation, getCl
 export { advanceOpportunity, correctOpportunityStage } from "./opportunities/advance-opportunity.js";
 export { createOpportunity, getOpportunityDetail, listOpportunities } from "./opportunities/opportunity-api.js";
 export { bootstrapWorkspace } from "./auth/bootstrap-workspace.js";
-export { configureCallIntegration, getCallIntegration, listCalls, normalizeContactPhones, processCallRecording, startContactCall, verimorCallWebhook, verimorRoutingWebhook } from "./calls/call-api.js";
+export { configureCallIntegration, connectCallProvider, getCallIntegration, listCalls, normalizeContactPhones, processCallRecording, startContactCall, verimorCallWebhook, verimorRoutingWebhook } from "./calls/call-api.js";
 export { createOfficeInvite, getOfficeTeam, joinOffice, revokeOfficeInvite } from "./auth/office-team.js";
 export { archiveContact, createContact, listContactInteractions, listContacts, updateContact, updateContactPrivacy } from "./contacts/contact-api.js";
 export { recordInteraction } from "./interactions/record-interaction.js";

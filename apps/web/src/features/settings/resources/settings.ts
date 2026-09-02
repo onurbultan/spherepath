@@ -115,3 +115,16 @@ export async function configureCallIntegration(
     "configureCallIntegration", input, createCommandId(session.uid),
   );
 }
+
+export interface CallProviderConnection {
+  notificationUrl: string | null;
+  events: string[];
+  connected: boolean;
+}
+
+export async function connectCallProvider(session: WorkspaceSession): Promise<CallProviderConnection> {
+  return apiClient.command<undefined, CallProviderConnection>(
+    "connectCallProvider", undefined, createCommandId(session.uid),
+  );
+}
+

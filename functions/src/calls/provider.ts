@@ -55,6 +55,14 @@ export interface CallRecordingSource {
   fetchRecording(providerCallId: string): Promise<FetchedRecording | null>;
   /** Resolves to the switch's id for the new call. */
   startCall(request: OriginateRequest): Promise<string>;
+  /**
+   * Points the switch at our event endpoint. Doing this over the API rather than
+   * by hand in a panel means the address cannot be mistyped, and rotating the
+   * token stays a single action.
+   */
+  connectEvents(notificationUrl: string): Promise<void>;
+  /** What the switch currently believes, so the app can show it rather than assume. */
+  readEventConnection(): Promise<{ notificationUrl: string | null; events: string[] }>;
 }
 
 const secondsInDay = 86_400;

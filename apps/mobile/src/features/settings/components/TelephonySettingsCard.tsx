@@ -9,7 +9,7 @@ import { SpText } from "@/shared/ui/SpText";
 import { SpButton, SpField, SpInput } from "@/shared/ui/SpField";
 import { useSpTheme } from "@/shared/ui/theme";
 import { radius, space } from "@/shared/ui/tokens.generated";
-import { configureCallIntegration, loadCallIntegration, loadOfficeTeam } from "../resources/settings";
+import { configureCallIntegration, connectCallProvider, loadCallIntegration, loadOfficeTeam } from "../resources/settings";
 
 const messageFrom = (error: unknown) => error instanceof Error ? error.message : "Telefon ayarları güncellenemedi.";
 const functionsOrigin = "https://europe-west8-spherepath-96ecd.cloudfunctions.net";
@@ -30,6 +30,7 @@ export function TelephonySettingsCard() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [connected, setConnected] = useState<boolean | null>(null);
 
   const integration = integrationQuery.data;
   const members = teamQuery.data?.members ?? [];
@@ -47,9 +48,31 @@ export function TelephonySettingsCard() {
       );
       await configureCallIntegration(session, { extensionOwners, rotateToken });
       setExtensions(null);
+      if (rotateToken) setConnected(null);
       setMessage(rotateToken ? "Yeni webhook adresi üretildi; Verimor panelindeki adresi güncelleyin." : "Telefon ayarları kaydedildi.");
       await queryClient.invalidateQueries({ queryKey: apiQueryKeys.callIntegration });
     } catch (cause) {
+      setError(messageFrom(cause));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  /**
+   * The switch's own API takes the event address, so it never has to be copied
+   * by hand. The routing address has no such endpoint and still goes in the panel.
+   */
+  async function connect() {
+    if (!session) return;
+    setPending(true); setError(null); setMessage(null);
+    try {
+      const state = await connectCallProvider(session);
+      setConnected(state.connected);
+      setMessage(state.connected
+        ? "Verimor bu adrese bağlandı; çağrı olayları buraya düşecek."
+        : `Verimor farklı bir adres tutuyor: ${state.notificationUrl ?? "tanımsız"}`);
+    } catch (cause) {
+      setConnected(false);
       setError(messageFrom(cause));
     } finally {
       setPending(false);
@@ -90,15 +113,13 @@ export function TelephonySettingsCard() {
 
           {integration ? (
             <View style={[styles.addresses, { backgroundColor: theme.sunk }]}>
-              <SpText variant="eyebrow" color="secondary">WEBHOOK ADRESLERİ</SpText>
+              <SpText variant="eyebrow" color="secondary">SANTRAL ADRESLERİ</SpText>
               <SpText variant="caption" color="secondary">
-                Bu iki adresi Verimor panelindeki CRM entegrasyonu bölümüne yazın.
+                {connected === true
+                  ? "Olay bildirimi bağlı. Yönlendirme adresini Verimor panelinde numaranın advisory webhook alanına yazın."
+                  : "Olay bildirimini “Verimor’a bağlan” kendisi yazar. Yönlendirme adresi ise panele elle girilir."}
               </SpText>
-              <SpButton
-                label="Olay bildirimi adresini paylaş"
-                onPress={() => void Share.share({ message: webhook("verimorCallWebhook") })}
-                tone="secondary"
-              />
+              {/* The panel is not on this device, so the address leaves by the share sheet. */}
               <SpButton
                 label="Yönlendirme adresini paylaş"
                 onPress={() => void Share.share({ message: webhook("verimorRoutingWebhook") })}
@@ -113,6 +134,7 @@ export function TelephonySettingsCard() {
           {error ? <View style={[styles.notice, { backgroundColor: theme.askBg }]}><SpText variant="bodySmall" color="ask">{error}</SpText></View> : null}
 
           <SpButton disabled={pending || !session} label="Kaydet" onPress={() => void save()} />
+          {integration ? <SpButton disabled={pending} label="Verimor'a bağlan" onPress={() => void connect()} tone="secondary" /> : null}
           {integration ? <SpButton disabled={pending} label="Adresi yenile" onPress={() => void save(true)} tone="secondary" /> : null}
         </>
       )}
