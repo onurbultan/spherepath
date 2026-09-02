@@ -15,6 +15,8 @@ const recordingUrlEndpoint = `${apiBase}/recording_url/`;
 const originateEndpoint = `${apiBase}/originate`;
 const crmIntegrationEndpoint = `${apiBase}/crm_integrations`;
 /** The switch caps ring time at a minute; long enough for an advisor to reach the handset. */
+// Verimor allows 10-60s of ringing. An advisor carrying their own phone needs
+// longer than a desk handset: it may be in a pocket or a coat.
 const originateTimeoutSeconds = 45;
 
 /**
@@ -112,6 +114,11 @@ export function createVerimorSource(apiKey: () => string): CallRecordingSource {
         extension: request.extension,
         destination: request.destination,
         timeout: String(originateTimeoutSeconds),
+        // The advisor's leg is their own mobile, reached by forwarding the
+        // extension, and a mobile cannot auto-answer. Without this the switch
+        // treats the leg as answered and dials the customer while the advisor's
+        // phone is still ringing, so the customer hears the advisor arrive late.
+        manual_answer: "true",
       });
       if (request.callerId) query.set("caller_id", request.callerId);
       // Played to the customer once they pick up, which is where the recording
