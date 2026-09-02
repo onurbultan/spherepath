@@ -89,6 +89,14 @@ export const callRecordingStatusLabels: Record<CallRecordingStatus, string> = {
  * switch recorded. Missed calls still become records -- they are follow-up work
  * -- but they have nothing to transcribe.
  */
-export function shouldIngestRecording(answered: boolean, recordingPresent: boolean, talkDurationMs: number): boolean {
-  return answered && recordingPresent && talkDurationMs >= 5_000;
+/**
+ * The switch reports `recording_present` at hangup, before it has finished
+ * writing the file: a recorded call arrives saying false and only turns true a
+ * minute or two later. Requiring it here dropped real conversations, so the
+ * decision rests on what the hangup event does know reliably -- that someone
+ * answered and talked. A recording that genuinely does not exist costs a few
+ * retries, which is the cheaper mistake.
+ */
+export function shouldIngestRecording(answered: boolean, talkDurationMs: number): boolean {
+  return answered && talkDurationMs >= 5_000;
 }

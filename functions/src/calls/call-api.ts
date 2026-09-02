@@ -193,7 +193,7 @@ async function storeCallEvent(
   if (!ownerUid) throw new Error("call_owner_unresolved");
 
   const now = Timestamp.now();
-  const ingest = shouldIngestRecording(event.answered, event.recordingPresent, event.talkDurationMs);
+  const ingest = shouldIngestRecording(event.answered, event.talkDurationMs);
   // A stranger who called in and talked long enough is a lead worth keeping, so
   // the record is opened now and the transcript arrives against it.
   let leadCreated = false;
@@ -302,9 +302,10 @@ export const processCallRecording = onDocumentCreated(
     } catch (error) {
       const attempts = Number(call.attempts ?? 0) + 1;
       logger.error("Call recording ingestion failed", { callId, attempts, error });
-      // The switch keeps the recording, so a later attempt can still succeed;
-      // giving up only after repeated failures avoids losing a conversation.
-      if (attempts < 3) {
+      // The switch finishes writing the file a minute or two after the call
+      // ends, so the first attempts are expected to miss. With the trigger's
+      // exponential backoff this spans several minutes before giving up.
+      if (attempts < 6) {
         await callRef.update({ attempts, updatedAt: Timestamp.now() });
         throw error;
       }
