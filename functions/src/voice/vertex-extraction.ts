@@ -231,6 +231,8 @@ export async function extractVoiceDraftWithVertex(
   maskedTranscript: string,
   referenceDate = new Date(),
   source: TranscriptSource = "note",
+  /** Known for a call, because the switch placed it. Null for a dictated note. */
+  callDirection: "inbound" | "outbound" | null = null,
 ): Promise<VoiceExtraction> {
   const project = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
   if (!project) throw new Error("vertex_project_missing");
@@ -240,7 +242,7 @@ export async function extractVoiceDraftWithVertex(
     model,
     contents: [{
       role: "user",
-      parts: [{ text: `${voiceReferenceContext(referenceDate)}\nAnalyze only the ${source === "call" ? "call" : "post-conversation"} transcript between the markers.\n<transcript>\n${maskedTranscript}\n</transcript>` }],
+      parts: [{ text: `${voiceReferenceContext(referenceDate)}${callDirection ? `\nThe switch placed this call: its direction is ${callDirection}. Use exactly that for interaction.direction.` : ""}\nAnalyze only the ${source === "call" ? "call" : "post-conversation"} transcript between the markers.\n<transcript>\n${maskedTranscript}\n</transcript>` }],
     }],
     config: {
       systemInstruction: instructionFor(source),

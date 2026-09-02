@@ -246,6 +246,7 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
       attempts: Number(data.attempts ?? 0) + 1,
       // A call is a two-party recording; extraction has to read it differently.
       source: data.inputMode === "call" ? "call" as const : "note" as const,
+      callDirection: data.callDirection === "inbound" || data.callDirection === "outbound" ? data.callDirection : null,
     };
   });
   if (!acquired) return;
@@ -264,7 +265,7 @@ async function processVoiceNoteDocument(voiceNoteId: string, eventId: string, ra
     const shouldUseVertex = process.env.FUNCTIONS_EMULATOR !== "true" && !profilingObjected;
     if (shouldUseVertex && !extraction.isUnclear) {
       try {
-        extraction = sanitizeVoiceExtraction(await extractVoiceDraftWithVertex(masked.text, processingDate, acquired.source));
+        extraction = sanitizeVoiceExtraction(await extractVoiceDraftWithVertex(masked.text, processingDate, acquired.source, acquired.callDirection));
       } catch (error) {
         // An Error's `message` is not enumerable, so logging the object alone
         // reduced a specific API complaint to `{name, status}`.

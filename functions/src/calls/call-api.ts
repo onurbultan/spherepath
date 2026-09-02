@@ -279,6 +279,9 @@ export const processCallRecording = onDocumentCreated(
         durationMs: call.talkDurationMs,
         mimeType: recording.contentType,
         inputMode: "call",
+        // The switch knows who dialled. Without it the model reads a greeting
+        // and guesses, and "mutual" is the answer it settles on.
+        callDirection: call.direction,
         callId,
         conversationEndedConfirmed: true,
         status: "queued",
