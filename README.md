@@ -20,6 +20,7 @@ pnpm install
 pnpm design:check
 pnpm typecheck
 pnpm test
+pnpm parity:check
 PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH" pnpm test:rules
 pnpm web:dev
 ```

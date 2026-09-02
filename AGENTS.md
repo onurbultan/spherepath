@@ -8,6 +8,7 @@ Spherepath is not a generic CRM. Every feature must advance one of these outcome
 
 - Web and mobile share domain types, runtime validation, pure rules, copy constants, analytics contracts, and design intent through `@spherepath/shared`.
 - Web and mobile do not share React components, navigation, authentication implementations, Firebase SDK instances, or concrete styling.
+- Web and mobile are the same product on two screens. A capability shipped on one ships on the other in the same change; a deliberate exception is declared with its reason in `scripts/check-platform-parity.mjs`.
 - Firebase Web SDK belongs under `apps/web`; React Native Firebase belongs under `apps/mobile`; Firebase Admin belongs under `functions`.
 - Client Firebase SDKs are limited to Auth, Functions transport, and Storage. Feature code must not access Firestore directly or instantiate callable functions outside the platform API adapter.
 - Domain traffic follows view → React Query → feature resource → shared API client → callable Function. Mutations use idempotent command IDs and invalidate explicit shared query keys.
@@ -29,4 +30,6 @@ Spherepath is not a generic CRM. Every feature must advance one of these outcome
 - Pure domain rules require unit tests.
 - Firestore/Storage rules require Emulator tests before production deployment.
 - Web and mobile use the same user-facing Turkish copy and analytics event names for the same product action.
+- Both platforms call the same set of callable Functions. `pnpm parity:check` fails when one reaches a server capability the other cannot.
+- Form controls come from the shared control layer: `shared/ui/SpField` on both platforms, and `.sp-control` on web. A screen must not name its own field height, corner, or border — a control looks the way it does because of what it is, not where it sits.
 - Design values come from generated semantic tokens; feature code must not hardcode colors.

@@ -167,6 +167,7 @@ export function QuickDateField({
             <label className="quick-date-time">
               Saat
               <input
+                className="sp-control"
                 onChange={(event) => onChange(joinDateTimeValue(date || todayValue, event.target.value))}
                 type="time"
                 value={time}

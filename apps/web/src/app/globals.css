@@ -85,7 +85,7 @@ a { color: inherit; text-decoration: none; }
 .quick-date-day.is-selected { background: var(--deed); color: var(--on-deed); font-weight: 700; }
 .quick-date-day:disabled { opacity: .3; cursor: not-allowed; }
 .quick-date-time { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--text-secondary); font-size: 12px; font-weight: 700; }
-.quick-date-time input { width: auto; min-height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card); color: var(--text-primary); font: inherit; font-size: 13px; }
+.quick-date-time .sp-control { width: auto; min-height: var(--control-sm); padding: 0 8px; border-radius: var(--radius-sm); }
 .quick-date-options { display: flex; flex-wrap: wrap; gap: 6px; }
 .quick-date-options button { min-height: 32px; padding: 5px 9px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--card); color: var(--text-secondary); font-size: 12px; }
 .quick-date-options button:hover { border-color: var(--deed); color: var(--deed); }

@@ -12,7 +12,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
-    "check": "pnpm typecheck && pnpm test && pnpm lint",
+    "check": "pnpm typecheck && pnpm test && pnpm lint && pnpm parity:check",
     "design:generate": "node scripts/generate-design-tokens.mjs",
     "design:check": "node scripts/generate-design-tokens.mjs --check",
     "web:dev": "pnpm --filter @spherepath/web dev",
@@ -26,7 +26,8 @@
     "test:api": "pnpm functions:build && WHATSAPP_APP_SECRET=integration-app-secret WHATSAPP_WEBHOOK_VERIFY_TOKEN=integration-verify-token WHATSAPP_GRAPH_ACCESS_TOKEN=integration-access-token node scripts/with-java21.mjs firebase emulators:exec --only auth,firestore,functions \"pnpm --dir firebase-tests test:api\"",
     "test:e2e:web": "pnpm functions:build && node scripts/with-java21.mjs firebase emulators:exec --only auth,firestore,functions,storage \"pnpm --filter @spherepath/web test:e2e\"",
     "firebase:deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes,storage",
-    "functions:build": "pnpm --filter @spherepath/functions build"
+    "functions:build": "pnpm --filter @spherepath/functions build",
+    "parity:check": "node scripts/check-platform-parity.mjs"
   },
   "devDependencies": {
     "firebase-tools": "15.28.2",
