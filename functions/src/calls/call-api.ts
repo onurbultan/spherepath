@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { FieldPath, getFirestore, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { logger } from "firebase-functions";
 import { defineSecret } from "firebase-functions/params";
@@ -8,8 +8,10 @@ import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 import {
   createContact as createContactEntity,
   listCallsSchema,
+  joinPhone,
   normalizePhone,
   shouldIngestRecording,
+  splitPhone,
   startContactCallSchema,
   toDialableNumber,
   type CallRecordView,
@@ -477,37 +479,50 @@ async function contactDisplayName(contactId: string): Promise<string | null> {
 }
 
 /**
- * Contacts saved before the lookup key existed cannot be matched to a caller.
- * The pass is resumable and rewrites nothing that is already correct, so it can
- * be run again safely after an import.
+ * Contacts saved before the phone field was split carry the number however the
+ * advisor typed it and no lookup key at all, so a caller cannot be matched and
+ * two records of the same person read differently. This rewrites both from the
+ * stored number, skipping anything that is not a usable phone so a note in the
+ * field is never destroyed.
+ *
+ * The pass is resumable and rewrites nothing already correct, so it is safe to
+ * run again after an import.
  */
-export const backfillContactPhoneHashes = onCall(callableOptions, async (request): Promise<{ scanned: number; updated: number; done: boolean }> => {
+export const normalizeContactPhones = onCall(callableOptions, async (request): Promise<{ scanned: number; updated: number; done: boolean; cursor: string | null }> => {
   const claims = requireSpherepathClaims(request);
-  if (claims.role !== "broker") throw new HttpsError("permission-denied", "Only a broker can run the backfill.");
-  const envelope = readApiEnvelope<unknown>(request.data, { command: true });
+  if (claims.role !== "broker") throw new HttpsError("permission-denied", "Only a broker can run the phone normalisation.");
+  const envelope = readApiEnvelope<{ cursor?: unknown }>(request.data, { command: true });
+  const cursor = typeof envelope.data?.cursor === "string" ? envelope.data.cursor : null;
 
-  return observeApiRequest("backfillContactPhoneHashes", envelope.requestId, async () => {
+  return observeApiRequest("normalizeContactPhones", envelope.requestId, async () => {
     const firestore = getFirestore();
-    const batchSize = 400;
-    const snapshot = await firestore.collection("contacts")
+    const pageSize = 300;
+    let query = firestore.collection("contacts")
       .where("officeId", "==", claims.officeId)
-      .where("phoneHash", "==", null)
-      .limit(batchSize)
-      .get();
+      .orderBy(FieldPath.documentId())
+      .limit(pageSize);
+    if (cursor) query = query.startAfter(cursor);
+    const snapshot = await query.get();
 
     const writes = firestore.batch();
     let updated = 0;
     for (const document of snapshot.docs) {
-      const fields = contactPhoneFields(document.data().phone as string | null);
-      if (!fields.phoneHash) continue;
-      writes.update(document.ref, { phoneHash: fields.phoneHash });
+      const stored = document.data().phone as string | null;
+      // Anything that does not resolve to a real number is left exactly as it is;
+      // an advisor may have typed a note rather than a phone.
+      if (!normalizePhone(stored)) continue;
+      const parts = splitPhone(stored);
+      const phone = joinPhone(parts.dialCode, parts.national);
+      const phoneHash = phoneLookupHash(phone);
+      if (phone === stored && phoneHash === document.data().phoneHash) continue;
+      writes.update(document.ref, { phone, phoneHash });
       updated += 1;
     }
     if (updated) await writes.commit();
-    logger.info("Contact phone hash backfill pass complete", { officeId: claims.officeId, scanned: snapshot.size, updated });
-    // A short page means the collection is exhausted; contacts whose number is
-    // unusable stay null and are simply never matched.
-    return { scanned: snapshot.size, updated, done: snapshot.size < batchSize };
+
+    const done = snapshot.size < pageSize;
+    logger.info("Contact phone normalisation pass complete", { officeId: claims.officeId, scanned: snapshot.size, updated, done });
+    return { scanned: snapshot.size, updated, done, cursor: done ? null : snapshot.docs.at(-1)?.id ?? null };
   });
 });
 

@@ -24,6 +24,7 @@ import { SpCard } from "@/shared/ui/SpCard";
 import { ContactCombobox } from "@/shared/ui/ContactCombobox";
 import { useActiveAnchor } from "@/shared/ui/useActiveAnchor";
 import { WhatsAppGroupSettingsCard } from "../components/WhatsAppGroupSettingsCard";
+import { PhoneNormalizationCard } from "../components/PhoneNormalizationCard";
 import {
   createDataSubjectRequest,
   getContactDataExport,
@@ -202,6 +203,7 @@ export function SettingsView() {
         <p className="privacy-hint">Hatırlatma cihaz saatine göre gönderilir ve yalnız o günün planı hazırsa görünür.</p>
       </SpCard>
 
+      <PhoneNormalizationCard />
       <SpCard className="settings-card" id="data-controller">
         <div className="settings-title"><ShieldCheck size={20} /><div><p className="eyebrow">VERİ SORUMLUSU</p><h2>Ofis uyum bilgileri</h2></div></div>
         <div className="form-row"><label>Ülke<select value={draft.country} onChange={(event) => setDraft({ ...draft, country: event.target.value as WorkspaceSettingsDraft["country"] })}>{Object.entries(countryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Veri sorumlusu adı<input value={draft.dataControllerName} onChange={(event) => setDraft({ ...draft, dataControllerName: event.target.value })} /></label><label>VERBİS durumu<select value={draft.verbisStatus} onChange={(event) => setDraft({ ...draft, verbisStatus: event.target.value as WorkspaceSettingsDraft["verbisStatus"] })}>{verbisStatuses.map((item) => <option key={item} value={item}>{verbisStatusLabels[item]}</option>)}</select></label></div>

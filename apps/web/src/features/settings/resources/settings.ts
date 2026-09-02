@@ -82,3 +82,16 @@ export async function createWhatsAppOfficeGroup(session: WorkspaceSession): Prom
     "createWhatsAppOfficeGroup", undefined, createCommandId(session.uid),
   )).integration;
 }
+
+export interface PhoneNormalizationPass {
+  scanned: number;
+  updated: number;
+  done: boolean;
+  cursor: string | null;
+}
+
+export async function normalizeContactPhones(session: WorkspaceSession, cursor: string | null): Promise<PhoneNormalizationPass> {
+  return apiClient.command<{ cursor: string | null }, PhoneNormalizationPass>(
+    "normalizeContactPhones", { cursor }, createCommandId(session.uid),
+  );
+}

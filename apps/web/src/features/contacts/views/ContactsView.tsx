@@ -117,10 +117,26 @@ export function ContactsView() {
   });
   const contacts = contactsQuery.data ?? [];
   const requestedContactId = searchParams.get("contactId");
+  // The workspace page has no form of its own, so its edit action sends the
+  // advisor back here with the sheet already open on the right contact.
+  const requestedEdit = searchParams.get("action") === "edit";
   const linkedContact = requestedContactId && dismissedDeepLink !== requestedContactId
     ? contacts.find((contact) => contact.id === requestedContactId) ?? null
     : null;
   const activeSelectedContact = selectedContact ?? linkedContact;
+  // The workspace page has no form of its own, so its edit action arrives here as
+  // a link. Opening the sheet is an adjustment to a changed input rather than a
+  // synchronisation with anything outside React, so it belongs in render and is
+  // guarded by the contact it already handled -- closing the sheet must not
+  // reopen it while the link is still in the address bar.
+  const [openedEditFor, setOpenedEditFor] = useState<string | null>(null);
+  const editLinkTarget = requestedEdit && linkedContact && openedEditFor !== linkedContact.id ? linkedContact : null;
+  if (editLinkTarget) {
+    setOpenedEditFor(editLinkTarget.id);
+    setEditing(editLinkTarget);
+    setDraft(contactDraft(editLinkTarget));
+    setPanelOpen(true);
+  }
   const normalizedSearch = search.trim().toLocaleLowerCase("tr-TR");
   const thirtyDaysAgo = referenceTime - 30 * 86_400_000;
   const visibleContacts = contacts.filter((contact) => {
