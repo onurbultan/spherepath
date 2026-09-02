@@ -45,3 +45,22 @@ describe("opportunity stage correction", () => {
     expect(opportunityStageCorrectionSchema.safeParse({ opportunityId: "o", toStage: "appointment", reason: "Yanlışlıkla ilerletildi", lostReason: null, nextActionType: "call", nextActionAt: Date.now() + 1_000 }).success).toBe(true);
   });
 });
+
+describe("closing a record that was never a deal", () => {
+  it("defaults to a real loss, so nothing is quietly excluded", () => {
+    const parsed = opportunityStageCorrectionSchema.safeParse({
+      opportunityId: "o", toStage: "lost", reason: "Yanlış kayıt", lostReason: "Mükerrer",
+      nextActionType: null, nextActionAt: null,
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data!.lostKind).toBe("lost");
+  });
+
+  it("carries the duplicate marker when the advisor sets it", () => {
+    const parsed = opportunityStageCorrectionSchema.safeParse({
+      opportunityId: "o", toStage: "lost", reason: "Aynı arsa iki kez girildi", lostReason: "Mükerrer",
+      lostKind: "duplicate", nextActionType: null, nextActionAt: null,
+    });
+    expect(parsed.data!.lostKind).toBe("duplicate");
+  });
+});

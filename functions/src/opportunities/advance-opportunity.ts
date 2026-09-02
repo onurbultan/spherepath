@@ -78,6 +78,8 @@ export const advanceOpportunity = onCall(
         updatedAt: now,
         closedAt: closing ? now : null,
         lostReason: command.toStage === "lost" ? command.lostReason : null,
+        // A record closed as a duplicate is tidying, not a lost deal.
+        lostKind: command.toStage === "lost" ? command.lostKind : "lost",
         nextActionAt: command.nextActionAt === null ? null : Timestamp.fromMillis(command.nextActionAt),
         nextActionType: command.nextActionType,
       });
@@ -144,7 +146,7 @@ export const correctOpportunityStage = onCall(
         if (opportunity.stage === parsed.data.toStage) throw new HttpsError("failed-precondition", "Opportunity is already in that stage.");
         const now = Timestamp.now();
         const terminal = parsed.data.toStage === "won" || parsed.data.toStage === "lost";
-        transaction.update(opportunityRef, { stage: parsed.data.toStage, stageEnteredAt: now, updatedAt: now, closedAt: terminal ? now : null, lostReason: parsed.data.toStage === "lost" ? parsed.data.lostReason : null, nextActionAt: parsed.data.nextActionAt === null ? null : Timestamp.fromMillis(parsed.data.nextActionAt), nextActionType: parsed.data.nextActionType });
+        transaction.update(opportunityRef, { stage: parsed.data.toStage, stageEnteredAt: now, updatedAt: now, closedAt: terminal ? now : null, lostReason: parsed.data.toStage === "lost" ? parsed.data.lostReason : null, lostKind: parsed.data.toStage === "lost" ? parsed.data.lostKind : "lost", nextActionAt: parsed.data.nextActionAt === null ? null : Timestamp.fromMillis(parsed.data.nextActionAt), nextActionType: parsed.data.nextActionType });
         transaction.create(eventRef, { officeId: opportunity.officeId, ownerUid: opportunity.ownerUid, entityType: "opportunity", entityId: opportunityRef.id, fromStage: opportunity.stage, toStage: parsed.data.toStage, reason: `Düzeltme: ${parsed.data.reason}`, correction: true, commandId: envelope.commandId, occurredAt: now, createdAt: now });
         transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "correctOpportunityStage", opportunityId: opportunityRef.id, toStage: parsed.data.toStage, eventId: eventRef.id, createdAt: now });
         return { opportunityId: opportunityRef.id, toStage: parsed.data.toStage, eventId: eventRef.id };

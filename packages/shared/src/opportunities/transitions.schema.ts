@@ -7,6 +7,12 @@ export const opportunityTransitionSchema = z.object({
   toStage: z.enum(opportunityStages),
   reason: z.string().trim().max(500).nullable(),
   lostReason: z.string().trim().max(160).nullable(),
+  /**
+   * Why the record is closing. "duplicate" covers a record closed for tidiness
+   * -- the same job entered twice -- which must not count against the advisor
+   * the way a lost deal does.
+   */
+  lostKind: z.enum(["lost", "duplicate"]).default("lost"),
   nextActionType: z.enum(nextActionTypes).nullable(),
   nextActionAt: z.number().int().positive().nullable(),
 }).strict().superRefine((value, context) => {
@@ -32,6 +38,12 @@ export const opportunityStageCorrectionSchema = z.object({
   toStage: z.enum(opportunityStages),
   reason: z.string().trim().min(3, "Düzeltme nedeni gerekli.").max(500),
   lostReason: z.string().trim().max(160).nullable(),
+  /**
+   * Why the record is closing. "duplicate" covers a record closed for tidiness
+   * -- the same job entered twice -- which must not count against the advisor
+   * the way a lost deal does.
+   */
+  lostKind: z.enum(["lost", "duplicate"]).default("lost"),
   nextActionType: z.enum(nextActionTypes).nullable(),
   nextActionAt: z.number().int().positive().nullable(),
 }).strict().superRefine((value, context) => {

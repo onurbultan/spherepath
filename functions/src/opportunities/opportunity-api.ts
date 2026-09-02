@@ -88,6 +88,8 @@ function toOpportunityRecord(id: string, data: DocumentData, subjectContactName:
     nextActionAt: millis(data.nextActionAt),
     nextActionType: data.nextActionType ?? null,
     closedAt: millis(data.closedAt),
+    // Records written before the distinction existed are ordinary losses.
+    lostKind: data.lostKind === "duplicate" ? "duplicate" : "lost",
     deletedAt: millis(data.deletedAt),
     createdAt: millis(data.createdAt) ?? 0,
     updatedAt: millis(data.updatedAt) ?? 0,

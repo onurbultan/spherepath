@@ -213,6 +213,8 @@ export interface Opportunity extends TenantOwned, Audited {
   nextActionAt: Instant | null;
   nextActionType: NextActionType | null;
   lostReason: string | null;
+  /** Distinguishes a deal that was lost from a record closed as a duplicate. */
+  lostKind: "lost" | "duplicate";
   estimatedValue: { amount: number; currency: CurrencyCode } | null;
   closedAt: Instant | null;
   deletedAt: Instant | null;
