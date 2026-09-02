@@ -51,6 +51,7 @@
   --control-sm: 32px;
   --control-md: 36px;
   --control-lg: 44px;
+  --control-field: 38px;
   --motion-fast: 120ms;
   --motion-base: 200ms;
   --motion-slow: 320ms;

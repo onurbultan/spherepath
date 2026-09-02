@@ -44,7 +44,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 .contact-combobox-label { display: grid; gap: 7px; }
-.contact-combobox { position: relative; min-height: 46px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--card); }
+.contact-combobox { position: relative; min-height: var(--control-field); display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--card); }
 .contact-combobox:focus-within { border-color: var(--deed); box-shadow: 0 0 0 3px var(--focus-halo); }
 .contact-combobox-value { position: absolute; left: 38px; right: 38px; overflow: hidden; pointer-events: none; text-overflow: ellipsis; white-space: nowrap; }
 .contact-combobox-clear { display: grid; width: 28px; height: 28px; place-items: center; border: 0; background: transparent; color: var(--text-secondary); }
@@ -366,10 +366,16 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .task-resolution-sheet input, .task-resolution-sheet select, .task-resolution-sheet textarea,
 .voice-setup select, .voice-review select, .voice-review textarea, .voice-review input,
 .quick-date-trigger {
-  width: 100%; min-height: 38px; padding: 0 11px;
+  width: 100%; min-height: var(--control-field); padding: 0 11px;
   border: 1px solid var(--line); border-radius: var(--radius-md);
   background: var(--card); color: var(--text-primary); font: inherit; font-size: 13px;
   transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
+}
+.form-stack select, .capture-form select, .contact-toolbar select,
+.settings-card select, .task-resolution-sheet select, .voice-setup select, .voice-review select {
+  appearance: none; padding-right: 30px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' fill='none' stroke='%238A96A0' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 11px center;
 }
 .form-stack textarea, .capture-form textarea { min-height: 88px; padding-block: 10px; resize: vertical; }
 .settings-card textarea { min-height: 84px; padding-block: 10px; }

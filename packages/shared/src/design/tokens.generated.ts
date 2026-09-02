@@ -96,7 +96,8 @@ export const designTokens = {
     "xs": 28,
     "sm": 32,
     "md": 36,
-    "lg": 44
+    "lg": 44,
+    "field": 38
   },
   "motion": {
     "fast": 120,
