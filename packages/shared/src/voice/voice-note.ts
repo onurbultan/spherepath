@@ -280,3 +280,37 @@ export function mergePropertySituations(
   }
   return [...byKey.values()].slice(-maxContactPropertySituations);
 }
+
+/**
+ * What is worth showing about a contact's property preferences, in the order an
+ * advisor reads them: purpose first, then what and where, then the numbers, then
+ * the two lists that decide a viewing. Shared because both platforms have to
+ * summarise the same memory the same way.
+ */
+export function buildMemoryHighlights(memory: ContactMemory): string[] {
+  const preferences = memory.propertyPreferences;
+  const budget = preferences.budgetRange;
+  const money = (value: number, currency: string) =>
+    new Intl.NumberFormat("tr-TR", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
+  const rooms = preferences.bedroomCountMin !== null
+    ? `${preferences.bedroomCountMin}${preferences.livingRoomCountMin !== null ? `+${preferences.livingRoomCountMin}` : ""}`
+    : preferences.roomCountMin !== null ? `${preferences.roomCountMin} oda` : null;
+  const area = preferences.areaMinM2 !== null || preferences.areaMaxM2 !== null
+    ? preferences.areaMinM2 === preferences.areaMaxM2
+      ? `${preferences.areaMinM2} m²`
+      : `${preferences.areaMinM2 ?? "?"}–${preferences.areaMaxM2 ?? "?"} m²`
+    : null;
+
+  return [
+    ...(preferences.transactionType ? [`Amaç: ${propertyTransactionTypeLabels[preferences.transactionType]}`] : []),
+    ...preferences.propertyTypes.map((item) => `Mülk: ${voicePropertyTypeLabels[item]}`),
+    ...preferences.preferredLocations.map((item) => `Bölge: ${item}`),
+    ...(budget?.max !== null && budget?.max !== undefined ? [`Bütçe: ${money(budget.max, budget.currency)} üst sınır`] : []),
+    ...(budget?.min !== null && budget?.min !== undefined ? [`Bütçe: en az ${money(budget.min, budget.currency)}`] : []),
+    ...(rooms ? [`Oda: ${rooms}`] : []),
+    ...(area ? [`Alan: ${area}`] : []),
+    ...preferences.mustHaves.map((item) => `Olmazsa olmaz: ${item}`),
+    ...preferences.dealBreakers.map((item) => `İstemiyor: ${item}`),
+    ...(preferences.timeline ? [`Zamanlama: ${preferences.timeline}`] : []),
+  ];
+}

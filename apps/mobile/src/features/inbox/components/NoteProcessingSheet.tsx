@@ -23,6 +23,11 @@ import type { ContactRecord } from "@/features/contacts/resources/contacts";
 import { ContactPicker } from "@/shared/ui/ContactPicker";
 import { SpText } from "@/shared/ui/SpText";
 import { SpDateField } from "@/shared/ui/SpDateField";
+import { radius, space } from "@/shared/ui/tokens.generated";
+import { useSpTheme } from "@/shared/ui/theme";
+import { analyzePortfolioText } from "@/features/matching/resources/portfolio";
+import { analyzeInboxItem, changeInboxItem, processInboxItem as processItem } from "../resources/inbox";
+import { PhoneInput } from "@/shared/ui/MaskedInputs";
 
 /** Tomorrow morning, which is what an advisor picks unprompted more often than not. */
 function defaultFollowUp(): string {
@@ -31,11 +36,6 @@ function defaultFollowUp(): string {
   date.setHours(10, 0, 0, 0);
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
-import { radius, space } from "@/shared/ui/tokens.generated";
-import { useSpTheme } from "@/shared/ui/theme";
-import { analyzePortfolioText } from "@/features/matching/resources/portfolio";
-import { analyzeInboxItem, changeInboxItem, processInboxItem as processItem } from "../resources/inbox";
-import { PhoneInput } from "@/shared/ui/MaskedInputs";
 
 const kindLabels: Record<InboxItemKind, string> = { note: "Not", person: "Kişi", property: "Mülk", requirement: "Talep", follow_up: "Takip" };
 const messageFrom = (error: unknown) => error instanceof Error ? error.message : "Not işlenemedi.";

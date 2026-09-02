@@ -33,6 +33,7 @@ import {
   type ContactDraft,
   type ContactPrivacyDraft,
 } from "@spherepath/shared";
+import { useRouter } from "expo-router";
 import { useSession } from "@/features/auth/resources/session";
 import { SpCard } from "@/shared/ui/SpCard";
 import { SpText } from "@/shared/ui/SpText";
@@ -70,6 +71,7 @@ function messageFrom(error: unknown) {
 
 export default function ContactsView() {
   const theme = useSpTheme();
+  const router = useRouter();
   const { session, signOut } = useSession();
   const queryClient = useQueryClient();
   const [panelOpen, setPanelOpen] = useState(false);
@@ -190,7 +192,7 @@ export default function ContactsView() {
           <SpCard style={styles.empty}><View style={[styles.largeIcon, { backgroundColor: theme.deedBg }]}><ContactRound color={theme.deed} size={24} /></View><SpText variant="title">İlk kişini ekle</SpText><SpText color="secondary">Ad veya tanımlayıcı, kaynak ve rol başlangıç için yeterli.</SpText></SpCard>
         ) : visibleContacts.length === 0 ? <SpCard><SpText color="secondary">Aramana uyan kişi bulunamadı.</SpText></SpCard> : visibleContacts.map((contact) => (
           <SpCard key={contact.id} style={styles.card}>
-            <View style={styles.contactTop}><View style={[styles.avatar, { backgroundColor: theme.deedBg }]}><SpText variant="title" color="deed">{(contact.fullName ?? contact.label ?? "?").slice(0, 1).toLocaleUpperCase("tr-TR")}</SpText></View><View style={styles.contactCopy}><SpText variant="title">{contact.fullName ?? contact.label}</SpText><SpText variant="bodySmall" color="secondary">{contact.phone ?? "Telefon eklenmedi"}</SpText></View>{contact.phone ? <ContactCallAction contactId={contact.id} /> : null}</View>
+            <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: "/contact/[id]", params: { id: contact.id } })} style={styles.contactTop}><View style={[styles.avatar, { backgroundColor: theme.deedBg }]}><SpText variant="title" color="deed">{(contact.fullName ?? contact.label ?? "?").slice(0, 1).toLocaleUpperCase("tr-TR")}</SpText></View><View style={styles.contactCopy}><SpText variant="title">{contact.fullName ?? contact.label}</SpText><SpText variant="bodySmall" color="secondary">{contact.phone ?? "Telefon eklenmedi"}</SpText></View></Pressable>{contact.phone ? <ContactCallAction contactId={contact.id} /> : null}
             <View style={styles.chips}><View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="bodySmall" color="secondary">{contactRoleLabels[contact.roles[0] ?? "unknown"]}</SpText></View><View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="bodySmall" color="secondary">{contactSourceLabels[contact.source]}</SpText></View></View>
             <SpText variant="bodySmall" color="secondary">{contact.metAtPlace || "Tanışma yeri belirtilmedi"}</SpText>
             {(contact.memory?.keyThingsToRemember?.length ?? 0) > 0 ? <View style={[styles.memory, { backgroundColor: theme.deedBg }]}><SpText variant="caption" color="deed">HATIRLANACAKLAR</SpText>{contact.memory.keyThingsToRemember.slice(0, 3).map((item) => <SpText key={item} variant="caption" color="secondary">{item}</SpText>)}</View> : null}
