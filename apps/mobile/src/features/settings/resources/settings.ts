@@ -7,6 +7,8 @@ import {
   type OfficeInviteView,
   type OfficeTeamView,
   type ResolveDataSubjectRequestInput,
+  type WhatsAppGroupConfiguration,
+  type WhatsAppGroupIntegrationView,
   type WorkspaceSettingsDraft,
   type WorkspaceSettingsView,
 } from "@spherepath/shared";
@@ -53,6 +55,22 @@ export async function normalizeContactPhones(session: WorkspaceSession, cursor: 
   return apiClient.command<{ cursor: string | null }, { scanned: number; updated: number; done: boolean; cursor: string | null }>(
     "normalizeContactPhones", { cursor }, createCommandId(session.uid),
   );
+}
+
+export async function loadWhatsAppGroupIntegration(): Promise<WhatsAppGroupIntegrationView> {
+  return (await apiClient.query<undefined, { integration: WhatsAppGroupIntegrationView }>("getWhatsAppGroupIntegration", undefined)).integration;
+}
+
+export async function configureWhatsAppGroupIntegration(session: WorkspaceSession, input: WhatsAppGroupConfiguration): Promise<WhatsAppGroupIntegrationView> {
+  return (await apiClient.command<WhatsAppGroupConfiguration, { integration: WhatsAppGroupIntegrationView }>(
+    "configureWhatsAppGroupIntegration", input, createCommandId(session.uid),
+  )).integration;
+}
+
+export async function createWhatsAppOfficeGroup(session: WorkspaceSession): Promise<WhatsAppGroupIntegrationView> {
+  return (await apiClient.command<undefined, { integration: WhatsAppGroupIntegrationView }>(
+    "createWhatsAppOfficeGroup", undefined, createCommandId(session.uid),
+  )).integration;
 }
 
 export async function listDataSubjectRequests(): Promise<DataSubjectRequestView[]> {

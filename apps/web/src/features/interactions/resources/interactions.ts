@@ -6,7 +6,6 @@ import {
   type OpportunityDraft,
   type RegisterInteractionTextInput,
   type RetryVoiceNoteProcessingInput,
-  type RegisterVoiceTextTestInput,
   type VoiceInsights,
   type VoiceNoteView,
 } from "@spherepath/shared";
@@ -47,17 +46,6 @@ export async function retryVoiceNoteProcessing(session: WorkspaceSession, voiceN
   );
 }
 
-export async function submitVoiceTextTest(
-  session: WorkspaceSession,
-  contactId: string,
-  transcript: string,
-): Promise<string> {
-  const input: RegisterVoiceTextTestInput = { contactId, transcript };
-  const response = await apiClient.command<RegisterVoiceTextTestInput, { voiceNoteId: string }>(
-    "registerVoiceTextTest", input, createCommandId(session.uid),
-  );
-  return response.voiceNoteId;
-}
 
 export async function submitInteractionText(
   session: WorkspaceSession,

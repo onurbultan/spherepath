@@ -46,3 +46,22 @@ export const emptyWhatsAppGroupIntegration = (officeId: string): WhatsAppGroupIn
   lastError: null,
   updatedAt: null,
 });
+
+export const groupsApiEligibilityUrl =
+  "https://developers.facebook.com/documentation/business-messaging/whatsapp/groups/get-started/";
+
+/**
+ * Meta reports the commonest setup failure as an opaque code. Naming what it
+ * actually means saves a broker from reading it as a bug in this app.
+ */
+export function isGroupsApiEligibilityError(message: string | null): boolean {
+  return Boolean(message && (message.includes("#131215") || message.includes("not eligible to access Groups APIs")));
+}
+
+export function readableMetaError(message: string | null): string | null {
+  if (!message) return null;
+  if (isGroupsApiEligibilityError(message)) {
+    return "Meta bu numarayı Groups API için henüz uygun bulmuyor. Groups API yalnız Official Business Account (OBA) numaralarında açılır. İşletme doğrulamasını tamamlayın, numarayı WhatsApp Business Platform'da en az 30 gün kullanın ve WhatsApp Manager'dan OBA başvurusu yapın.";
+  }
+  return message;
+}
