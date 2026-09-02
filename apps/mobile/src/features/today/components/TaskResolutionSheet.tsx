@@ -4,14 +4,17 @@ import { CalendarClock, Check, CircleSlash, PhoneOff, X } from "lucide-react-nat
 import { SafeAreaView } from "react-native-safe-area-context";
 import { dailyTaskOutcomeSchema, dailyTaskResolutionLabels, nextActionTypeLabels, nextActionTypes, type DailyTaskOutcome, type NextActionType, type TodayTask } from "@spherepath/shared";
 import { SpText } from "@/shared/ui/SpText";
+import { SpDateField } from "@/shared/ui/SpDateField";
 import { radius, space } from "@/shared/ui/tokens.generated";
 import { useSpTheme } from "@/shared/ui/theme";
 
-const dayOptions = [
-  { label: "Yarın", days: 1 },
-  { label: "3 gün", days: 3 },
-  { label: "1 hafta", days: 7 },
-] as const;
+/** Tomorrow morning, which is what an advisor picks unprompted more often than not. */
+function defaultFollowUp(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(10, 0, 0, 0);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
 
 export function taskDueLabel(value: number | null): string {
   if (value === null) return "Tarihsiz";
@@ -46,7 +49,7 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve, 
   const theme = useSpTheme();
   const [status, setStatus] = useState<DailyTaskOutcome["status"]>("completed");
   const [note, setNote] = useState("");
-  const [days, setDays] = useState(1);
+  const [rescheduleAt, setRescheduleAt] = useState(defaultFollowUp);
   const [actionType, setActionType] = useState<NextActionType>("call");
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -57,7 +60,7 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve, 
       status,
       outcomeNote: status === "completed" ? note.trim() || null : null,
       skippedReason: status === "skipped" || status === "contact_opt_out" ? note.trim() || null : null,
-      rescheduledAt: status === "rescheduled" ? Date.now() + days * 86_400_000 : null,
+      rescheduledAt: status === "rescheduled" ? new Date(rescheduleAt).getTime() : null,
       rescheduledActionType: status === "rescheduled" ? actionType : null,
     });
     if (!parsed.success) {
@@ -69,7 +72,7 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve, 
   }
 
   function close() {
-    setStatus("completed"); setNote(""); setDays(1); setActionType("call"); setLocalError(null);
+    setStatus("completed"); setNote(""); setRescheduleAt(defaultFollowUp()); setActionType("call"); setLocalError(null);
     onClose();
   }
 
@@ -102,10 +105,7 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve, 
           <View accessibilityRole="radiogroup" accessibilityLabel="Yeni aksiyon" style={styles.options}>
             {nextActionTypes.map((item) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: actionType === item }} key={item} onPress={() => setActionType(item)} style={choice(actionType === item)}><SpText variant="bodySmall" color={actionType === item ? "deed" : "secondary"}>{nextActionTypeLabels[item]}</SpText></Pressable>)}
           </View>
-          <SpText variant="title">Yeni tarih</SpText>
-          <View accessibilityRole="radiogroup" accessibilityLabel="Yeni tarih" style={styles.options}>
-            {dayOptions.map((item) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: days === item.days }} key={item.days} onPress={() => setDays(item.days)} style={choice(days === item.days)}><SpText variant="bodySmall" color={days === item.days ? "deed" : "secondary"}>{item.label}</SpText></Pressable>)}
-          </View>
+          <SpDateField label="Yeni tarih" onChange={setRescheduleAt} value={rescheduleAt} />
         </> : <>
           <SpText variant="title">{status === "contact_opt_out" ? "İletişim tercihi" : status === "skipped" ? "Neden atlanıyor?" : "Kısa sonuç · isteğe bağlı"}</SpText>
           <TextInput accessibilityLabel={status === "contact_opt_out" ? "İletişim tercihi açıklaması" : status === "skipped" ? "Atlama nedeni" : "Kısa sonuç"} multiline placeholder={status === "contact_opt_out" ? "Örn. Telefon ve WhatsApp üzerinden iletişim istemiyor." : status === "skipped" ? "Örn. Bugün uygun değil, daha sonra tekrar değerlendirilecek." : "Örn. Görüşüldü, cuma tekrar aranacak."} placeholderTextColor={theme.textTertiary} style={[styles.input, styles.multiline, { backgroundColor: theme.card, borderColor: theme.line, color: theme.textPrimary }]} value={note} onChangeText={setNote} />
