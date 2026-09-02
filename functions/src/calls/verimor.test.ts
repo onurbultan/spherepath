@@ -73,7 +73,12 @@ describe("parseVerimorEvent", () => {
 describe("provider value parsing", () => {
   it("reads the stamp formats a switch might send", () => {
     expect(parseProviderInstant("2026-09-01T14:03:11+03:00")).toBe(Date.parse("2026-09-01T14:03:11+03:00"));
-    expect(parseProviderInstant("2026-09-01 14:03:11")).toBe(Date.parse("2026-09-01T14:03:11"));
+    // A zone-less stamp is the switch's own wall clock, not the server's. Pinning
+    // it to a real instant is the point: comparing against another zone-less
+    // parse would agree with itself in any zone and could never fail.
+    expect(parseProviderInstant("2026-09-01 14:03:11")).toBe(Date.parse("2026-09-01T14:03:11+03:00"));
+    expect(parseProviderInstant("2026-09-01 14:03:11 +0300")).toBe(Date.parse("2026-09-01T14:03:11+03:00"));
+    expect(parseProviderInstant("2026-09-01 14:03:11 +0000")).toBe(Date.parse("2026-09-01T14:03:11Z"));
     expect(parseProviderInstant("1788268866")).toBe(1_788_268_866_000);
     expect(parseProviderInstant(1_788_268_866_000)).toBe(1_788_268_866_000);
     expect(parseProviderInstant("")).toBeNull();

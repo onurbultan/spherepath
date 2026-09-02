@@ -77,14 +77,32 @@ const secondsInDay = 86_400;
  * microseconds, or a formatted date. Reading the magnitude first avoids turning
  * seconds into 1970.
  */
+/**
+ * The switch stamps events in its own wall clock and sends no zone at all
+ * ("2026-09-02 16:58:11"). Parsed bare, that is read in whatever zone the
+ * container happens to run in -- UTC on Cloud Run -- which put every call three
+ * hours into the future. Verimor's switch keeps Turkish time, which has had no
+ * daylight saving since 2016, so the offset is a constant rather than a lookup.
+ * Its CDR endpoint does send an offset, so an explicit one always wins.
+ */
+const switchZoneOffset = "+03:00";
+
 export function parseProviderInstant(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return scaleEpoch(value);
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed || trimmed === "0") return null;
   if (/^\d+$/u.test(trimmed)) return scaleEpoch(Number(trimmed));
-  // A space-separated stamp is local time to the switch; ISO parsing needs the T.
-  const parsed = Date.parse(/^\d{4}-\d{2}-\d{2} /u.test(trimmed) ? trimmed.replace(" ", "T") : trimmed);
+
+  const [date, time, zone] = trimmed.split(/\s+/u);
+  if (date && time && /^\d{4}-\d{2}-\d{2}$/u.test(date)) {
+    // "+0300" from a CDR needs the colon before Date.parse will take it.
+    const offset = (zone ?? switchZoneOffset).replace(/^([+-]\d{2})(\d{2})$/u, "$1:$2");
+    const parsed = Date.parse(`${date}T${time}${offset}`);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  // Already ISO, with or without its own zone.
+  const parsed = Date.parse(trimmed);
   return Number.isNaN(parsed) ? null : parsed;
 }
 

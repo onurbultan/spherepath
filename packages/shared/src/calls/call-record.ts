@@ -1,3 +1,4 @@
+import type { VoiceNoteStatus } from "../voice/voice-note.js";
 import { z } from "zod";
 
 /**
@@ -43,8 +44,14 @@ export interface CallRecordView {
   queueWaitMs: number;
   hangupCause: string | null;
   recordingStatus: CallRecordingStatus;
-  /** Set once the recording has been transcribed into a reviewable note. */
+  /** Set when the note is opened, which is before it has been transcribed. */
   voiceNoteId: string | null;
+  /**
+   * The note's own status, because `voiceNoteId` alone says only that work
+   * started. Without it the UI cannot tell a summary that exists from one that
+   * is still being written.
+   */
+  noteStatus: VoiceNoteStatus | null;
   errorCode: string | null;
   createdAt: number;
   updatedAt: number;
@@ -76,6 +83,32 @@ export const callDirectionLabels: Record<CallDirection, string> = {
   outbound: "Giden",
   internal: "Dahili",
 };
+
+/**
+ * What the list may claim about the summary. A note id only proves the work
+ * started, so saying "Özet çıkarıldı" the moment one exists promises a summary
+ * that is still being written; each state gets its own words instead.
+ */
+export function callSummaryLabel(
+  call: Pick<CallRecordView, "recordingStatus" | "voiceNoteId" | "noteStatus">,
+): string | null {
+  if (call.recordingStatus === "pending") return "Kayıt alınıyor";
+  if (!call.voiceNoteId) return null;
+  switch (call.noteStatus) {
+    case "queued":
+    case "processing":
+      return "Özet hazırlanıyor";
+    case "needs_review":
+      return "Özet hazır · onay bekliyor";
+    case "confirmed":
+      return "Özet işlendi";
+    case "failed":
+      return "Özet çıkarılamadı";
+    // A discarded note is deliberately gone, and an absent status says nothing.
+    default:
+      return null;
+  }
+}
 
 export const callRecordingStatusLabels: Record<CallRecordingStatus, string> = {
   none: "Kayıt yok",

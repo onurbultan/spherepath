@@ -16,6 +16,7 @@ import {
   toDialableNumber,
   type CallRecordView,
   type CallRecordingStatus,
+  type VoiceNoteStatus,
 } from "../../../packages/shared/src/index";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 import { requireSpherepathClaims } from "../auth/claims.js";
@@ -72,6 +73,7 @@ function callView(id: string, data: FirebaseFirestore.DocumentData): CallRecordV
     queueWaitMs: typeof data.queueWaitMs === "number" ? data.queueWaitMs : 0,
     hangupCause: data.hangupCause ?? null,
     recordingStatus: data.recordingStatus,
+    noteStatus: null,
     voiceNoteId: data.voiceNoteId ?? null,
     errorCode: data.errorCode ?? null,
     createdAt: millis(data.createdAt) ?? 0,
@@ -589,6 +591,20 @@ export const listCalls = onCall(callableOptions, async (request): Promise<{ call
     if (claims.role !== "broker") query = query.where("ownerUid", "==", claims.uid);
     if (parsed.data.contactId) query = query.where("contactId", "==", parsed.data.contactId);
     const snapshot = await query.orderBy("createdAt", "desc").limit(parsed.data.limit).get();
-    return { calls: snapshot.docs.map((document) => callView(document.id, document.data())) };
+    const calls = snapshot.docs.map((document) => callView(document.id, document.data()));
+
+    // One batched read for the page of calls: a note id proves work began, not
+    // that a summary exists, and the difference is what the list shows.
+    const noteIds = [...new Set(calls.map((call) => call.voiceNoteId).filter((id): id is string => Boolean(id)))];
+    if (noteIds.length) {
+      const notes = await getFirestore().getAll(
+        ...noteIds.map((id) => getFirestore().collection("voiceNotes").doc(id)),
+      );
+      const statuses = new Map(notes.filter((note) => note.exists).map((note) => [note.id, note.data()!.status as VoiceNoteStatus]));
+      for (const call of calls) {
+        if (call.voiceNoteId) call.noteStatus = statuses.get(call.voiceNoteId) ?? null;
+      }
+    }
+    return { calls };
   });
 });

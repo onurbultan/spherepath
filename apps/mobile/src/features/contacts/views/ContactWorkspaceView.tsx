@@ -9,6 +9,7 @@ import {
   askOutcomeLabels,
   buildMemoryHighlights,
   callRecordingStatusLabels,
+  callSummaryLabel,
   contactRoleLabels,
   contactSourceLabels,
   interactionChannelLabels,
@@ -171,7 +172,7 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
                   </SpText>
                   <View style={styles.chips}>
                     {call.answered ? <View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="caption" color="secondary">{callRecordingStatusLabels[call.recordingStatus]}</SpText></View> : null}
-                    {call.voiceNoteId ? <View style={[styles.chip, { backgroundColor: theme.deedBg }]}><Sparkles color={theme.deed} size={12} /><SpText variant="caption" color="deed">Özet çıkarıldı</SpText></View> : null}
+                    {callSummaryLabel(call) ? <View style={[styles.chip, { backgroundColor: theme.deedBg }]}><Sparkles color={theme.deed} size={12} /><SpText variant="caption" color="deed">{callSummaryLabel(call)}</SpText></View> : null}
                     {call.contactCreatedFromCall ? <View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="caption" color="secondary">Bu aramayla eklendi</SpText></View> : null}
                   </View>
                 </SpCard>

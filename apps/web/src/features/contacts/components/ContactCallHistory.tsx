@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { apiQueryKeys, callRecordingStatusLabels, type CallRecordView } from "@spherepath/shared";
+import { apiQueryKeys, callRecordingStatusLabels, callSummaryLabel, type CallRecordView } from "@spherepath/shared";
 import { PhoneIncoming, PhoneMissed, PhoneOutgoing, RefreshCw, Sparkles } from "lucide-react";
 import { SpCard } from "@/shared/ui/SpCard";
 import { listContactCalls } from "../resources/calls";
@@ -53,7 +53,7 @@ export function ContactCallHistory({ contactId }: { contactId: string }) {
         <ol className="contact-history-list">
           {calls.map((call) => {
             const Icon = !call.answered ? PhoneMissed : call.direction === "outbound" ? PhoneOutgoing : PhoneIncoming;
-            const awaitingReview = call.recordingStatus === "pending" || (call.recordingStatus === "stored" && Boolean(call.voiceNoteId));
+            const summary = callSummaryLabel(call);
             return (
               <li className={call.answered ? "" : "contact-history-alert"} key={call.id}>
                 <span className="contact-history-icon"><Icon size={15} aria-hidden /></span>
@@ -65,7 +65,7 @@ export function ContactCallHistory({ contactId }: { contactId: string }) {
                   <p>{call.answered ? `${spokenFor(call.talkDurationMs)} görüşüldü.` : "Görüşme gerçekleşmedi; geri dönülmeyi bekliyor."}</p>
                   <div className="contact-history-tags">
                     {call.answered ? <span>{callRecordingStatusLabels[call.recordingStatus]}</span> : null}
-                    {awaitingReview ? <span><Sparkles size={12} aria-hidden /> Özet çıkarıldı</span> : null}
+                    {summary ? <span><Sparkles size={12} aria-hidden /> {summary}</span> : null}
                     {call.contactCreatedFromCall ? <span>Bu aramayla eklendi</span> : null}
                   </div>
                 </div>
