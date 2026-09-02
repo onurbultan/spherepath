@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, MapPin, Mic, Pencil, PhoneOff, Pin, RefreshCw, RotateCcw, Send, Shuffle, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiQueryKeys, dailyTaskResolutionLabels, inboxItemKinds, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
+import { apiQueryKeys, dailyTaskResolutionLabels, inboxItemKinds, isInboxItemResolved, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
 import { finishDailyTask, loadTodayOverview, replaceDailyTask } from "@/features/today/resources/today";
 import { TaskResolutionSheet, taskDueLabel, taskRecordHref } from "@/features/today/components/TaskResolutionSheet";
@@ -56,7 +56,8 @@ function NoteKind({ item, view }: { item: InboxItemRecord; view: NoteView }) {
 }
 
 function NoteLocation({ item, view }: { item: InboxItemRecord; view: NoteView }) {
-  if (!item.needsLocation || view.showArchived) return null;
+  // A note that already became a record has been placed; asking again is noise.
+  if (!item.needsLocation || view.showArchived || isInboxItemResolved(item)) return null;
   if (view.locationFor === item.id) {
     return <form className="location-form" onSubmit={(event) => { event.preventDefault(); view.onLocationSubmit(item.id); }}>
       <input aria-label="Konum" autoFocus placeholder="Örn. Urla İskele" value={view.locationText} onChange={(event) => view.setLocationText(event.target.value)} />
@@ -109,7 +110,8 @@ export function FeedView() {
   const { session } = useSession(); const client = useQueryClient(); const [text, setText] = useState(""); const [saving, setSaving] = useState(false); const [error, setError] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<TodayTask | null>(null); const [resolving, setResolving] = useState(false); const [taskError, setTaskError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set()); const [locationFor, setLocationFor] = useState<string | null>(null); const [locationText, setLocationText] = useState("");
-  const [showArchived, setShowArchived] = useState(false); const [activeNote, setActiveNote] = useState<InboxItemRecord | null>(null);
+  const [noteScope, setNoteScope] = useState<"open" | "done" | "archived">("open"); const [activeNote, setActiveNote] = useState<InboxItemRecord | null>(null);
+  const showArchived = noteScope === "archived";
   const [viewMode, changeViewMode] = useNoteViewMode();
   const [showAllWork, setShowAllWork] = useState(false);
   const today = useQuery({ queryKey: apiQueryKeys.todayOverviewPeriod("30d"), queryFn: () => loadTodayOverview("30d") });
@@ -132,7 +134,13 @@ export function FeedView() {
   async function addLocation(inboxItemId: string) { if (!session || locationText.trim().length < 2) return; try { await changeInboxItem(session, { inboxItemId, location: locationText.trim() }); setLocationFor(null); setLocationText(""); await client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }); } catch (next) { setError(messageFrom(next)); } }
   function toggleExpanded(id: string) { setExpanded((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }
   async function undo(inboxItemId: string) { if (!session) return; try { await undoInboxItem(session, inboxItemId); await Promise.all([client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }), client.invalidateQueries({ queryKey: apiQueryKeys.contacts })]); } catch (next) { setError(messageFrom(next)); } }
-  const visibleNotes = (inbox.data ?? []).filter((item) => (item.status === "archived") === showArchived);
+  // "Aktif" means work still to do. A note that has already produced a record
+  // belongs to "İşlendi", or the list never empties and stops being read.
+  const visibleNotes = (inbox.data ?? []).filter((item) => {
+    if (item.status === "archived") return noteScope === "archived";
+    return noteScope === (isInboxItemResolved(item) ? "done" : "open");
+  });
+  const openCount = (inbox.data ?? []).filter((item) => item.status !== "archived" && !isInboxItemResolved(item)).length;
   const groupedNotes = noteGroupOrder
     .map((kind) => ({ kind, items: visibleNotes.filter((item) => item.kind === kind) }))
     .filter((group) => group.items.length > 0);
@@ -155,14 +163,14 @@ export function FeedView() {
     {today.data && today.data.allTasks.length > today.data.tasks.length ? <section className="all-work-section"><button className="secondary-action all-work-toggle" type="button" onClick={() => setShowAllWork((value) => !value)}>{showAllWork ? "Kalan işleri gizle" : `Tüm işleri gör (${today.data.allTasks.length})`}</button>{showAllWork ? <div className="sp-card all-work-list"><h2>Bugünkü tüm işler</h2><p className="context-sentence">İlk beş odak listen; aşağıda kalan işleri de görebilirsin.</p><ol>{today.data.allTasks.filter((task) => !today.data.tasks.some((planned) => planned.id === task.id)).map((task) => <li key={task.id}><Link className="daily-task-link" href={taskRecordHref(task)}><strong>{task.title}</strong><small>{task.reason} · {taskDueLabel(task.dueAt)}</small></Link></li>)}</ol></div> : null}</section> : null}
     <section className="sp-card quick-note" aria-labelledby="quick-note-title"><div className="feed-section-heading"><div><p className="eyebrow">HIZLI KAYIT</p><h2 id="quick-note-title">Aklındakini bırak</h2></div><Sparkles size={20} aria-hidden /></div><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Örn. Urla'da bahçeli bir ev duydum…" aria-label="Hızlı not" /><div className="quick-note-actions"><Link className="secondary-action" href="/capture"><Mic size={17} /> Sesli anlat</Link><button disabled={!text.trim() || saving} className="primary-action" onClick={() => void save()}><Send size={17} />{saving ? "Kaydediliyor…" : "Kaydet"}</button></div></section>
     {error ? <p className="form-error notice" role="alert">{error}</p> : null}
-    <div className="feed-title note-list-heading"><div><h2>Notların</h2><p className="context-sentence">Sistem tür önerir; gerçek kayda dönüştürmeye sen karar verirsin.</p></div><div className="note-heading-controls"><div className="note-view-toggle" role="group" aria-label="Not görünümü">{noteViewModes.map((mode) => <button key={mode.id} className={viewMode === mode.id ? "selected" : ""} onClick={() => changeViewMode(mode.id)} type="button">{mode.label}</button>)}</div><div className="note-view-toggle" role="group" aria-label="Not listesi"><button className={!showArchived ? "selected" : ""} onClick={() => setShowArchived(false)} type="button">Aktif</button><button className={showArchived ? "selected" : ""} onClick={() => setShowArchived(true)} type="button">Arşiv</button></div></div></div>
+    <div className="feed-title note-list-heading"><div><h2>Notların</h2><p className="context-sentence">Sistem tür önerir; gerçek kayda dönüştürmeye sen karar verirsin.</p></div><div className="note-heading-controls"><div className="note-view-toggle" role="group" aria-label="Not görünümü">{noteViewModes.map((mode) => <button key={mode.id} className={viewMode === mode.id ? "selected" : ""} onClick={() => changeViewMode(mode.id)} type="button">{mode.label}</button>)}</div><div className="note-view-toggle" role="group" aria-label="Not listesi">{([["open", openCount ? `Aktif · ${openCount}` : "Aktif"], ["done", "İşlendi"], ["archived", "Arşiv"]] as const).map(([scope, label]) => <button key={scope} className={noteScope === scope ? "selected" : ""} onClick={() => setNoteScope(scope)} type="button">{label}</button>)}</div></div></div>
     {inbox.isPending ? <p className="context-sentence">Notlar yükleniyor…</p> : inbox.isError ? <div className="sp-card empty-state"><p>Notlar şu anda gösterilemiyor.</p></div> : visibleNotes.length ? (
       viewMode === "list"
         ? <section className="note-rows" aria-label="Akış notları">{visibleNotes.map((item) => <NoteRow key={item.id} item={item} view={noteView} />)}</section>
         : viewMode === "group"
           ? <div className="note-groups">{groupedNotes.map((group) => <section key={group.kind} aria-label={kindLabels[group.kind]}><div className={`note-group-head kind-${group.kind}`}><span className="note-group-label">{kindLabels[group.kind]}</span><span className="note-group-count">{group.items.length}</span><span className="note-group-rule" /></div><div className="keep-grid">{group.items.map((item) => <NoteCard key={item.id} item={item} view={noteView} />)}</div></section>)}</div>
           : <section className="keep-grid" aria-label="Akış notları">{visibleNotes.map((item) => <NoteCard key={item.id} item={item} view={noteView} />)}</section>
-    ) : <div className="sp-card empty-state"><p>{showArchived ? "Arşivlenmiş not yok." : "Henüz not yok. Bir cümle yazman yeterli."}</p></div>}
+    ) : <div className="sp-card empty-state"><p>{noteScope === "archived" ? "Arşivlenmiş not yok." : noteScope === "done" ? "Henüz kayda dönüşmüş not yok." : "Bekleyen not yok."}</p></div>}
     {activeTask ? <TaskResolutionSheet task={activeTask} pending={resolving} error={taskError} onClose={() => setActiveTask(null)} onResolve={(outcome) => void resolveTask(outcome)} /> : null}
     {activeNote ? <NoteProcessingSheet item={activeNote} contacts={contacts.data ?? []} onClose={() => setActiveNote(null)} onChanged={async () => { await Promise.all([client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }), client.invalidateQueries({ queryKey: apiQueryKeys.contacts }), client.invalidateQueries({ queryKey: apiQueryKeys.opportunities }), client.invalidateQueries({ queryKey: apiQueryKeys.portfolioItems }), client.invalidateQueries({ queryKey: apiQueryKeys.listings }), client.invalidateQueries({ queryKey: apiQueryKeys.todayOverview })]); }} /> : null}
   </div></AppShell>;

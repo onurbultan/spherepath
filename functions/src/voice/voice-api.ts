@@ -766,7 +766,7 @@ export const confirmVoiceNote = onCall(
         confidence: inboxClassification.confidence,
         linkedContactId: targetContactId,
         sourceEntityId: interactionRef.id,
-        appliedActions: [{ type: "classification", entityId: interactionRef.id, label: "Sesli görüşme onaylandı", appliedAt: nowTimestamp, undoneAt: null }],
+        appliedActions: [{ type: "interaction_created", entityId: interactionRef.id, label: "Sesli görüşme onaylandı", appliedAt: nowTimestamp, undoneAt: null }],
         pinned: false,
         needsLocation: inboxClassification.needsLocation,
         errorCode: null,

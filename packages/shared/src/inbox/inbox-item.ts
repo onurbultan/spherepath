@@ -15,11 +15,27 @@ export type InboxItemKind = (typeof inboxItemKinds)[number];
 export type InboxItemStatus = (typeof inboxItemStatuses)[number];
 
 export interface InboxAppliedAction {
-  type: "classification" | "contact_created" | "contact_linked" | "location_added" | "opportunity_created" | "portfolio_created" | "listing_created" | "follow_up_scheduled";
+  type: "classification" | "contact_created" | "contact_linked" | "location_added" | "interaction_created" | "opportunity_created" | "portfolio_created" | "listing_created" | "follow_up_scheduled";
   entityId: string | null;
   label: string;
   appliedAt: Instant;
   undoneAt: Instant | null;
+}
+
+/**
+ * A note that has produced a real record is finished work. Classifying it is
+ * not: that is the system labelling the text, which happens to every note and
+ * leaves nothing behind. Without this distinction the active list keeps every
+ * note ever written, each still offering to be processed, and an advisor who
+ * captures a dozen calls a day stops opening it within the week.
+ */
+const resolvingActionTypes = new Set<InboxAppliedAction["type"]>([
+  "contact_created", "contact_linked", "interaction_created", "opportunity_created",
+  "portfolio_created", "listing_created", "follow_up_scheduled",
+]);
+
+export function isInboxItemResolved(item: Pick<InboxItem, "appliedActions">): boolean {
+  return item.appliedActions.some((action) => action.undoneAt === null && resolvingActionTypes.has(action.type));
 }
 
 export interface InboxItem extends TenantOwned, Audited {

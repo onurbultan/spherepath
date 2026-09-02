@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyVoiceInsights } from "../voice/voice-note";
-import { classifyInboxText, maskSensitiveInboxText, processInboxItemSchema, updateInboxItemSchema } from "./inbox-item";
+import { classifyInboxText, isInboxItemResolved, maskSensitiveInboxText, processInboxItemSchema, updateInboxItemSchema, type InboxAppliedAction } from "./inbox-item";
 
 describe("inbox classification", () => {
   it("suggests a requirement and detects a location", () => {
@@ -34,5 +34,24 @@ describe("inbox classification", () => {
   it("validates a requirement conversion as one trusted command", () => {
     expect(processInboxItemSchema.parse({ inboxItemId: "note-1", action: "requirement", contactId: "contact-1", opportunityType: "buyer_requirement", nextActionType: "call", nextActionAt: Date.now() + 86_400_000, approvedInsights: emptyVoiceInsights }).action).toBe("requirement");
     expect(processInboxItemSchema.safeParse({ inboxItemId: "note-1", action: "requirement", contactId: "contact-1", opportunityType: "seller_listing", nextActionType: "call", nextActionAt: Date.now() + 86_400_000, approvedInsights: emptyVoiceInsights }).success).toBe(false);
+  });
+});
+
+describe("resolved notes", () => {
+  const action = (type: InboxAppliedAction["type"], undoneAt: number | null = null): InboxAppliedAction =>
+    ({ type, entityId: null, label: type, appliedAt: 1, undoneAt });
+
+  it("treats a note that produced a record as finished", () => {
+    expect(isInboxItemResolved({ appliedActions: [action("contact_created")] })).toBe(true);
+    expect(isInboxItemResolved({ appliedActions: [action("listing_created")] })).toBe(true);
+  });
+
+  it("does not count classification, which happens to every note", () => {
+    expect(isInboxItemResolved({ appliedActions: [action("classification")] })).toBe(false);
+    expect(isInboxItemResolved({ appliedActions: [] })).toBe(false);
+  });
+
+  it("reopens a note whose action was undone", () => {
+    expect(isInboxItemResolved({ appliedActions: [action("contact_created", 2)] })).toBe(false);
   });
 });

@@ -110,7 +110,7 @@ async function backfillHistoricalInboxItems(claims: SpherepathClaims): Promise<v
     batch.set(db.collection("inboxItems").doc(`interaction-${document.id}`), {
       officeId: data.officeId, ownerUid: data.ownerUid, source: data.voiceNoteId ? "voice" : "typed", safeText: classification.safeText, summary: classification.summary, kind: classification.kind,
       status: "applied", confidence: classification.confidence, linkedContactId: data.contactId ?? null, sourceEntityId: document.id,
-      appliedActions: [{ type: "classification", entityId: null, label: "Geçmiş kayıt sınıflandırıldı", appliedAt: occurredAt, undoneAt: null }], pinned: false, needsLocation: classification.needsLocation, errorCode: null, archivedAt: null, createdAt: occurredAt, updatedAt: occurredAt,
+      appliedActions: [{ type: "interaction_created", entityId: document.id, label: "Geçmiş kayıt sınıflandırıldı", appliedAt: occurredAt, undoneAt: null }], pinned: false, needsLocation: classification.needsLocation, errorCode: null, archivedAt: null, createdAt: occurredAt, updatedAt: occurredAt,
     }, { merge: false });
   }
   for (const document of portfolioItems.docs) {

@@ -126,8 +126,15 @@ export const getTodayOverview = onCall(
     const visibleCandidates = candidateOverview.tasks.filter((task) => !suppressedContactIds.includes(task.contactId));
     const storedSnapshots = (planSnapshot.data()?.taskSnapshots ?? []) as TodayTask[];
     const storedTaskIds = planSnapshot.exists ? ((planSnapshot.data()!.taskIds ?? []) as string[]) : [];
+    // The day's list is pinned so it does not reshuffle while it is being worked,
+    // but a pinned task whose condition has since gone stops being work: "record a
+    // first interaction" survives the interaction that answers it, and the list
+    // then argues with the contact record. A task the advisor resolved themselves
+    // stays, so the tick they gave it does not disappear.
+    const candidateIds = new Set(visibleCandidates.map((task) => task.id));
+    const liveStoredTaskIds = storedTaskIds.filter((taskId) => candidateIds.has(taskId) || resolutionById.has(taskId));
     const taskIds = planSnapshot.exists
-      ? topUpDailyPlanTasks([...storedSnapshots, ...visibleCandidates], storedTaskIds)
+      ? topUpDailyPlanTasks([...storedSnapshots, ...visibleCandidates], liveStoredTaskIds)
       : selectDailyPlanTasks(visibleCandidates).map((task) => task.id);
     const snapshotById = new Map([...storedSnapshots, ...visibleCandidates].map((task) => [task.id, task]));
     const selectedSnapshots = taskIds.flatMap((taskId) => { const task = snapshotById.get(taskId); return task ? [task] : []; });
