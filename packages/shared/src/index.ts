@@ -9,6 +9,7 @@ export * from "./daily-plan/rank-tasks.js";
 export * from "./daily-plan/stable-plan.js";
 export * from "./design/index.js";
 export * from "./domain/entities.js";
+export * from "./format/calendar-month.js";
 export * from "./format/money.js";
 export * from "./domain/interaction-draft.js";
 export * from "./interactions/manual-interaction.js";
