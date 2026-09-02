@@ -254,7 +254,12 @@ export interface Listing extends TenantOwned, Audited {
     areaM2: number | null;
     features: PropertyFeature[];
   };
-  askingPrice: number;
+  /**
+   * Unknown until the valuation. A seller gives the mandate before anyone has
+   * priced the property, and requiring a number here forced advisors to invent
+   * one -- which then travelled into totals, matches and offers as fact.
+   */
+  askingPrice: number | null;
   currency: CurrencyCode;
   status: ListingStatus;
   acquiredAt: Instant;

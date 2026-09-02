@@ -31,7 +31,7 @@ function presentationMessage(listing: ListingRecord | undefined, contactName: st
     property.areaM2 !== null ? `${property.areaM2} m²` : null,
   ].filter(Boolean).join(", ");
   const greeting = contactName ? `Merhaba ${contactName},` : "Merhaba,";
-  return `${greeting}\n\n${property.address} adresindeki${details ? ` ${details}` : ""} ${property.type === "villa" ? "villa" : "portföy"} seçeneğimizi sizinle paylaşmak isterim. Liste fiyatı ${money(listing.askingPrice, listing.currency)}. Detayları incelemek veya bir gösterim planlamak ister misiniz?`;
+  return `${greeting}\n\n${property.address} adresindeki${details ? ` ${details}` : ""} ${property.type === "villa" ? "villa" : "portföy"} seçeneğimizi sizinle paylaşmak isterim. ${listing.askingPrice === null ? "" : `Liste fiyatı ${money(listing.askingPrice, listing.currency)}. `} Detayları incelemek veya bir gösterim planlamak ister misiniz?`;
 }
 
 export function ClosingSection({ listings, showHeading = true }: { listings: ListingRecord[]; showHeading?: boolean }) {

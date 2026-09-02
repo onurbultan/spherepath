@@ -40,7 +40,7 @@ export const listingDraftSchema = z.object({
   areaM2: z.number().positive().max(1_000_000).nullable(),
   features: z.array(z.enum(propertyFeatures)).max(12),
   authorizationType: z.enum(authorizationTypes),
-  askingPrice: z.number().positive().max(1_000_000_000_000),
+  askingPrice: z.number().positive().max(1_000_000_000_000).nullable(),
   currency: z.enum(currencyCodes),
   expiresAt: z.number().int().positive().nullable(),
 }).strict();

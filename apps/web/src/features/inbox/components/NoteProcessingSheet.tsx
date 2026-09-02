@@ -134,7 +134,6 @@ export function NoteProcessingSheet({ item, contacts, onClose, onChanged }: { it
       await saveEdits();
       if (!contactId) throw new Error("Yetkili portföy için mülk sahibini seç.");
       if (portfolio.authorizationType === "none") throw new Error("Yetkili portföy için geçerli bir yetki türü seç.");
-      if (!portfolio.askingPrice) throw new Error("Yetkili portföy için fiyat ve para birimi gerekli.");
       const parsed = existingListingDraftSchema.safeParse({
         ownerContactId: contactId,
         opportunityType: portfolio.transactionType === "sell" ? "seller_listing" : "landlord_listing",
@@ -145,8 +144,9 @@ export function NoteProcessingSheet({ item, contacts, onClose, onChanged }: { it
         areaM2: portfolio.propertyType === "land" ? portfolio.landAreaM2 : portfolio.areaM2,
         features: portfolio.features,
         authorizationType: portfolio.authorizationType,
-        askingPrice: portfolio.askingPrice.amount,
-        currency: portfolio.askingPrice.currency,
+        // A mandate is given before the valuation; the price arrives later.
+        askingPrice: portfolio.askingPrice?.amount ?? null,
+        currency: portfolio.askingPrice?.currency ?? "TRY",
         expiresAt: null,
         sourceInboxItemId: item.id,
       });

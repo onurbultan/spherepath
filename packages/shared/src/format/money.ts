@@ -1,3 +1,4 @@
+import type { CurrencyCode } from "../domain/entities.js";
 const groupSeparator = ".";
 const maxDigits = 15;
 
@@ -28,4 +29,15 @@ export function parseMoneyInput(raw: string): number | null {
 /** Puts a stored amount back into the field's own grouped form. */
 export function moneyInputValue(value: number | null | undefined): string {
   return value === null || value === undefined ? "" : formatMoneyAsTyped(String(value));
+}
+
+/**
+ * A listing carries no price until it has been valued, and both platforms have
+ * to say so the same way -- a blank cell reads as a bug, and a zero reads as a
+ * giveaway.
+ */
+export function listingPriceLabel(amount: number | null, currency: CurrencyCode): string {
+  return amount === null
+    ? "Fiyat belirlenmedi"
+    : new Intl.NumberFormat("tr-TR", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
 }
