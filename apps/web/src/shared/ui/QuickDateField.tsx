@@ -12,6 +12,9 @@ import {
   weekdayLabels,
 } from "@spherepath/shared";
 
+/** Roughly what the calendar occupies, which is all the flip decision needs. */
+const popoverHeight = 340;
+
 function localDateTime(days: number, hour = 10): string {
   const date = new Date();
   date.setDate(date.getDate() + days);
@@ -61,7 +64,11 @@ export function QuickDateField({
   past?: boolean;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  // Opening downward near the foot of the page pushes the calendar off-screen,
+  // so the side with room wins. Measured on the click that opens it.
+  const [dropUp, setDropUp] = useState(false);
   const { date, time } = splitDateTimeValue(value);
   const today = new Date();
   const todayValue = toDateValue(today);
@@ -113,7 +120,15 @@ export function QuickDateField({
           aria-haspopup="dialog"
           className={`quick-date-trigger${chosen ? "" : " is-empty"}${required && !chosen ? " is-required" : ""}`}
           disabled={disabled}
-          onClick={() => { if (!open) setMonth(monthOf(date || todayValue)); setOpen((current) => !current); }}
+          onClick={() => {
+            if (!open) {
+              setMonth(monthOf(date || todayValue));
+              const box = trigger.current?.getBoundingClientRect();
+              setDropUp(Boolean(box && window.innerHeight - box.bottom < popoverHeight && box.top > popoverHeight));
+            }
+            setOpen((current) => !current);
+          }}
+          ref={trigger}
           type="button"
         >
           <CalendarDays size={16} />
@@ -121,7 +136,7 @@ export function QuickDateField({
         </button>
 
         {open ? (
-          <div aria-label={label} className="quick-date-popover" role="dialog">
+          <div aria-label={label} className={`quick-date-popover${dropUp ? " is-up" : ""}`} role="dialog">
             <div className="quick-date-month">
               <button aria-label="Önceki ay" onClick={() => setMonth(shiftMonth(month, -1))} type="button"><ChevronLeft size={16} /></button>
               <strong>{calendar.label}</strong>

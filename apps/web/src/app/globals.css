@@ -56,15 +56,10 @@ a { color: inherit; text-decoration: none; }
 .quick-date-field { display: grid; gap: 8px; }
 .quick-date-label { color: var(--text-secondary); font-size: 12px; font-weight: 700; }
 .quick-date-control { position: relative; }
-.quick-date-trigger {
-  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 38px; padding: 0 11px;
-  border: 1px solid var(--line); border-radius: var(--radius-md);
-  background: var(--card); color: var(--text-primary); font: inherit; font-size: 13px; text-align: left;
-  transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
-}
-.quick-date-trigger:hover { border-color: var(--line-strong); }
-.quick-date-trigger:focus-visible { border-color: var(--focus); outline: 0; box-shadow: 0 0 0 3px var(--focus-halo); }
+.quick-date-trigger { display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer; }
 .quick-date-trigger.is-empty { color: var(--text-secondary); }
+.quick-date-options button:disabled { opacity: .5; cursor: not-allowed; }
+.quick-date-options button:disabled:hover { border-color: var(--line); color: var(--text-secondary); }
 .quick-date-trigger.is-required { border-color: var(--line-strong); }
 .quick-date-popover {
   position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; width: min(302px, 100%);
@@ -72,6 +67,7 @@ a { color: inherit; text-decoration: none; }
   border: 1px solid var(--line); border-radius: var(--radius-md);
   background: var(--card); box-shadow: 0 12px 32px rgb(0 0 0 / .16);
 }
+.quick-date-popover.is-up { top: auto; bottom: calc(100% + 6px); }
 .quick-date-month { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .quick-date-month strong { font-size: 13px; }
 .quick-date-month button {
@@ -368,7 +364,8 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .contact-toolbar input, .contact-toolbar select,
 .settings-card input, .settings-card select, .settings-card textarea,
 .task-resolution-sheet input, .task-resolution-sheet select, .task-resolution-sheet textarea,
-.voice-setup select, .voice-review select, .voice-review textarea, .voice-review input {
+.voice-setup select, .voice-review select, .voice-review textarea, .voice-review input,
+.quick-date-trigger {
   width: 100%; min-height: 38px; padding: 0 11px;
   border: 1px solid var(--line); border-radius: var(--radius-md);
   background: var(--card); color: var(--text-primary); font: inherit; font-size: 13px;
@@ -377,17 +374,20 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .form-stack textarea, .capture-form textarea { min-height: 88px; padding-block: 10px; resize: vertical; }
 .settings-card textarea { min-height: 84px; padding-block: 10px; }
 .voice-review textarea { min-height: 80px; padding-block: 10px; resize: vertical; }
-.form-stack input:hover, .capture-form input:hover, .settings-card input:hover, .contact-toolbar input:hover { border-color: var(--line-strong); }
+.form-stack input:hover, .capture-form input:hover, .settings-card input:hover, .contact-toolbar input:hover,
+.quick-date-trigger:hover:not(:disabled) { border-color: var(--line-strong); }
 .form-stack input:focus, .form-stack select:focus, .form-stack textarea:focus,
 .capture-form input:focus, .capture-form select:focus, .capture-form textarea:focus,
 .contact-toolbar input:focus, .contact-toolbar select:focus,
 .settings-card input:focus, .settings-card select:focus, .settings-card textarea:focus,
 .task-resolution-sheet input:focus, .task-resolution-sheet select:focus, .task-resolution-sheet textarea:focus,
 .voice-setup select:focus, .voice-review select:focus, .voice-review textarea:focus, .voice-review input:focus,
-.voice-text-test textarea:focus {
+.voice-text-test textarea:focus,
+.quick-date-trigger:focus-visible {
   border-color: var(--focus); outline: 0; box-shadow: 0 0 0 3px var(--focus-halo);
 }
-.form-stack input:disabled, .capture-form input:disabled, .settings-card input:disabled { opacity: .55; cursor: not-allowed; background: var(--background); }
+.form-stack input:disabled, .capture-form input:disabled, .settings-card input:disabled,
+.quick-date-trigger:disabled { opacity: .55; cursor: not-allowed; background: var(--background); }
 
 /* Grouped phone and price fields: digits line up so a misread zero is visible. */
 .phone-field {
@@ -437,7 +437,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
   width: auto; min-width: 0; min-height: 0; height: 44px; flex: 1; padding: 0;
   border: 0; border-radius: 0; background: transparent; outline: 0; box-shadow: none;
 }
-.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--space-lg); }
+.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--space-lg); align-items: start; }
 .form-stack fieldset { margin: 0; padding: 0; border: 0; }
 .form-stack legend { margin-bottom: var(--space-md); font-size: 12px; font-weight: 700; color: var(--text-secondary); }
 .form-section { display: grid; gap: var(--space-xl); }
@@ -1087,7 +1087,8 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
   .capture-form input, .capture-form select, .capture-form textarea,
   .contact-toolbar input, .contact-toolbar select,
   .settings-card input, .settings-card select, .settings-card textarea,
-  .voice-setup select, .voice-review select, .voice-review input { min-height: var(--hit-min); }
+  .voice-setup select, .voice-review select, .voice-review input,
+  .quick-date-trigger { min-height: var(--hit-min); }
 }
 
 @media (max-width: 1100px) {
