@@ -1554,3 +1554,8 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .match-draft { margin-top: 10px; display: grid; gap: 8px; }
 .match-draft textarea { min-height: 96px; resize: vertical; }
 .match-draft-actions { display: flex; align-items: center; gap: 10px; }
+
+/* What the model made of the note, shown instead of asking for it again. */
+.keep-understanding { margin-top: 8px; display: grid; gap: 4px; list-style: none; padding: 0; }
+.keep-understanding li { padding: 3px 8px; border-radius: var(--radius-sm); background: var(--deed-bg); color: var(--deed); font-size: 11.5px; }
+.keep-understanding.is-pending { margin-top: 8px; color: var(--text-tertiary); font-size: 11.5px; }

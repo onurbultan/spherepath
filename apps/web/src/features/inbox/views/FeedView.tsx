@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, MapPin, Mic, Pencil, PhoneOff, Pin, RefreshCw, RotateCcw, Send, Shuffle, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiQueryKeys, dailyTaskResolutionLabels, inboxItemKinds, isInboxItemResolved, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
+import { apiQueryKeys, dailyTaskResolutionLabels, inboxAnalysisHighlights, inboxItemKinds, isInboxItemResolved, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
 import { finishDailyTask, loadTodayOverview, replaceDailyTask } from "@/features/today/resources/today";
 import { TaskResolutionSheet, taskDueLabel, taskRecordHref } from "@/features/today/components/TaskResolutionSheet";
@@ -87,10 +87,20 @@ function NoteCard({ item, view }: { item: InboxItemRecord; view: NoteView }) {
     <div className="keep-meta"><NoteKind item={item} view={view} /></div>
     <p className={view.expanded.has(item.id) ? "" : "keep-clamped"}>{view.expanded.has(item.id) ? item.safeText : item.summary}</p>
     {item.safeText !== item.summary ? <button className="text-button keep-expand" onClick={() => view.onToggleExpanded(item.id)} type="button">{view.expanded.has(item.id) ? <><ChevronUp size={14} /> Kısalt</> : <><ChevronDown size={14} /> Tamamını göster</>}</button> : null}
+    <NoteUnderstanding item={item} />
     <NoteLocation item={item} view={view} />
     <p className="keep-source">{sourceLabels[item.source]} · {statusLabel(item)}</p>
     {item.id.startsWith("queued-") ? null : <footer><NoteActions item={item} view={view} /></footer>}
   </article>;
+}
+
+function NoteUnderstanding({ item }: { item: InboxItemRecord }) {
+  // The reading arrives a few seconds after the save, so the card says it is
+  // coming rather than looking finished and empty.
+  if (item.analysisStatus === "pending") return <p className="keep-understanding is-pending">Not okunuyor…</p>;
+  const highlights = inboxAnalysisHighlights(item.analysis);
+  if (!highlights.length) return null;
+  return <ul className="keep-understanding">{highlights.map((highlight) => <li key={highlight}>{highlight}</li>)}</ul>;
 }
 
 function NoteRow({ item, view }: { item: InboxItemRecord; view: NoteView }) {
@@ -99,6 +109,7 @@ function NoteRow({ item, view }: { item: InboxItemRecord; view: NoteView }) {
     <div className="note-row-body">
       <p className={view.expanded.has(item.id) ? "" : "note-row-line"}>{view.expanded.has(item.id) ? item.safeText : item.summary}</p>
       {item.safeText !== item.summary ? <button className="text-button keep-expand" onClick={() => view.onToggleExpanded(item.id)} type="button">{view.expanded.has(item.id) ? <><ChevronUp size={14} /> Kısalt</> : <><ChevronDown size={14} /> Tamamını göster</>}</button> : null}
+      <NoteUnderstanding item={item} />
       <NoteLocation item={item} view={view} />
     </div>
     <p className="keep-source">{sourceLabels[item.source]} · {statusLabel(item)}</p>

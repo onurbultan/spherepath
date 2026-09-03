@@ -1,5 +1,7 @@
 import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { logger } from "firebase-functions";
 import {
   analyzeInboxItemSchema,
   classifyInboxText,
@@ -68,6 +70,8 @@ function canManage(data: DocumentData, claims: SpherepathClaims): boolean {
 function toRecord(id: string, data: DocumentData): InboxItemRecord {
   return {
     ...(data as InboxItem), id,
+    analysis: (data.analysis ?? null) as InboxItem["analysis"],
+    analysisStatus: (data.analysisStatus ?? "ready") as InboxItem["analysisStatus"],
     createdAt: millis(data.createdAt) ?? 0,
     updatedAt: millis(data.updatedAt) ?? 0,
     archivedAt: millis(data.archivedAt),
@@ -167,6 +171,8 @@ export const createInboxItem = onCall(callableOptions, async (request): Promise<
         confidence: classification.confidence, linkedContactId: parsed.data.linkedContactId ?? contactRef?.id ?? null,
         sourceEntityId: null, appliedActions: actions, pinned: false, needsLocation: classification.needsLocation,
         errorCode: null, archivedAt: null, createdAt: now, updatedAt: now,
+        // Filled by the trigger below, so saving stays instant.
+        analysis: null, analysisStatus: "pending",
       };
       transaction.create(itemRef, { ...item, createdAt: nowStamp, updatedAt: nowStamp, archivedAt: null, appliedActions: actions.map((action) => ({ ...action, appliedAt: nowStamp, undoneAt: null })) });
       transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "createInboxItem", inboxItemId: itemRef.id, createdAt: nowStamp });
@@ -248,6 +254,29 @@ export const updateInboxItem = onCall(callableOptions, async (request): Promise<
     const result = await ref.get(); return { item: toRecord(result.id, result.data()!) };
   });
 });
+
+/**
+ * The save runs a deterministic classification so the card appears at once, but
+ * that only ever produces one label for a note that may hold a person, a
+ * property and a requirement at the same time. This reads the note properly and
+ * stores what it found, so the card can show it instead of offering a form.
+ */
+export const analyzeInboxNote = onDocumentCreated(
+  { document: "inboxItems/{inboxItemId}", region: "europe-west8", memory: "512MiB", timeoutSeconds: 120, retry: false },
+  async (event) => {
+    const data = event.data?.data();
+    if (!data || data.analysisStatus !== "pending") return;
+    const reference = event.data!.ref;
+    try {
+      const analysis = await analyzeText(data.safeText as string);
+      await reference.update({ analysis, analysisStatus: "ready", updatedAt: Timestamp.now() });
+    } catch (error) {
+      // The card still works without it; the note is never lost to this.
+      logger.warn("Inbox note analysis failed", { inboxItemId: event.params.inboxItemId, error: error instanceof Error ? error.message : String(error) });
+      await reference.update({ analysisStatus: "failed", updatedAt: Timestamp.now() });
+    }
+  },
+);
 
 export const analyzeInboxItem = onCall(callableOptions, async (request): Promise<{ analysis: InboxItemAnalysis }> => {
   const claims = requireSpherepathClaims(request);

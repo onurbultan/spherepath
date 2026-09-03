@@ -13,7 +13,7 @@ const networkFailure = (error: unknown) => error instanceof ApiError && error.ca
 
 function localRecord(session: WorkspaceSession, input: CreateInboxItemInput, commandId: string): InboxItemRecord {
   const result = classifyInboxText(input.text, input.requestedKind ?? null); const now = Date.now();
-  return { id: `queued-${commandId}`, officeId: session.officeId, ownerUid: session.uid, source: input.source, safeText: result.safeText, summary: result.summary, kind: result.kind, status: "queued", confidence: result.confidence, linkedContactId: input.linkedContactId ?? null, sourceEntityId: null, appliedActions: [], pinned: false, needsLocation: result.needsLocation, errorCode: null, archivedAt: null, createdAt: now, updatedAt: now };
+  return { id: `queued-${commandId}`, officeId: session.officeId, ownerUid: session.uid, source: input.source, safeText: result.safeText, summary: result.summary, kind: result.kind, status: "queued", confidence: result.confidence, linkedContactId: input.linkedContactId ?? null, sourceEntityId: null, appliedActions: [], pinned: false, needsLocation: result.needsLocation, errorCode: null, archivedAt: null, analysis: null, analysisStatus: "pending", createdAt: now, updatedAt: now };
 }
 
 export async function listInboxItems(session?: WorkspaceSession): Promise<InboxItemRecord[]> {

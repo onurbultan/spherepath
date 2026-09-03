@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyVoiceInsights } from "../voice/voice-note";
-import { classifyInboxText, isInboxItemResolved, maskSensitiveInboxText, processInboxItemSchema, updateInboxItemSchema, type InboxAppliedAction } from "./inbox-item";
+import { classifyInboxText, inboxAnalysisHighlights, isInboxItemResolved, maskSensitiveInboxText, processInboxItemSchema, updateInboxItemSchema, type InboxAppliedAction } from "./inbox-item";
 
 describe("inbox classification", () => {
   it("suggests a requirement and detects a location", () => {
@@ -53,5 +53,25 @@ describe("resolved notes", () => {
 
   it("reopens a note whose action was undone", () => {
     expect(isInboxItemResolved({ appliedActions: [action("contact_created", 2)] })).toBe(false);
+  });
+});
+
+describe("what the card can show", () => {
+  const analysis = (situations: Array<{ summary: string }>, nextActionType: "call" | null = null) => ({
+    insights: { ...emptyVoiceInsights, propertySituations: situations.map((s) => ({ ...s, propertyContext: "subject_property" as const, propertyPreferences: emptyVoiceInsights.propertyPreferences })) },
+    nextActionType, nextActionAt: null, opportunityType: "buyer_requirement" as const, engine: "vertex_ai" as const,
+  });
+
+  it("shows every situation, because one call holds more than one", () => {
+    expect(inboxAnalysisHighlights(analysis([{ summary: "Kadıovacık'ta 620 m² satılık arsa." }, { summary: "İçmeler'de 600 m² üzeri arayış." }])))
+      .toEqual(["Kadıovacık'ta 620 m² satılık arsa.", "İçmeler'de 600 m² üzeri arayış."]);
+  });
+
+  it("adds the next step when the note names one", () => {
+    expect(inboxAnalysisHighlights(analysis([{ summary: "Bir mülk." }], "call"))).toContain("Sonraki: Ara");
+  });
+
+  it("says nothing before the note has been read", () => {
+    expect(inboxAnalysisHighlights(null)).toEqual([]);
   });
 });

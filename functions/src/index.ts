@@ -11,7 +11,7 @@ export { configureCallIntegration, connectCallProvider, getCallIntegration, list
 export { createOfficeInvite, getOfficeTeam, joinOffice, revokeOfficeInvite } from "./auth/office-team.js";
 export { archiveContact, createContact, listContactInteractions, listContacts, updateContact, updateContactPrivacy } from "./contacts/contact-api.js";
 export { recordInteraction } from "./interactions/record-interaction.js";
-export { analyzeInboxItem, createInboxItem, listInboxItems, processInboxItem, updateInboxItem, retryInboxItem, undoInboxApplication } from "./inbox/inbox-api.js";
+export { analyzeInboxItem, analyzeInboxNote, createInboxItem, listInboxItems, processInboxItem, updateInboxItem, retryInboxItem, undoInboxApplication } from "./inbox/inbox-api.js";
 export { getFunnelOverview } from "./funnel/get-funnel-overview.js";
 export { advanceListing, createListing, importExistingListing, listListings } from "./listings/listing-api.js";
 export { createPortfolioItemFromDraft, draftMatchMessage, extractPortfolioText, listMatchNotifications, listPortfolioItems, listPortfolioMatches, markMatchNotificationsRead, withdrawPortfolioItem } from "./matching/portfolio-api.js";

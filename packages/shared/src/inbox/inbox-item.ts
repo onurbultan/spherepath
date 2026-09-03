@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Audited, Instant, TenantOwned } from "../domain/entities.js";
 import { contactDraftSchema } from "../contacts/contact-draft.js";
-import { nextActionTypes } from "../interactions/manual-interaction.js";
+import { nextActionTypeLabels, nextActionTypes } from "../interactions/manual-interaction.js";
 import { opportunityTypes } from "../opportunities/opportunity-draft.js";
 import { portfolioItemDraftSchema } from "../matching/portfolio-match.js";
 import { voiceInsightsSchema, type VoiceInsights } from "../voice/voice-note.js";
@@ -50,6 +50,14 @@ export interface InboxItem extends TenantOwned, Audited {
   appliedActions: InboxAppliedAction[];
   pinned: boolean;
   needsLocation: boolean;
+  /**
+   * What the model made of the note. The deterministic classification that runs
+   * on save gives the card a type and a summary; this is the reading that finds
+   * the person, the property and the requirement inside one sentence, and it
+   * arrives a few seconds later so the save itself stays instant.
+   */
+  analysis: InboxItemAnalysis | null;
+  analysisStatus: "pending" | "ready" | "failed";
   errorCode: string | null;
   archivedAt: Instant | null;
 }
@@ -117,6 +125,20 @@ export interface InboxItemAnalysis {
   nextActionAt: number | null;
   opportunityType: "buyer_requirement" | "tenant_requirement";
   engine: "rules" | "vertex_ai";
+}
+
+/**
+ * What the card can say it understood. One phone call routinely holds a person,
+ * a property being sold and a property being sought; the type picker could only
+ * ever name one of them, so the card showed a label and a form instead of the
+ * reading. Each situation carries its own sentence already -- that is the chip.
+ */
+export function inboxAnalysisHighlights(analysis: InboxItemAnalysis | null): string[] {
+  if (!analysis) return [];
+  const situations = analysis.insights.propertySituations.map((situation) => situation.summary.trim()).filter(Boolean);
+  const remembered = situations.length ? [] : analysis.insights.keyThingsToRemember.slice(0, 2);
+  const next = analysis.nextActionType ? [`Sonraki: ${nextActionTypeLabels[analysis.nextActionType]}`] : [];
+  return [...situations, ...remembered, ...next].slice(0, 4);
 }
 
 export const inboxPageQuerySchema = z.preprocess(
