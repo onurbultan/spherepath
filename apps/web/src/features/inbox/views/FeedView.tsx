@@ -8,7 +8,7 @@ import { apiQueryKeys, dailyTaskResolutionLabels, inboxAnalysisHighlights, inbox
 import { useSession } from "@/features/auth/resources/session";
 import { finishDailyTask, loadTodayOverview, replaceDailyTask } from "@/features/today/resources/today";
 import { TaskResolutionSheet, taskDueLabel, taskRecordHref } from "@/features/today/components/TaskResolutionSheet";
-import { changeInboxItem, createInboxNote, listInboxItems, retryInboxItem, undoInboxItem } from "../resources/inbox";
+import { changeInboxItem, createInboxNote, listInboxItems, retryInboxItem, undoInboxItem, processInboxItem } from "../resources/inbox";
 import { noteViewModes, useNoteViewMode } from "../resources/note-view";
 import { AppShell } from "@/shared/ui/AppShell";
 import { listContacts } from "@/features/contacts/resources/contacts";
@@ -41,6 +41,8 @@ interface NoteView {
   onRetry(id: string): void;
   onUndo(id: string): void;
   onProcess(item: InboxItemRecord): void;
+  creatingContactFor: string | null;
+  onCreateContact(item: InboxItemRecord, fullName: string): void;
   onLocationOpen(id: string): void;
   onLocationCancel(): void;
   onLocationSubmit(id: string): void;
@@ -87,20 +89,26 @@ function NoteCard({ item, view }: { item: InboxItemRecord; view: NoteView }) {
     <div className="keep-meta"><NoteKind item={item} view={view} /></div>
     <p className={view.expanded.has(item.id) ? "" : "keep-clamped"}>{view.expanded.has(item.id) ? item.safeText : item.summary}</p>
     {item.safeText !== item.summary ? <button className="text-button keep-expand" onClick={() => view.onToggleExpanded(item.id)} type="button">{view.expanded.has(item.id) ? <><ChevronUp size={14} /> Kısalt</> : <><ChevronDown size={14} /> Tamamını göster</>}</button> : null}
-    <NoteUnderstanding item={item} />
+    <NoteUnderstanding item={item} view={view} />
     <NoteLocation item={item} view={view} />
     <p className="keep-source">{sourceLabels[item.source]} · {statusLabel(item)}</p>
     {item.id.startsWith("queued-") ? null : <footer><NoteActions item={item} view={view} /></footer>}
   </article>;
 }
 
-function NoteUnderstanding({ item }: { item: InboxItemRecord }) {
+function NoteUnderstanding({ item, view }: { item: InboxItemRecord; view: NoteView }) {
   // The reading arrives a few seconds after the save, so the card says it is
   // coming rather than looking finished and empty.
   if (item.analysisStatus === "pending") return <p className="keep-understanding is-pending">Not okunuyor…</p>;
   const highlights = inboxAnalysisHighlights(item.analysis);
-  if (!highlights.length) return null;
-  return <ul className="keep-understanding">{highlights.map((highlight) => <li key={highlight}>{highlight}</li>)}</ul>;
+  // The note names someone the workspace has never seen. Making the advisor
+  // pick a type and retype that name is the system asking for what it just read.
+  const foundName = item.linkedContactId ? null : item.analysis?.insights.contactName?.trim() || null;
+  if (!highlights.length && !foundName) return null;
+  return <>
+    {highlights.length ? <ul className="keep-understanding">{highlights.map((highlight) => <li key={highlight}>{highlight}</li>)}</ul> : null}
+    {foundName ? <p className="keep-found-contact"><strong>{foundName}</strong> henüz kayıtlı değil.<button className="text-button" disabled={view.creatingContactFor === item.id} onClick={() => view.onCreateContact(item, foundName)} type="button">{view.creatingContactFor === item.id ? "Oluşturuluyor…" : "Kişi olarak ekle"}</button></p> : null}
+  </>;
 }
 
 function NoteRow({ item, view }: { item: InboxItemRecord; view: NoteView }) {
@@ -109,7 +117,7 @@ function NoteRow({ item, view }: { item: InboxItemRecord; view: NoteView }) {
     <div className="note-row-body">
       <p className={view.expanded.has(item.id) ? "" : "note-row-line"}>{view.expanded.has(item.id) ? item.safeText : item.summary}</p>
       {item.safeText !== item.summary ? <button className="text-button keep-expand" onClick={() => view.onToggleExpanded(item.id)} type="button">{view.expanded.has(item.id) ? <><ChevronUp size={14} /> Kısalt</> : <><ChevronDown size={14} /> Tamamını göster</>}</button> : null}
-      <NoteUnderstanding item={item} />
+      <NoteUnderstanding item={item} view={view} />
       <NoteLocation item={item} view={view} />
     </div>
     <p className="keep-source">{sourceLabels[item.source]} · {statusLabel(item)}</p>
@@ -126,7 +134,7 @@ export function FeedView() {
   const [viewMode, changeViewMode] = useNoteViewMode();
   const [showAllWork, setShowAllWork] = useState(false);
   const today = useQuery({ queryKey: apiQueryKeys.todayOverviewPeriod("30d"), queryFn: () => loadTodayOverview("30d") });
-  const inbox = useQuery({ queryKey: apiQueryKeys.inboxItems, queryFn: () => listInboxItems(session ?? undefined), enabled: Boolean(session), refetchInterval: (query) => (query.state.data as InboxItemRecord[] | undefined)?.some((item) => item.status === "queued" || item.status === "processing") ? 1_500 : false });
+  const inbox = useQuery({ queryKey: apiQueryKeys.inboxItems, queryFn: () => listInboxItems(session ?? undefined), enabled: Boolean(session), refetchInterval: (query) => (query.state.data as InboxItemRecord[] | undefined)?.some((item) => item.status === "queued" || item.status === "processing" || item.analysisStatus === "pending") ? 1_500 : false });
   const contacts = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts, enabled: Boolean(session) });
   const loadingError = today.error ?? inbox.error;
   async function save() { if (!session || !text.trim()) return; setSaving(true); setError(null); try { await client.cancelQueries({ queryKey: apiQueryKeys.inboxItems }); const item = await createInboxNote(session, text.trim()); client.setQueryData<InboxItemRecord[]>(apiQueryKeys.inboxItems, (current = []) => [item, ...current.filter((entry) => entry.id !== item.id)]); setText(""); } catch (next) { setError(messageFrom(next)); } finally { setSaving(false); } }
@@ -140,6 +148,24 @@ export function FeedView() {
     } catch (next) { setTaskError(messageFrom(next)); } finally { setResolving(false); }
   }
   async function replace(taskId: string) { if (!session) return; try { await replaceDailyTask(session, taskId); await client.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }); } catch (next) { setError(messageFrom(next)); } }
+  const [creatingContactFor, setCreatingContactFor] = useState<string | null>(null);
+  async function createContactFromNote(item: InboxItemRecord, fullName: string) {
+    if (!session) return;
+    setCreatingContactFor(item.id); setError(null);
+    try {
+      await processInboxItem(session, {
+        inboxItemId: item.id, action: "person",
+        contact: { fullName, phone: "", metAtPlace: "Akış notu", source: "other", role: "unknown" },
+      });
+      await client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems });
+      await client.invalidateQueries({ queryKey: apiQueryKeys.contacts });
+    } catch (next) {
+      setError(messageFrom(next));
+    } finally {
+      setCreatingContactFor(null);
+    }
+  }
+
   async function update(inboxItemId: string, values: { kind?: InboxItemKind; pinned?: boolean; archived?: boolean }) { if (!session) return; try { await changeInboxItem(session, { inboxItemId, ...values }); await client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }); } catch (next) { setError(messageFrom(next)); } }
   async function retry(inboxItemId: string) { if (!session) return; try { await retryInboxItem(session, inboxItemId); await client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }); } catch (next) { setError(messageFrom(next)); } }
   async function addLocation(inboxItemId: string) { if (!session || locationText.trim().length < 2) return; try { await changeInboxItem(session, { inboxItemId, location: locationText.trim() }); setLocationFor(null); setLocationText(""); await client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }); } catch (next) { setError(messageFrom(next)); } }
@@ -162,6 +188,8 @@ export function FeedView() {
     onRetry: (id) => void retry(id),
     onUndo: (id) => void undo(id),
     onProcess: (item) => setActiveNote(item),
+    creatingContactFor,
+    onCreateContact: (item, fullName) => void createContactFromNote(item, fullName),
     onLocationOpen: (id) => { setLocationFor(id); setLocationText(""); },
     onLocationCancel: () => { setLocationFor(null); setLocationText(""); },
     onLocationSubmit: (id) => void addLocation(id),

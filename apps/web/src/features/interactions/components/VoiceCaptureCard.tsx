@@ -319,6 +319,9 @@ export function VoiceCaptureCard({ session, contacts, initialContactId, onSaved 
       const extractedInsights = voiceNote.extraction?.insights;
       const approvedInsights: VoiceInsights = {
         keyThingsToRemember: approvedKeyThings,
+        // The capture flow already knows who it is about; the field exists for
+        // notes that name someone the workspace has never seen.
+        contactName: extractedInsights?.contactName ?? null,
         propertyContext: includePropertyPreferences ? extractedInsights?.propertyContext ?? null : null,
         propertySituations: extractedInsights?.propertySituations ?? [],
         propertyPreferences: includePropertyPreferences && extractedInsights ? {

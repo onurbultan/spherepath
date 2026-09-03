@@ -83,6 +83,12 @@ export const voiceInsightsSchema = z.object({
   propertyContext: z.enum(voicePropertyContexts).nullable().default(null),
   propertyPreferences: voicePropertyPreferencesSchema,
   propertySituations: z.array(voicePropertySituationSchema).max(3).default([]),
+  /**
+   * Who the note is about, when the text names them. The voice flow always has
+   * a contact picked already and ignores this; a note typed into the day's box
+   * has nobody yet, and the name is usually its first two words.
+   */
+  contactName: z.string().trim().max(120).nullable().default(null),
   suggestedActionReason: z.string().trim().min(2).max(240).nullable(),
 }).strict();
 
@@ -91,6 +97,7 @@ export const emptyVoiceInsights: VoiceInsights = {
   propertyContext: null,
   propertyPreferences: emptyVoicePropertyPreferences,
   propertySituations: [],
+  contactName: null,
   suggestedActionReason: null,
 };
 
