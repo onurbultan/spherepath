@@ -445,7 +445,12 @@ textarea.sp-control.is-compact { min-height: 80px; }
   position: absolute; inset-block: 0; right: 11px; display: flex; align-items: center;
   color: var(--text-secondary); font-size: 12px; font-weight: 700; pointer-events: none;
 }
-.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--space-lg); align-items: start; }
+/* A field whose label carries a second line -- an "isteğe bağlı", a hint --
+   used to push its control below the ones beside it, because the row aligned
+   the labels rather than the controls. Stretching the columns and letting the
+   control sit at the bottom keeps a row level however many lines a label needs. */
+.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--space-lg); align-items: stretch; }
+.form-row > label { align-content: end; }
 .form-stack fieldset { margin: 0; padding: 0; border: 0; }
 .form-stack legend { margin-bottom: var(--space-md); font-size: 12px; font-weight: 700; color: var(--text-secondary); }
 .form-section { display: grid; gap: var(--space-xl); }
