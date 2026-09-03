@@ -134,7 +134,7 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
             <SpText variant="eyebrow" color="deed">KİŞİ ÇALIŞMA SAYFASI</SpText>
             <SpText variant="hero">{name}</SpText>
             <SpText variant="bodySmall" color="secondary">
-              {contactRoleLabels[contact.roles[0] ?? "unknown"]} · {contactSourceLabels[contact.source]} · {contact.phone ?? "Telefon eklenmedi"}
+              {(contact.roles.length ? contact.roles : ["unknown" as const]).map((role) => contactRoleLabels[role]).join(" · ")} · {contactSourceLabels[contact.source]} · {contact.phone ?? "Telefon eklenmedi"}
             </SpText>
           </View>
         </View>

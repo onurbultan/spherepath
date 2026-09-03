@@ -133,6 +133,17 @@ export interface InboxItemAnalysis {
  * ever name one of them, so the card showed a label and a form instead of the
  * reading. Each situation carries its own sentence already -- that is the chip.
  */
+/**
+ * What the note turned into. "İşlendi" told the advisor the work was done but
+ * not what it produced, so answering "what did I do with that note?" meant
+ * going to the contact list and searching for a name.
+ */
+export function inboxItemTrace(item: Pick<InboxItem, "appliedActions">): Array<{ label: string; kind: InboxAppliedAction["type"]; entityId: string | null }> {
+  return item.appliedActions
+    .filter((action) => action.undoneAt === null && action.type !== "classification")
+    .map((action) => ({ label: action.label, kind: action.type, entityId: action.entityId }));
+}
+
 export function inboxAnalysisHighlights(analysis: InboxItemAnalysis | null): string[] {
   if (!analysis) return [];
   const situations = analysis.insights.propertySituations.map((situation) => situation.summary.trim()).filter(Boolean);

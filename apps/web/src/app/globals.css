@@ -1572,3 +1572,10 @@ textarea.sp-control.is-compact { min-height: 80px; }
 
 /* The person the note names, offered rather than asked for again. */
 .keep-found-contact { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-secondary); }
+
+/* What the note became, so "what did I do with that?" has an answer in place. */
+.keep-trace { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 3px; }
+.keep-trace li { font-size: 11.5px; color: var(--text-secondary); padding-left: 13px; position: relative; }
+.keep-trace li::before { content: "→"; position: absolute; left: 0; color: var(--text-tertiary); }
+.keep-trace a { color: var(--deed); text-decoration: none; }
+.keep-trace a:hover { text-decoration: underline; }

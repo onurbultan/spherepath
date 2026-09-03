@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, MapPin, Mic, Pencil, PhoneOff, Pin, RefreshCw, RotateCcw, Send, Shuffle, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiQueryKeys, dailyTaskResolutionLabels, inboxAnalysisHighlights, inboxItemKinds, isInboxItemResolved, joinPhone, splitPhone, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
+import { apiQueryKeys, dailyTaskResolutionLabels, inboxAnalysisHighlights, inboxItemKinds, inboxItemTrace, isInboxItemResolved, joinPhone, splitPhone, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
 import { finishDailyTask, loadTodayOverview, replaceDailyTask } from "@/features/today/resources/today";
 import { TaskResolutionSheet, taskDueLabel, taskRecordHref } from "@/features/today/components/TaskResolutionSheet";
@@ -90,10 +90,28 @@ function NoteCard({ item, view }: { item: InboxItemRecord; view: NoteView }) {
     <p className={view.expanded.has(item.id) ? "" : "keep-clamped"}>{view.expanded.has(item.id) ? item.safeText : item.summary}</p>
     {item.safeText !== item.summary ? <button className="text-button keep-expand" onClick={() => view.onToggleExpanded(item.id)} type="button">{view.expanded.has(item.id) ? <><ChevronUp size={14} /> Kısalt</> : <><ChevronDown size={14} /> Tamamını göster</>}</button> : null}
     <NoteUnderstanding item={item} view={view} />
+    <NoteTrace item={item} />
     <NoteLocation item={item} view={view} />
     <p className="keep-source">{sourceLabels[item.source]} · {statusLabel(item)}</p>
     {item.id.startsWith("queued-") ? null : <footer><NoteActions item={item} view={view} /></footer>}
   </article>;
+}
+
+function traceHref(kind: string, entityId: string | null, fallbackContactId: string | null): string | null {
+  if (kind === "contact_created" || kind === "contact_linked") return entityId ? `/contacts/__contact__?contactId=${encodeURIComponent(entityId)}` : null;
+  if (kind === "opportunity_created") return entityId ? `/opportunities?opportunityId=${encodeURIComponent(entityId)}` : "/opportunities";
+  if (kind === "listing_created" || kind === "portfolio_created") return "/listings";
+  if (kind === "interaction_created") return fallbackContactId ? `/contacts/__contact__?contactId=${encodeURIComponent(fallbackContactId)}` : null;
+  return null;
+}
+
+function NoteTrace({ item }: { item: InboxItemRecord }) {
+  const trace = inboxItemTrace(item);
+  if (!trace.length) return null;
+  return <ul className="keep-trace">{trace.map((entry) => {
+    const href = traceHref(entry.kind, entry.entityId, item.linkedContactId);
+    return <li key={`${entry.kind}-${entry.entityId ?? entry.label}`}>{href ? <Link href={href}>{entry.label}</Link> : entry.label}</li>;
+  })}</ul>;
 }
 
 function NoteUnderstanding({ item, view }: { item: InboxItemRecord; view: NoteView }) {
@@ -121,6 +139,7 @@ function NoteRow({ item, view }: { item: InboxItemRecord; view: NoteView }) {
       <p className={view.expanded.has(item.id) ? "" : "note-row-line"}>{view.expanded.has(item.id) ? item.safeText : item.summary}</p>
       {item.safeText !== item.summary ? <button className="text-button keep-expand" onClick={() => view.onToggleExpanded(item.id)} type="button">{view.expanded.has(item.id) ? <><ChevronUp size={14} /> Kısalt</> : <><ChevronDown size={14} /> Tamamını göster</>}</button> : null}
       <NoteUnderstanding item={item} view={view} />
+      <NoteTrace item={item} />
       <NoteLocation item={item} view={view} />
     </div>
     <p className="keep-source">{sourceLabels[item.source]} · {statusLabel(item)}</p>

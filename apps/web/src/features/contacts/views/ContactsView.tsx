@@ -344,7 +344,7 @@ export function ContactsView() {
               return <div className={`contact-table-row ${selectedIds.has(contact.id) ? "selected" : ""}`} key={contact.id}>
                 <label className="contact-select"><SpInput aria-label={`${contactName} kişisini seç`} checked={selectedIds.has(contact.id)} type="checkbox" onChange={(event) => toggleSelected(contact.id, event.target.checked)} /></label>
                 <button className="contact-table-person contact-row-open" onClick={() => router.push(`/contacts/__contact__?contactId=${encodeURIComponent(contact.id)}`)} type="button"><span className="contact-avatar">{contactName.slice(0, 1).toLocaleUpperCase("tr-TR")}</span><span><strong>{contactName}</strong><small>{contact.phone ?? "Telefon eklenmedi"}</small></span></button>
-                <span className="contact-row-role">{contactRoleLabels[contact.roles[0] ?? "unknown"]}</span>
+                <span className="contact-row-role">{(contact.roles.length ? contact.roles : ["unknown" as const]).map((role) => contactRoleLabels[role]).join(" · ")}</span>
                 <span className="contact-row-source">{contactSourceLabels[contact.source]}</span>
                 <span className="contact-row-last-touch">{relativeDate(contact.relationship.lastTouchAt, referenceTime)}</span>
                 <span className={`contact-row-next-action ${contact.relationship.nextActionAt !== null && contact.relationship.nextActionAt < referenceTime ? "overdue-text" : ""}`}>{nextActionLabel(contact)}</span>
