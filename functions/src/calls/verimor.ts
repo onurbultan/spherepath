@@ -14,6 +14,7 @@ const apiBase = "https://api.bulutsantralim.com";
 const recordingUrlEndpoint = `${apiBase}/recording_url/`;
 const bridgeEndpoint = `${apiBase}/bridge`;
 const crmIntegrationEndpoint = `${apiBase}/crm_integrations`;
+const announcementsEndpoint = `${apiBase}/announcements`;
 /** The switch caps ring time at a minute; long enough for an advisor to reach the handset. */
 // Verimor allows 10-60s of ringing. An advisor carrying their own phone needs
 // longer than a desk handset: it may be in a pocket or a coat.
@@ -143,6 +144,14 @@ export function createVerimorSource(apiKey: () => string): CallRecordingSource {
       const response = await fetch(`${crmIntegrationEndpoint}?${query.toString()}`, { method: "POST" });
       if (!response.ok) throw new Error(`verimor_connect_failed_${response.status}`);
       logger.info("Call provider pointed at the event endpoint", { notificationUrl });
+    },
+    async listAnnouncements() {
+      const key = apiKey();
+      if (!key) throw new Error("verimor_api_key_missing");
+      const response = await fetch(`${announcementsEndpoint}?${new URLSearchParams({ key }).toString()}`);
+      if (!response.ok) throw new Error(`verimor_announcements_failed_${response.status}`);
+      const body = await response.json() as Array<{ id: number; name: string }>;
+      return body.map((item) => ({ id: Number(item.id), name: String(item.name) })).filter((item) => Number.isFinite(item.id));
     },
     async readEventConnection() {
       const key = apiKey();

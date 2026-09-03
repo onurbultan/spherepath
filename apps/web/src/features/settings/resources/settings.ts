@@ -100,6 +100,8 @@ export interface CallIntegrationView {
   integrationId: string;
   webhookToken: string;
   extensionOwners: Record<string, string>;
+  /** The announcement played to the counterparty before recording starts. */
+  recordingNoticeAnnouncementId: number | null;
   active: boolean;
 }
 
@@ -127,4 +129,11 @@ export async function connectCallProvider(session: WorkspaceSession): Promise<Ca
     "connectCallProvider", undefined, createCommandId(session.uid),
   );
 }
+
+export interface CallAnnouncement { id: number; name: string }
+
+export async function listCallAnnouncements(): Promise<CallAnnouncement[]> {
+  return (await apiClient.query<undefined, { announcements: CallAnnouncement[] }>("listCallAnnouncements", undefined)).announcements;
+}
+
 

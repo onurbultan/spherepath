@@ -68,6 +68,8 @@ export interface CallRecordingSource {
   connectEvents(notificationUrl: string): Promise<void>;
   /** What the switch currently believes, so the app can show it rather than assume. */
   readEventConnection(): Promise<{ notificationUrl: string | null; events: string[] }>;
+  /** The recorded announcements the switch can play, for the recording notice. */
+  listAnnouncements(): Promise<Array<{ id: number; name: string }>>;
 }
 
 const secondsInDay = 86_400;

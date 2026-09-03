@@ -369,7 +369,35 @@ export const configureCallIntegration = onCall(callableOptions, async (request):
   });
 });
 
-export const getCallIntegration = onCall(callableOptions, async (request): Promise<{ integrationId: string; webhookToken: string; extensionOwners: Record<string, string>; active: boolean } | null> => {
+/**
+ * The announcements the switch can play. Recording a customer without telling
+ * them is the one thing that has to be settled before this is sold to an
+ * office, and the file usually already exists on the account -- it just has
+ * never been selectable from here.
+ */
+export const listCallAnnouncements = onCall(
+  { ...callableOptions, secrets: [verimorApiKey] },
+  async (request): Promise<{ announcements: Array<{ id: number; name: string }> }> => {
+    const claims = requireSpherepathClaims(request);
+    if (claims.role !== "broker") throw new HttpsError("permission-denied", "Only a broker can read telephony settings.");
+    const envelope = readApiEnvelope<unknown>(request.data);
+    return observeApiRequest("listCallAnnouncements", envelope.requestId, async () => {
+      const snapshot = await getFirestore().collection(integrationCollection).doc(claims.officeId).get();
+      const integration = snapshot.data();
+      if (!integration) return { announcements: [] };
+      const source = sources[integration.provider as string]?.();
+      if (!source) return { announcements: [] };
+      try {
+        return { announcements: await source.listAnnouncements() };
+      } catch (error) {
+        logger.warn("Announcements could not be listed", { officeId: claims.officeId, error });
+        return { announcements: [] };
+      }
+    });
+  },
+);
+
+export const getCallIntegration = onCall(callableOptions, async (request): Promise<{ integrationId: string; webhookToken: string; extensionOwners: Record<string, string>; recordingNoticeAnnouncementId: number | null; active: boolean } | null> => {
   const claims = requireSpherepathClaims(request);
   if (claims.role !== "broker") throw new HttpsError("permission-denied", "Only a broker can read telephony settings.");
   const envelope = readApiEnvelope<unknown>(request.data);
@@ -381,6 +409,7 @@ export const getCallIntegration = onCall(callableOptions, async (request): Promi
       integrationId: snapshot.id,
       webhookToken: data.webhookToken as string,
       extensionOwners: (data.extensionOwners ?? {}) as Record<string, string>,
+      recordingNoticeAnnouncementId: typeof data.recordingNoticeAnnouncementId === "number" ? data.recordingNoticeAnnouncementId : null,
       active: data.active === true,
     };
   });

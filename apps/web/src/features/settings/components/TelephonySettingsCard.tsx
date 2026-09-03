@@ -6,8 +6,8 @@ import { apiQueryKeys } from "@spherepath/shared";
 import { PhoneCall, RefreshCw } from "lucide-react";
 import { useSession } from "@/features/auth/resources/session";
 import { SpCard } from "@/shared/ui/SpCard";
-import { SpInput } from "@/shared/ui/SpField";
-import { loadCallIntegration, configureCallIntegration, connectCallProvider } from "../resources/settings";
+import { SpInput, SpSelect } from "@/shared/ui/SpField";
+import { loadCallIntegration, configureCallIntegration, connectCallProvider, listCallAnnouncements } from "../resources/settings";
 import { loadOfficeTeam } from "../resources/settings";
 
 const messageFrom = (error: unknown) => error instanceof Error ? error.message : "Telefon ayarları güncellenemedi.";
@@ -29,6 +29,8 @@ export function TelephonySettingsCard() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
+  const [noticeId, setNoticeId] = useState<number | null>(null);
+  const announcementsQuery = useQuery({ queryKey: apiQueryKeys.callAnnouncements, queryFn: listCallAnnouncements, enabled: Boolean(integrationQuery.data) });
 
   const integration = integrationQuery.data;
   const members = teamQuery.data?.members ?? [];
@@ -44,7 +46,10 @@ export function TelephonySettingsCard() {
       const extensionOwners = Object.fromEntries(
         Object.entries(byAdvisor).filter(([, extension]) => extension.trim()).map(([uid, extension]) => [extension.trim(), uid]),
       );
-      await configureCallIntegration(session, { extensionOwners, rotateToken });
+      await configureCallIntegration(session, {
+        extensionOwners, rotateToken,
+        recordingNoticeAnnouncementId: noticeId ?? integration?.recordingNoticeAnnouncementId ?? null,
+      });
       setExtensions(null);
       if (rotateToken) setConnected(null);
       setMessage(rotateToken ? "Yeni webhook adresi üretildi; Verimor panelindeki adresi güncelleyin." : "Telefon ayarları kaydedildi.");
@@ -108,6 +113,20 @@ export function TelephonySettingsCard() {
               />
             </label>
           ))}
+
+          {/* Recording someone without telling them is the last thing standing
+              between this and an office; the file is usually already on the account. */}
+          <label>
+            Kayıt bildirimi anonsu <span className="optional">müşteriye çalınır</span>
+            <SpSelect
+              onChange={(event) => setNoticeId(event.target.value ? Number(event.target.value) : null)}
+              value={String(noticeId ?? integration?.recordingNoticeAnnouncementId ?? "")}
+            >
+              <option value="">Seçilmedi — karşı taraf bilgilendirilmiyor</option>
+              {(announcementsQuery.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </SpSelect>
+          </label>
+          {!(noticeId ?? integration?.recordingNoticeAnnouncementId) ? <p className="form-error compact-error">Anons seçilmeden karşı taraf kaydedildiğini duymuyor. Ofise satmadan önce bu ayarlanmalı.</p> : null}
 
           {integration ? (
             <>
