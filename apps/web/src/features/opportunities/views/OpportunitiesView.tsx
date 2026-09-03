@@ -92,6 +92,7 @@ export function OpportunitiesView() {
   const contacts = contactsQuery.data ?? [];
   const [createOpen, setCreateOpen] = useState(false);
   const createRequested = searchParams.get("create") === "1";
+  const requestedContactId = searchParams.get("contactId");
   const activeCreateOpen = createOpen || createRequested;
   const [moving, setMoving] = useState<OpportunityRecord | null>(null);
   const [correcting, setCorrecting] = useState<OpportunityRecord | null>(null);
@@ -109,7 +110,7 @@ export function OpportunitiesView() {
   });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [contactId, setContactId] = useState("");
+  const [contactId, setContactId] = useState(searchParams.get("contactId") ?? "");
   const [type, setType] = useState<OpportunityType>("seller_listing");
   const [actionType, setActionType] = useState<NextActionType>("call");
   const [actionAt, setActionAt] = useState(localDateTime());
@@ -125,7 +126,7 @@ export function OpportunitiesView() {
 
   function closeCreate() {
     setCreateOpen(false);
-    if (createRequested) router.replace("/opportunities", { scroll: false });
+    if (createRequested || requestedContactId) router.replace("/opportunities", { scroll: false });
   }
 
   const selectedContactId = contactId;

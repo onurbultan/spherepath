@@ -17,6 +17,7 @@ import {
   inboxPageQuerySchema,
   opportunityTypeLabels,
   mergeVoiceInsightsIntoContactMemory,
+  voiceInsightsSchema,
   processInboxItemSchema,
   updateInboxItemSchema,
   type InboxAppliedAction,
@@ -332,7 +333,15 @@ export const processInboxItem = onCall(callableOptions, async (request): Promise
       let linkedContactId = itemSnapshot.data()!.linkedContactId ?? null;
       if (parsed.data.action === "person") {
         const contact = createContactEntity(parsed.data.contact, { officeId: claims.officeId, ownerUid: claims.uid }, now);
-        transaction.create(entityRef, storedContact(contact));
+        // The card shows what the note said about this person -- what they own,
+        // what they are looking for -- and the advisor pressed the button while
+        // reading it. Creating the name and dropping the rest left the contact
+        // empty of everything that makes them worth having.
+        const readInsights = (itemSnapshot.data()!.analysis as DocumentData | undefined)?.insights;
+        const memory = readInsights
+          ? mergeVoiceInsightsIntoContactMemory(contact.memory, voiceInsightsSchema.parse(readInsights), now)
+          : contact.memory;
+        transaction.create(entityRef, storedContact({ ...contact, memory }));
         linkedContactId = entityRef.id;
         label = `${parsed.data.contact.fullName} kişi olarak oluşturuldu`;
       } else if (parsed.data.action === "requirement") {

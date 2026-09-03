@@ -128,6 +128,12 @@ function NoteUnderstanding({ item, view }: { item: InboxItemRecord; view: NoteVi
   if (!highlights.length && !foundName) return null;
   return <>
     {highlights.length ? <ul className="keep-understanding">{highlights.map((highlight) => <li key={highlight}>{highlight}</li>)}</ul> : null}
+    {/* The reading found a property situation but no opportunity exists yet.
+        Creating one commits to a pipeline and a date, so it is offered, not made. */}
+    {!foundName && item.linkedContactId && item.analysis?.insights.propertySituations.length
+      && !item.appliedActions.some((action) => action.type === "opportunity_created" && action.undoneAt === null)
+      ? <p className="keep-found-contact">Bu not bir iş tarif ediyor.<Link className="text-button" href={`/opportunities?create=1&contactId=${encodeURIComponent(item.linkedContactId)}`}>Fırsat aç</Link></p>
+      : null}
     {foundName ? <p className="keep-found-contact"><strong>{foundName}</strong> henüz kayıtlı değil{foundPhone ? <> · <span className="keep-found-phone">{foundPhone}</span></> : " · telefon yok"}.<button className="text-button" disabled={view.creatingContactFor === item.id} onClick={() => view.onCreateContact(item, foundName, foundPhone)} type="button">{view.creatingContactFor === item.id ? "Oluşturuluyor…" : "Kişi olarak ekle"}</button></p> : null}
   </>;
 }
