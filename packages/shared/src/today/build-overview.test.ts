@@ -121,3 +121,25 @@ describe("today overview", () => {
     expect(ninetyDays).toMatchObject({ period: "90d", stages: { acquaintance: 2, relationship: 2, lead: 2 } });
   });
 });
+
+describe("a listing that has not been priced", () => {
+  it("becomes work, because nothing else asks for the price", () => {
+    const overview = buildTodayOverview(
+      [{ id: "c1", name: "Anıl Emene", createdAt: 1, meaningfulTouchCount: 2, lastTouchAt: Date.now(), nextActionAt: null, nextActionType: null, deletedAt: null }],
+      [], Date.now(),
+      [{ id: "l1", status: "preparing", askingPrice: null, ownerContactId: "c1" }],
+    );
+    const task = overview.allTasks.find((item) => item.id === "listing-price-l1");
+    expect(task?.reason).toBe("Değerleme sonrası fiyatı gir");
+    expect(task?.title).toBe("Anıl Emene");
+  });
+
+  it("stays quiet once the price is in", () => {
+    const overview = buildTodayOverview(
+      [{ id: "c1", name: "Anıl Emene", createdAt: 1, meaningfulTouchCount: 2, lastTouchAt: Date.now(), nextActionAt: null, nextActionType: null, deletedAt: null }],
+      [], Date.now(),
+      [{ id: "l1", status: "preparing", askingPrice: 2_500_000, ownerContactId: "c1" }],
+    );
+    expect(overview.allTasks.some((item) => item.id === "listing-price-l1")).toBe(false);
+  });
+});

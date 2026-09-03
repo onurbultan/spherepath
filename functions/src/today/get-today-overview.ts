@@ -81,7 +81,7 @@ export const getTodayOverview = onCall(
       })
       .filter((opportunity) => opportunity.deletedAt === null);
 
-    const listings = listingsSnapshot.docs.map((item) => ({ id: item.id, status: item.data().status, createdAt: millis(item.data().createdAt) ?? 0, deletedAt: millis(item.data().deletedAt) })).filter((item) => item.deletedAt === null);
+    const listings = listingsSnapshot.docs.map((item) => ({ id: item.id, status: item.data().status, createdAt: millis(item.data().createdAt) ?? 0, askingPrice: (item.data().askingPrice ?? null) as number | null, ownerContactId: (item.data().ownerContactId ?? null) as string | null, deletedAt: millis(item.data().deletedAt) })).filter((item) => item.deletedAt === null);
     const deals = dealsSnapshot.docs.map((item) => ({ id: item.id, stage: item.data().stage, closedAt: millis(item.data().closedAt), deletedAt: millis(item.data().deletedAt) })).filter((item) => item.deletedAt === null);
     const interactions = interactionsSnapshot.docs.map((item) => {
       const data = item.data();

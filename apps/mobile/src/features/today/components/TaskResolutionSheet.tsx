@@ -29,6 +29,9 @@ export function taskDueLabel(value: number | null): string {
 
 /** Where the advisor goes to write up what actually happened on this task. */
 export function taskRecordRoute(task: TodayTask): string {
+  // Finishing a listing means entering its price, which happens on the
+  // portfolio page -- the capture form would ask for a conversation instead.
+  if (task.type === "complete_listing") return "/(tabs)/listings";
   return task.opportunityId
     ? `/(tabs)/opportunities?opportunityId=${encodeURIComponent(task.opportunityId)}`
     : `/(tabs)/capture?contactId=${encodeURIComponent(task.contactId)}`;

@@ -38,7 +38,7 @@ export interface TodayTask {
   title: string;
   reason: string;
   dueAt: number | null;
-  type: "record_interaction" | "next_action";
+  type: "record_interaction" | "next_action" | "complete_listing";
   opportunityId?: string;
   priority: "overdue" | "bottleneck" | "relationship";
   resolutionStatus?: DailyTaskResolutionStatus | null;
@@ -47,7 +47,15 @@ export interface TodayTask {
   priorityScore?: number;
 }
 
-export interface TodayListing { id: string; status: "preparing" | "active" | "reserved" | "sold" | "rented" | "removed"; createdAt?: number }
+export interface TodayListing {
+  id: string;
+  status: "preparing" | "active" | "reserved" | "sold" | "rented" | "removed";
+  createdAt?: number;
+  /** Null until the valuation. A listing cannot be published without it. */
+  askingPrice?: number | null;
+  ownerContactId?: string | null;
+  ownerContactName?: string | null;
+}
 export interface TodayDeal { id: string; stage: "presentation" | "viewing" | "offer" | "contract" | "closed" | "lost"; closedAt?: number | null }
 export interface TodayInteraction {
   id: string;
@@ -157,6 +165,21 @@ export function buildTodayOverview(
       type: "record_interaction",
       priority: "relationship",
     }));
+  // A mandate is won before the property is priced, so a listing legitimately
+  // starts without one -- but nothing then asks for it, and the portfolio sits
+  // in "Hazırlanıyor" out of sight. This is the work that finishes it.
+  const unpricedListings = listings
+    .filter((listing) => listing.status === "preparing" && (listing.askingPrice ?? null) === null && listing.ownerContactId)
+    .map<TodayTask>((listing) => ({
+      id: `listing-price-${listing.id}`,
+      contactId: listing.ownerContactId!,
+      title: listing.ownerContactName ?? contacts.find((contact) => contact.id === listing.ownerContactId)?.name ?? "Portföy",
+      reason: "Değerleme sonrası fiyatı gir",
+      dueAt: null,
+      type: "complete_listing",
+      priority: "bottleneck",
+    }));
+
   const opportunityTasks = activeOpportunities
     .filter((opportunity) => opportunity.nextActionAt !== null && opportunity.nextActionType !== null && opportunity.stage !== "won")
     .map<TodayTask>((opportunity) => ({
@@ -196,7 +219,7 @@ export function buildTodayOverview(
       complianceBlocked: false,
     });
   };
-  const tasks = [...opportunityTasks, ...scheduled, ...uncontacted]
+  const tasks = [...opportunityTasks, ...unpricedListings, ...scheduled, ...uncontacted]
     .filter((task) => !completedTaskIds.has(task.id))
     .map((task) => ({ ...task, priorityScore: taskPriorityScore(task) }))
     .sort((left, right) => right.priorityScore - left.priorityScore

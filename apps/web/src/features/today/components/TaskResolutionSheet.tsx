@@ -28,6 +28,10 @@ export function tomorrowAtTen(): string {
 
 /** Where the advisor goes to write up what actually happened on this task. */
 export function taskRecordHref(task: TodayTask): string {
+  // Finishing a listing means entering its price, which happens on the
+  // portfolio page -- sending the advisor to the capture form instead would
+  // ask them to record a conversation they did not have.
+  if (task.type === "complete_listing") return "/listings";
   return task.opportunityId
     ? `/opportunities?opportunityId=${encodeURIComponent(task.opportunityId)}`
     : `/capture?contactId=${encodeURIComponent(task.contactId)}`;

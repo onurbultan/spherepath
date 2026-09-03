@@ -695,6 +695,8 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .contact-table-person strong { color: var(--text-primary); font-size: 13px; font-weight: 600; }
 .contact-table-person small { color: var(--text-secondary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10.5px; }
 .overdue-text { color: var(--ask); }
+ /* The cell can hold more than one pill now, and they were touching. */
+.contact-row-compliance { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .compliance-pill { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: var(--radius-pill); font-size: 11px; font-weight: 600; white-space: nowrap; }
 .compliance-pill.compliant { background: var(--good-bg); color: var(--good); }
 .compliance-pill.pending { background: var(--warm-bg); color: var(--warm); }
