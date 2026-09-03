@@ -31,6 +31,8 @@ export function taskRecordHref(task: TodayTask): string {
   // Finishing a listing means entering its price, which happens on the
   // portfolio page -- sending the advisor to the capture form instead would
   // ask them to record a conversation they did not have.
+  // Returning a call starts on the contact, where the dial button is.
+  if (task.type === "return_call") return `/contacts/__contact__?contactId=${encodeURIComponent(task.contactId)}`;
   if (task.type === "complete_listing") return "/listings";
   return task.opportunityId
     ? `/opportunities?opportunityId=${encodeURIComponent(task.opportunityId)}`

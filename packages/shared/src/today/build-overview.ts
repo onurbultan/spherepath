@@ -38,13 +38,21 @@ export interface TodayTask {
   title: string;
   reason: string;
   dueAt: number | null;
-  type: "record_interaction" | "next_action" | "complete_listing";
+  type: "record_interaction" | "next_action" | "complete_listing" | "return_call";
   opportunityId?: string;
   priority: "overdue" | "bottleneck" | "relationship";
   resolutionStatus?: DailyTaskResolutionStatus | null;
   resolutionNote?: string | null;
   /** Weighted urgency from rankDailyTaskCandidates; higher comes first. */
   priorityScore?: number;
+}
+
+export interface TodayCall {
+  id: string;
+  contactId: string | null;
+  answered: boolean;
+  direction: "inbound" | "outbound";
+  startedAt: number | null;
 }
 
 export interface TodayListing {
@@ -130,6 +138,7 @@ export function buildTodayOverview(
   completedTaskIds: ReadonlySet<string> = new Set(),
   interactions: readonly TodayInteraction[] = [],
   period: ReportingPeriod = "30d",
+  calls: readonly TodayCall[] = [],
 ): TodayOverview {
   const windowStart = now - reportingPeriodDays[period] * 24 * 60 * 60 * 1_000;
   const periodLabel = reportingPeriodLabels[period];
@@ -165,6 +174,26 @@ export function buildTodayOverview(
       type: "record_interaction",
       priority: "relationship",
     }));
+  // A customer who called and got no answer is the most valuable event of an
+  // advisor's day and was the quietest thing in the product: the call record
+  // said "geri dönülmeyi bekliyor" with nothing behind the words.
+  const missedWindow = now - 3 * 86_400_000;
+  const returnedTo = new Set(
+    interactions.filter((interaction) => interaction.occurredAt >= missedWindow).map((interaction) => interaction.contactId),
+  );
+  const missedCalls = calls
+    .filter((call) => !call.answered && call.direction === "inbound" && call.contactId
+      && (call.startedAt ?? 0) >= missedWindow && !returnedTo.has(call.contactId))
+    .map<TodayTask>((call) => ({
+      id: `missed-call-${call.id}`,
+      contactId: call.contactId!,
+      title: contacts.find((contact) => contact.id === call.contactId)?.name ?? "Cevapsız arama",
+      reason: "Aradı, ulaşamadı — geri dön",
+      dueAt: call.startedAt,
+      type: "return_call",
+      priority: "overdue",
+    }));
+
   // A mandate is won before the property is priced, so a listing legitimately
   // starts without one -- but nothing then asks for it, and the portfolio sits
   // in "Hazırlanıyor" out of sight. This is the work that finishes it.
@@ -219,7 +248,7 @@ export function buildTodayOverview(
       complianceBlocked: false,
     });
   };
-  const tasks = [...opportunityTasks, ...unpricedListings, ...scheduled, ...uncontacted]
+  const tasks = [...missedCalls, ...opportunityTasks, ...unpricedListings, ...scheduled, ...uncontacted]
     .filter((task) => !completedTaskIds.has(task.id))
     .map((task) => ({ ...task, priorityScore: taskPriorityScore(task) }))
     .sort((left, right) => right.priorityScore - left.priorityScore

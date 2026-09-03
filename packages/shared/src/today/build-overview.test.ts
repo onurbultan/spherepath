@@ -143,3 +143,27 @@ describe("a listing that has not been priced", () => {
     expect(overview.allTasks.some((item) => item.id === "listing-price-l1")).toBe(false);
   });
 });
+
+describe("a customer who rang and got no answer", () => {
+  const contact = { id: "c1", name: "Anıl Emene", createdAt: 1, meaningfulTouchCount: 2, lastTouchAt: Date.now(), nextActionAt: null, nextActionType: null };
+  const call = { id: "k1", contactId: "c1", answered: false, direction: "inbound" as const, startedAt: Date.now() - 3_600_000 };
+
+  it("becomes the day's most urgent work", () => {
+    const overview = buildTodayOverview([contact], [], Date.now(), [], [], new Set(), [], "30d", [call]);
+    const task = overview.allTasks.find((item) => item.id === "missed-call-k1");
+    expect(task?.reason).toBe("Aradı, ulaşamadı — geri dön");
+    expect(task?.priority).toBe("overdue");
+  });
+
+  it("stops once the advisor has been back in touch", () => {
+    const overview = buildTodayOverview([contact], [], Date.now(), [], [], new Set(),
+      [{ id: "i1", contactId: "c1", contactName: "Anıl Emene", outcome: "Geri dönüldü", occurredAt: Date.now() - 60_000 }], "30d", [call]);
+    expect(overview.allTasks.some((item) => item.id === "missed-call-k1")).toBe(false);
+  });
+
+  it("ignores a call the advisor placed themselves", () => {
+    const overview = buildTodayOverview([contact], [], Date.now(), [], [], new Set(), [], "30d",
+      [{ ...call, direction: "outbound" as const }]);
+    expect(overview.allTasks.some((item) => item.id === "missed-call-k1")).toBe(false);
+  });
+});

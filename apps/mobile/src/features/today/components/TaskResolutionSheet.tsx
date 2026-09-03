@@ -31,6 +31,8 @@ export function taskDueLabel(value: number | null): string {
 export function taskRecordRoute(task: TodayTask): string {
   // Finishing a listing means entering its price, which happens on the
   // portfolio page -- the capture form would ask for a conversation instead.
+  // Returning a call starts on the contact, where the dial button is.
+  if (task.type === "return_call") return `/contact/${encodeURIComponent(task.contactId)}`;
   if (task.type === "complete_listing") return "/(tabs)/listings";
   return task.opportunityId
     ? `/(tabs)/opportunities?opportunityId=${encodeURIComponent(task.opportunityId)}`

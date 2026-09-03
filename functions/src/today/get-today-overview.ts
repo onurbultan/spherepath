@@ -25,6 +25,7 @@ export const getTodayOverview = onCall(
     const firestore = getFirestore();
     let contactsQuery: FirebaseFirestore.Query = firestore.collection("contacts").where("officeId", "==", claims.officeId);
     let opportunitiesQuery: FirebaseFirestore.Query = firestore.collection("opportunities").where("officeId", "==", claims.officeId);
+    let callsQuery: FirebaseFirestore.Query = firestore.collection("calls").where("officeId", "==", claims.officeId);
     let listingsQuery: FirebaseFirestore.Query = firestore.collection("listings").where("officeId", "==", claims.officeId);
     let dealsQuery: FirebaseFirestore.Query = firestore.collection("deals").where("officeId", "==", claims.officeId);
     let interactionsQuery: FirebaseFirestore.Query = firestore.collection("interactions").where("officeId", "==", claims.officeId);
@@ -33,18 +34,20 @@ export const getTodayOverview = onCall(
       contactsQuery = contactsQuery.where("ownerUid", "==", claims.uid);
       opportunitiesQuery = opportunitiesQuery.where("ownerUid", "==", claims.uid);
       listingsQuery = listingsQuery.where("ownerUid", "==", claims.uid);
+      callsQuery = callsQuery.where("ownerUid", "==", claims.uid);
       dealsQuery = dealsQuery.where("ownerUid", "==", claims.uid);
       interactionsQuery = interactionsQuery.where("ownerUid", "==", claims.uid);
       completionsQuery = completionsQuery.where("ownerUid", "==", claims.uid);
     }
 
-    const [contactsSnapshot, opportunitiesSnapshot, listingsSnapshot, dealsSnapshot, completionsSnapshot, interactionsSnapshot] = await Promise.all([
+    const [contactsSnapshot, opportunitiesSnapshot, listingsSnapshot, dealsSnapshot, completionsSnapshot, interactionsSnapshot, callsSnapshot] = await Promise.all([
       contactsQuery.limit(1_000).get(),
       opportunitiesQuery.limit(1_000).get(),
       listingsQuery.limit(1_000).get(),
       dealsQuery.limit(1_000).get(),
       completionsQuery.limit(1_000).get(),
       interactionsQuery.limit(1_000).get(),
+      callsQuery.limit(500).get(),
     ]);
     const contacts = contactsSnapshot.docs
       .map((item) => {
@@ -119,7 +122,16 @@ export const getTodayOverview = onCall(
         note: typeof data.skippedReason === "string" ? data.skippedReason : null,
       }] as const];
     }));
-    const candidateOverview = buildTodayOverview(contacts, opportunities, now, listings, deals, new Set(), interactions, parsedQuery.data.period);
+    // A customer who rang and got no answer is work; the record existed and
+    // nothing read it.
+    const calls = callsSnapshot.docs.map((item) => ({
+      id: item.id,
+      contactId: (item.data().contactId ?? null) as string | null,
+      answered: item.data().answered === true,
+      direction: (item.data().direction ?? "inbound") as "inbound" | "outbound",
+      startedAt: millis(item.data().startedAt),
+    }));
+    const candidateOverview = buildTodayOverview(contacts, opportunities, now, listings, deals, new Set(), interactions, parsedQuery.data.period, calls);
     const planRef = firestore.collection("dailyPlans").doc(`${claims.uid}-${dayKey}`.replace(/[^a-zA-Z0-9_-]/g, "_"));
     const planSnapshot = await planRef.get();
     const suppressedContactIds = planSnapshot.exists ? ((planSnapshot.data()!.suppressedContactIds ?? []) as string[]) : [];
