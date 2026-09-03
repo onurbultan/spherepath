@@ -274,7 +274,32 @@ export const analyzeInboxNote = onDocumentCreated(
     const reference = event.data!.ref;
     try {
       const analysis = await analyzeText(data.safeText as string);
-      await reference.update({ analysis, analysisStatus: "ready", updatedAt: Timestamp.now() });
+      // Nothing stops the advisor pressing the button while this is still
+      // running. When they do, the contact is created before the reading
+      // exists and no later pass would ever carry it over, so hand it to
+      // them here -- the note is the same note either way.
+      const db = getFirestore();
+      await db.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(reference);
+        if (!snapshot.exists) return;
+        const applied = (snapshot.data()!.appliedActions ?? []) as DocumentData[];
+        const bornHere = applied.some((action) => action.type === "contact_created" && action.undoneAt === null);
+        const contactId = (snapshot.data()!.linkedContactId ?? null) as string | null;
+        const contactRef = bornHere && contactId ? db.collection("contacts").doc(contactId) : null;
+        const contactSnapshot = contactRef ? await transaction.get(contactRef) : null;
+        transaction.update(reference, { analysis, analysisStatus: "ready", updatedAt: Timestamp.now() });
+        if (!contactSnapshot?.exists || contactSnapshot.data()!.deletedAt !== null) return;
+        const now = Date.now();
+        const currentMemory = contactMemorySchema.parse({
+          ...(contactSnapshot.data()!.memory ?? {}),
+          updatedAt: millis(contactSnapshot.data()!.memory?.updatedAt),
+        });
+        const nextMemory = mergeVoiceInsightsIntoContactMemory(currentMemory, voiceInsightsSchema.parse(analysis.insights), now);
+        transaction.update(contactSnapshot.ref, {
+          memory: { ...nextMemory, updatedAt: timestamp(nextMemory.updatedAt) },
+          updatedAt: Timestamp.fromMillis(now),
+        });
+      });
     } catch (error) {
       // The card still works without it; the note is never lost to this.
       logger.warn("Inbox note analysis failed", { inboxItemId: event.params.inboxItemId, error: error instanceof Error ? error.message : String(error) });
