@@ -1,3 +1,4 @@
+import { contactPhoneFields } from "./phone-index.js";
 import { Timestamp } from "firebase-admin/firestore";
 import type { Contact } from "../../../packages/shared/src/index";
 
@@ -10,9 +11,16 @@ function timestamp(value: number | null): Timestamp | null {
  * timestamps. Every writer of a contact goes through here so a record created by
  * the switch is indistinguishable from one an advisor typed.
  */
+/**
+ * Every path that writes a contact goes through here, and the lookup key is
+ * derived here rather than by each caller: three of the four writers remembered
+ * it and the note-to-contact path did not, so a contact created from a note
+ * could be dialled but an incoming call from them matched nobody.
+ */
 export function toStoredContact(contact: Contact) {
   return {
     ...contact,
+    ...contactPhoneFields(contact.phone),
     metAt: timestamp(contact.metAt),
     createdAt: timestamp(contact.createdAt),
     updatedAt: timestamp(contact.updatedAt),

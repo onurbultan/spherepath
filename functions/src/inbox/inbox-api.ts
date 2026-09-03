@@ -1,4 +1,5 @@
 import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/firestore";
+import { contactPhoneFields } from "../contacts/phone-index.js";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
@@ -86,6 +87,9 @@ function toRecord(id: string, data: DocumentData): InboxItemRecord {
 function storedContact(contact: ReturnType<typeof createContactEntity>) {
   return {
     ...contact,
+    // The switch matches an incoming caller on this; without it a contact made
+    // from a note can be dialled but never recognised when they ring back.
+    ...contactPhoneFields(contact.phone),
     metAt: Timestamp.fromMillis(contact.metAt), createdAt: Timestamp.fromMillis(contact.createdAt), updatedAt: Timestamp.fromMillis(contact.updatedAt), deletedAt: null,
     relationship: { ...contact.relationship, lastTouchAt: timestamp(contact.relationship.lastTouchAt), nextActionAt: timestamp(contact.relationship.nextActionAt) },
     memory: { ...contact.memory, updatedAt: timestamp(contact.memory.updatedAt) },
