@@ -101,7 +101,7 @@ export function ContactsView() {
   const [roleFilter, setRoleFilter] = useState<ContactDraft["role"] | "all">("all");
   const [sourceFilter, setSourceFilter] = useState<ContactDraft["source"] | "all">("all");
   const [recencyFilter, setRecencyFilter] = useState<"all" | "30">("all");
-  const [segmentFilter, setSegmentFilter] = useState<"all" | "pending" | "buyers" | "stale">("all");
+  const [segmentFilter, setSegmentFilter] = useState<"all" | "pending" | "buyers" | "stale" | "nophone">("all");
   const [sortBy, setSortBy] = useState<"recent" | "next" | "name">("recent");
   const [page, setPage] = useState(1);
   const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
@@ -149,6 +149,9 @@ export function ContactsView() {
     if (segmentFilter === "pending" && contact.privacy.noticeStatus !== "pending") return false;
     if (segmentFilter === "buyers" && !contact.roles.some((role) => role === "buyer" || role === "investor")) return false;
     if (segmentFilter === "stale" && ((contact.relationship.lastTouchAt ?? 0) >= thirtyDaysAgo || contact.relationship.meaningfulTouchCount === 0)) return false;
+    // Everything the switch does hangs off the number: no dialling out, and an
+    // incoming call from them matches nobody.
+    if (segmentFilter === "nophone" && contact.phone) return false;
     if (!normalizedSearch) return true;
     return [
       contact.fullName,
@@ -167,6 +170,7 @@ export function ContactsView() {
   const pendingNoticeCount = contacts.filter((contact) => contact.privacy.noticeStatus === "pending").length;
   const buyerCount = contacts.filter((contact) => contact.roles.some((role) => role === "buyer" || role === "investor")).length;
   const staleCount = contacts.filter((contact) => contact.relationship.meaningfulTouchCount > 0 && (contact.relationship.lastTouchAt ?? 0) < thirtyDaysAgo).length;
+  const noPhoneCount = contacts.filter((contact) => !contact.phone).length;
 
   useSheetDismiss(panelOpen, () => setPanelOpen(false));
   useSheetDismiss(Boolean(referralSource), () => setReferralSource(null));
@@ -312,6 +316,7 @@ export function ContactsView() {
           <button className={segmentFilter === "pending" ? "selected" : ""} onClick={() => { setSegmentFilter("pending"); setPage(1); }} type="button">Aydınlatma bekleyen <span>{pendingNoticeCount}</span></button>
           <button className={segmentFilter === "buyers" ? "selected" : ""} onClick={() => { setSegmentFilter("buyers"); setPage(1); }} type="button">Sıcak alıcılar <span>{buyerCount}</span></button>
           <button className={segmentFilter === "stale" ? "selected" : ""} onClick={() => { setSegmentFilter("stale"); setPage(1); }} type="button">30 gündür temassız <span>{staleCount}</span></button>
+          {noPhoneCount ? <button className={segmentFilter === "nophone" ? "selected" : ""} onClick={() => { setSegmentFilter("nophone"); setPage(1); }} type="button">Telefonu eksik <span>{noPhoneCount}</span></button> : null}
           {(referralsQuery.data?.length ?? 0) > 0 ? <span className="referral-count">{referralsQuery.data?.length} referans bekliyor</span> : null}
         </div>
         <div className="contact-toolbar">
@@ -343,7 +348,7 @@ export function ContactsView() {
                 <span className="contact-row-source">{contactSourceLabels[contact.source]}</span>
                 <span className="contact-row-last-touch">{relativeDate(contact.relationship.lastTouchAt, referenceTime)}</span>
                 <span className={`contact-row-next-action ${contact.relationship.nextActionAt !== null && contact.relationship.nextActionAt < referenceTime ? "overdue-text" : ""}`}>{nextActionLabel(contact)}</span>
-                <span className="contact-row-compliance"><span className={`compliance-pill ${contact.privacy.noticeStatus === "completed" ? "compliant" : "pending"}`}>{contact.privacy.iysStatus === "approved" ? "İYS onaylı" : contact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</span></span>
+                <span className="contact-row-compliance">{contact.phone ? null : <span className="compliance-pill missing-phone" title="Bu kişi aranamaz ve gelen çağrısı eşleşmez">Telefon eksik</span>}<span className={`compliance-pill ${contact.privacy.noticeStatus === "completed" ? "compliant" : "pending"}`}>{contact.privacy.iysStatus === "approved" ? "İYS onaylı" : contact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</span></span>
                 <details className="contact-action-menu"><summary aria-label={`${contactName} işlemlerini aç`}><MoreHorizontal size={16} /></summary><div><button onClick={() => router.push(`/capture?contactId=${encodeURIComponent(contact.id)}`)} type="button"><MessageSquarePlus size={14} /> Temas kaydet</button><button onClick={() => setReferralSource(contact)} type="button"><UserRoundPlus size={14} /> Referans ekle</button><button onClick={() => { setPrivacyEditing(contact); setPrivacy(privacyDraft(contact)); }} type="button"><ShieldCheck size={14} /> Uyumu düzenle</button><button onClick={() => openEdit(contact)} type="button"><Pencil size={14} /> Kişiyi düzenle</button><button onClick={() => requestArchive(contact)} type="button"><Archive size={14} /> Arşivle</button></div></details>
               </div>;
             })}

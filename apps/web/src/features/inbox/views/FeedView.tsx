@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, MapPin, Mic, Pencil, PhoneOff, Pin, RefreshCw, RotateCcw, Send, Shuffle, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiQueryKeys, dailyTaskResolutionLabels, inboxAnalysisHighlights, inboxItemKinds, isInboxItemResolved, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
+import { apiQueryKeys, dailyTaskResolutionLabels, inboxAnalysisHighlights, inboxItemKinds, isInboxItemResolved, joinPhone, splitPhone, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
 import { finishDailyTask, loadTodayOverview, replaceDailyTask } from "@/features/today/resources/today";
 import { TaskResolutionSheet, taskDueLabel, taskRecordHref } from "@/features/today/components/TaskResolutionSheet";
@@ -42,7 +42,7 @@ interface NoteView {
   onUndo(id: string): void;
   onProcess(item: InboxItemRecord): void;
   creatingContactFor: string | null;
-  onCreateContact(item: InboxItemRecord, fullName: string): void;
+  onCreateContact(item: InboxItemRecord, fullName: string, phone: string | null): void;
   onLocationOpen(id: string): void;
   onLocationCancel(): void;
   onLocationSubmit(id: string): void;
@@ -104,10 +104,13 @@ function NoteUnderstanding({ item, view }: { item: InboxItemRecord; view: NoteVi
   // The note names someone the workspace has never seen. Making the advisor
   // pick a type and retype that name is the system asking for what it just read.
   const foundName = item.linkedContactId ? null : item.analysis?.insights.contactName?.trim() || null;
+  // The number is what the switch runs on: without it the contact cannot be
+  // dialled and an incoming call from them matches nobody.
+  const foundPhone = item.analysis?.insights.contactPhone?.trim() || null;
   if (!highlights.length && !foundName) return null;
   return <>
     {highlights.length ? <ul className="keep-understanding">{highlights.map((highlight) => <li key={highlight}>{highlight}</li>)}</ul> : null}
-    {foundName ? <p className="keep-found-contact"><strong>{foundName}</strong> henüz kayıtlı değil.<button className="text-button" disabled={view.creatingContactFor === item.id} onClick={() => view.onCreateContact(item, foundName)} type="button">{view.creatingContactFor === item.id ? "Oluşturuluyor…" : "Kişi olarak ekle"}</button></p> : null}
+    {foundName ? <p className="keep-found-contact"><strong>{foundName}</strong> henüz kayıtlı değil{foundPhone ? <> · <span className="keep-found-phone">{foundPhone}</span></> : " · telefon yok"}.<button className="text-button" disabled={view.creatingContactFor === item.id} onClick={() => view.onCreateContact(item, foundName, foundPhone)} type="button">{view.creatingContactFor === item.id ? "Oluşturuluyor…" : "Kişi olarak ekle"}</button></p> : null}
   </>;
 }
 
@@ -149,13 +152,14 @@ export function FeedView() {
   }
   async function replace(taskId: string) { if (!session) return; try { await replaceDailyTask(session, taskId); await client.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }); } catch (next) { setError(messageFrom(next)); } }
   const [creatingContactFor, setCreatingContactFor] = useState<string | null>(null);
-  async function createContactFromNote(item: InboxItemRecord, fullName: string) {
+  async function createContactFromNote(item: InboxItemRecord, fullName: string, phone: string | null) {
     if (!session) return;
     setCreatingContactFor(item.id); setError(null);
     try {
       await processInboxItem(session, {
         inboxItemId: item.id, action: "person",
-        contact: { fullName, phone: "", metAtPlace: "Akış notu", source: "other", role: "unknown" },
+        // Stored in the app's own format so the lookup key matches a caller.
+        contact: { fullName, phone: phone ? joinPhone(splitPhone(phone).dialCode, splitPhone(phone).national) : "", metAtPlace: "Akış notu", source: "other", role: "unknown" },
       });
       await client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems });
       await client.invalidateQueries({ queryKey: apiQueryKeys.contacts });
@@ -189,7 +193,7 @@ export function FeedView() {
     onUndo: (id) => void undo(id),
     onProcess: (item) => setActiveNote(item),
     creatingContactFor,
-    onCreateContact: (item, fullName) => void createContactFromNote(item, fullName),
+    onCreateContact: (item, fullName, phone) => void createContactFromNote(item, fullName, phone),
     onLocationOpen: (id) => { setLocationFor(id); setLocationText(""); },
     onLocationCancel: () => { setLocationFor(null); setLocationText(""); },
     onLocationSubmit: (id) => void addLocation(id),

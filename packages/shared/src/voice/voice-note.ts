@@ -89,6 +89,13 @@ export const voiceInsightsSchema = z.object({
    * has nobody yet, and the name is usually its first two words.
    */
   contactName: z.string().trim().max(120).nullable().default(null),
+  /**
+   * The number the note mentions. Everything the switch does hangs off it -- an
+   * advisor cannot dial a contact without one, and an incoming call cannot be
+   * matched to them -- yet every path that creates a contact from a note treats
+   * it as optional and none of them ask.
+   */
+  contactPhone: z.string().trim().max(40).nullable().default(null),
   suggestedActionReason: z.string().trim().min(2).max(240).nullable(),
 }).strict();
 
@@ -98,6 +105,7 @@ export const emptyVoiceInsights: VoiceInsights = {
   propertyPreferences: emptyVoicePropertyPreferences,
   propertySituations: [],
   contactName: null,
+  contactPhone: null,
   suggestedActionReason: null,
 };
 

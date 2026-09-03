@@ -698,6 +698,9 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .compliance-pill { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: var(--radius-pill); font-size: 11px; font-weight: 600; white-space: nowrap; }
 .compliance-pill.compliant { background: var(--good-bg); color: var(--good); }
 .compliance-pill.pending { background: var(--warm-bg); color: var(--warm); }
+/* Louder than a pending notice: without a number the contact cannot be called
+   and an incoming call from them matches nobody. */
+.compliance-pill.missing-phone { background: var(--ask-bg); color: var(--ask); }
 .contact-table-row .contact-row-role { justify-self: start; padding: 3px 9px; border-radius: var(--radius-pill); background: var(--deed-bg); color: var(--deed); font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .contact-row-actions { position: absolute; top: 50%; right: 52px; z-index: 2; display: flex; justify-content: flex-end; gap: 5px; padding-left: 12px; background: linear-gradient(90deg, transparent, var(--background) 12px); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-50%); }
 .contact-row-actions button, .contact-row-menu { width: 28px; height: 28px; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card); color: var(--text-secondary); cursor: pointer; }

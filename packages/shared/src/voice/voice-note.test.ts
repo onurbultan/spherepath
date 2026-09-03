@@ -56,6 +56,7 @@ describe("voice extraction contract", () => {
       propertyPreferences: { ...emptyVoicePropertyPreferences, preferredLocations: ["Moda"] },
       propertySituations: [],
       contactName: null,
+      contactPhone: null,
       suggestedActionReason: null,
     }, 2);
 
@@ -82,6 +83,7 @@ describe("voice extraction contract", () => {
       },
       propertySituations: [],
       contactName: null,
+      contactPhone: null,
       suggestedActionReason: null,
     }, 2);
 

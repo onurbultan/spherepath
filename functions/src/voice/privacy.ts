@@ -103,6 +103,7 @@ export function sanitizeVoiceExtraction(extraction: VoiceExtraction): VoiceExtra
     insights: {
       keyThingsToRemember: safeExtractedList(extraction.insights.keyThingsToRemember),
       contactName: safeExtractedText(extraction.insights.contactName ?? "") || null,
+      contactPhone: extraction.insights.contactPhone?.trim() || null,
       propertySituations: extraction.insights.propertySituations.flatMap((situation) => {
         const summary = safeExtractedText(situation.summary);
         if (!summary) return [];
@@ -178,6 +179,7 @@ export function extractVoiceDraft(maskedTranscript: string): VoiceExtraction {
     insights: {
       keyThingsToRemember: [],
       contactName: null,
+      contactPhone: null,
       propertyPreferences: emptyVoicePropertyPreferences,
       propertySituations: [],
       suggestedActionReason: null,

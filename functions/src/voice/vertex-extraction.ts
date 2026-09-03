@@ -8,7 +8,7 @@ import {
 } from "../../../packages/shared/src/index.js";
 import { voiceReferenceContext } from "./temporal.js";
 
-export const voiceExtractionPromptVersion = "voice-extraction-v4";
+export const voiceExtractionPromptVersion = "voice-extraction-v5";
 
 const extractionModel = defineString("VOICE_EXTRACTION_MODEL", { default: "gemini-3.7-flash" });
 const vertexLocation = defineString("VERTEX_AI_LOCATION", { default: "global" });
@@ -73,6 +73,7 @@ export const responseJsonSchema = {
           },
         },
         contactName: { anyOf: [{ type: "string" }, { type: "null" }] },
+        contactPhone: { anyOf: [{ type: "string" }, { type: "null" }] },
         propertySituations: {
           type: "array",
           maxItems: 3,
@@ -158,7 +159,7 @@ Return all human-readable summaries and facts in Turkish. JSON keys and enum val
 Use only facts explicitly stated in the transcript. Do not guess, embellish, or infer personality, trust, education, emotion, intent beyond explicit property intent, or any sensitive trait.
 When a contact explicitly replaces or revokes an older preference, populate structured fields only from the latest active preference. Do not add obsolete criteria to keyThingsToRemember. A feature described as optional or "şart değil" is neutral, not a must-have or a remembered preference.
 Never extract health, religion, ethnicity, political opinion, union membership, sexual life/orientation, biometric/genetic data, criminal history, or the masked placeholder as a fact.
-contactName is the person the conversation is about, exactly as the transcript names them, or null when no name is given; never the advisor's own name. Each remembered fact appears once. A fact already carried by a property situation must not be repeated in keyThingsToRemember as a second, shorter phrasing of itself: "Kadıovacık'ta 620 m² satılık arsası var" and "Kadıovacık köyünde 620 m² satılık arsa" are one fact, and the list keeps only the fuller one. When information is absent, use null or an empty array. Keep outcome under 500 characters, noteSummary under 1000 characters, each remembered fact under 180 characters, and the action reason under 240 characters.
+contactPhone is the counterparty's phone number exactly as the transcript gives it, or null when none is stated; never the advisor's own number and never an invented one. contactName is the person the conversation is about, exactly as the transcript names them, or null when no name is given; never the advisor's own name. Each remembered fact appears once. A fact already carried by a property situation must not be repeated in keyThingsToRemember as a second, shorter phrasing of itself: "Kadıovacık'ta 620 m² satılık arsası var" and "Kadıovacık köyünde 620 m² satılık arsa" are one fact, and the list keeps only the fuller one. When information is absent, use null or an empty array. Keep outcome under 500 characters, noteSummary under 1000 characters, each remembered fact under 180 characters, and the action reason under 240 characters.
 Use propertyContext=search_preference only for a buyer, tenant, or investor's search criteria. Use propertyContext=subject_property for a seller/landlord's existing property; never reinterpret that property's attributes as search preferences.
 Populate propertySituations with every distinct real-estate situation explicitly present. A person selling an existing home and planning to buy another home produces two entries: a subject_property with transactionType=sell and a search_preference with transactionType=buy. Keep each situation's location, price/budget, rooms, type and features separate. Use propertyPreferences/propertyContext for the active search_preference when one exists; otherwise use the single subject_property. Do not merge a subject property's attributes into the contact's search preference.
 Preserve room configurations exactly: 3+1 means bedroomCountMin=3 and livingRoomCountMin=1. Keep legacy roomCountMin null when bedroom/living-room counts are available. Preserve both ends of explicit area ranges using areaMinM2 and areaMaxM2.
