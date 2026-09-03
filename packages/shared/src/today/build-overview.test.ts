@@ -125,7 +125,7 @@ describe("today overview", () => {
 describe("a listing that has not been priced", () => {
   it("becomes work, because nothing else asks for the price", () => {
     const overview = buildTodayOverview(
-      [{ id: "c1", name: "Anıl Emene", createdAt: 1, meaningfulTouchCount: 2, lastTouchAt: Date.now(), nextActionAt: null, nextActionType: null, deletedAt: null }],
+      [{ id: "c1", name: "Anıl Emene", createdAt: 1, meaningfulTouchCount: 2, lastTouchAt: Date.now(), nextActionAt: null, nextActionType: null }],
       [], Date.now(),
       [{ id: "l1", status: "preparing", askingPrice: null, ownerContactId: "c1" }],
     );
@@ -136,7 +136,7 @@ describe("a listing that has not been priced", () => {
 
   it("stays quiet once the price is in", () => {
     const overview = buildTodayOverview(
-      [{ id: "c1", name: "Anıl Emene", createdAt: 1, meaningfulTouchCount: 2, lastTouchAt: Date.now(), nextActionAt: null, nextActionType: null, deletedAt: null }],
+      [{ id: "c1", name: "Anıl Emene", createdAt: 1, meaningfulTouchCount: 2, lastTouchAt: Date.now(), nextActionAt: null, nextActionType: null }],
       [], Date.now(),
       [{ id: "l1", status: "preparing", askingPrice: 2_500_000, ownerContactId: "c1" }],
     );
