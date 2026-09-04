@@ -2,8 +2,8 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, BriefcaseBusiness, MessageSquareText, PhoneIncoming, PhoneMissed, PhoneOutgoing, ShieldCheck } from "lucide-react-native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, BriefcaseBusiness, Building2, MessageSquarePlus, MessageSquareText, Pencil, PhoneIncoming, PhoneMissed, PhoneOutgoing, ShieldCheck } from "lucide-react-native";
 import {
   apiQueryKeys,
   askOutcomeLabels,
@@ -16,6 +16,8 @@ import {
   opportunityStageLabel,
   opportunityTypeLabels,
   type CallRecordView,
+  type DailyTaskOutcome,
+  type TodayTask,
 } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
 import { listOpportunities } from "@/features/opportunities/resources/opportunities";
@@ -25,6 +27,8 @@ import { SpChoice } from "@/shared/ui/SpField";
 import { useSpTheme } from "@/shared/ui/theme";
 import { radius, space } from "@/shared/ui/tokens.generated";
 import { ContactCallAction } from "../components/ContactCallAction";
+import { finishDailyTask } from "@/features/today/resources/today";
+import { TaskResolutionSheet } from "@/features/today/components/TaskResolutionSheet";
 import {
   listContactCalls,
   listContactInteractions,
@@ -69,10 +73,15 @@ type Entry =
  * opportunities and the consent record all reachable.
  */
 export default function ContactWorkspaceView({ contactId }: { contactId: string }) {
+  const [referenceTime] = useState(Date.now);
   const theme = useSpTheme();
   const router = useRouter();
   const { session } = useSession();
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("timeline");
+  const [taskOpen, setTaskOpen] = useState(false);
+  const [taskPending, setTaskPending] = useState(false);
+  const [taskError, setTaskError] = useState<string | null>(null);
   const contactsQuery = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts, enabled: Boolean(session) });
   const callsQuery = useQuery({ queryKey: apiQueryKeys.contactCalls(contactId), queryFn: () => listContactCalls(contactId), enabled: Boolean(session) });
   const interactionsQuery = useQuery({ queryKey: apiQueryKeys.contactInteractions(contactId), queryFn: () => listContactInteractions(contactId), enabled: Boolean(session) });
@@ -84,11 +93,11 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
   // carried dated steps, so a contact with work waiting read as a contact with none.
   const nextStep = (() => {
     const own = contact?.relationship.nextActionType
-      ? { type: contact.relationship.nextActionType, at: contact.relationship.nextActionAt, fromOpportunity: false }
+      ? { id: `next-action-${contact.id}`, opportunityId: undefined, type: contact.relationship.nextActionType, at: contact.relationship.nextActionAt, fromOpportunity: false }
       : null;
     const fromOpportunities = opportunities
       .filter((item) => item.stage !== "won" && item.stage !== "lost" && item.nextActionType !== null)
-      .map((item) => ({ type: item.nextActionType!, at: item.nextActionAt, fromOpportunity: true }))
+      .map((item) => ({ id: `opportunity-action-${item.id}`, opportunityId: item.id, type: item.nextActionType!, at: item.nextActionAt, fromOpportunity: true }))
       .sort((left, right) => (left.at ?? Infinity) - (right.at ?? Infinity))[0] ?? null;
     if (!own) return fromOpportunities;
     if (!fromOpportunities) return own;
@@ -120,6 +129,37 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
 
   const name = contact.fullName ?? contact.label ?? "İsimsiz kişi";
   const memoryHighlights = buildMemoryHighlights(contact.memory);
+  const ownerRole = contact.roles.some((role) => role === "seller" || role === "landlord");
+  const demandRole = contact.roles.some((role) => role === "buyer" || role === "tenant" || role === "investor");
+  const task: TodayTask | null = nextStep ? {
+    id: nextStep.id,
+    contactId: contact.id,
+    opportunityId: nextStep.opportunityId,
+    title: name,
+    reason: nextActionTypeLabels[nextStep.type],
+    dueAt: nextStep.at,
+    type: "next_action",
+    priority: nextStep.at !== null && nextStep.at < referenceTime ? "overdue" : nextStep.fromOpportunity ? "bottleneck" : "relationship",
+    contactRoles: contact.roles,
+    lastTouchAt: contact.relationship.lastTouchAt,
+    opportunityType: nextStep.opportunityId ? opportunities.find((item) => item.id === nextStep.opportunityId)?.type : undefined,
+    opportunityStage: nextStep.opportunityId ? opportunities.find((item) => item.id === nextStep.opportunityId)?.stage : undefined,
+  } : null;
+
+  async function resolveTask(outcome: DailyTaskOutcome) {
+    if (!session) return;
+    setTaskPending(true); setTaskError(null);
+    try {
+      await finishDailyTask(session, outcome);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunities }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
+      ]);
+      setTaskOpen(false);
+    } catch (error) { setTaskError(error instanceof Error ? error.message : "Görev güncellenemedi."); }
+    finally { setTaskPending(false); }
+  }
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={[styles.safe, { backgroundColor: theme.background }]}>
@@ -134,10 +174,16 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
             <SpText variant="bodySmall" color="secondary">
               {(contact.roles.length ? contact.roles : ["unknown" as const]).map((role) => contactRoleLabels[role]).join(" · ")} · {contactSourceLabels[contact.source]} · {contact.phone ?? "Telefon eklenmedi"}
             </SpText>
+            {contact.internalLabel ?? (contact.fullName ? contact.label : null) ? <SpText variant="caption" color="secondary">İç etiket: {contact.internalLabel ?? contact.label}</SpText> : null}
           </View>
         </View>
 
         {contact.phone ? <ContactCallAction contactId={contact.id} /> : null}
+        <View style={styles.quickActions}>
+          <Pressable onPress={() => router.push({ pathname: "/(tabs)/capture", params: { contactId: contact.id } })} style={[styles.quickAction, { backgroundColor: theme.ask }]}><MessageSquarePlus color={theme.onAsk} size={17} /><SpText style={{ color: theme.onAsk }}>Temas kaydet</SpText></Pressable>
+          {ownerRole ? <Pressable onPress={() => router.push({ pathname: "/(tabs)/listings", params: { action: "add-listing", ownerContactId: contact.id } })} style={[styles.quickAction, { borderColor: theme.line }]}><Building2 color={theme.deed} size={17} /><SpText color="deed">Yetkili portföy</SpText></Pressable> : demandRole ? <Pressable onPress={() => router.push({ pathname: "/(tabs)/opportunities", params: { create: "1", contactId: contact.id } })} style={[styles.quickAction, { borderColor: theme.line }]}><BriefcaseBusiness color={theme.deed} size={17} /><SpText color="deed">Talep fırsatı aç</SpText></Pressable> : null}
+          <Pressable accessibilityLabel="Kişiyi düzenle" onPress={() => router.push({ pathname: "/(tabs)/contacts", params: { contactId: contact.id, action: "edit" } })} style={[styles.quickAction, { borderColor: theme.line }]}><Pencil color={theme.textSecondary} size={17} /></Pressable>
+        </View>
 
         <View style={styles.summary}>
           <SpCard style={styles.summaryCard}>
@@ -150,6 +196,7 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
             <SpText variant="caption" color="secondary">Sonraki adım</SpText>
             <SpText variant="bodySmall">{nextStep ? nextActionTypeLabels[nextStep.type] : "Belirlenmedi"}</SpText>
             {nextStep?.at ? <SpText variant="caption" color="secondary">{new Intl.DateTimeFormat("tr-TR", { dateStyle: "short", timeStyle: "short" }).format(nextStep.at)}{nextStep.fromOpportunity ? " · fırsattan" : ""}</SpText> : null}
+            {task ? <Pressable onPress={() => { setTaskError(null); setTaskOpen(true); }}><SpText variant="caption" color="deed">Tamamla veya ertele</SpText></Pressable> : null}
           </SpCard>
           <SpCard style={styles.summaryCard}>
             <SpText variant="caption" color="secondary">Açık fırsat</SpText>
@@ -267,6 +314,7 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
           </SpCard>
         ) : null}
       </ScrollView>
+      <TaskResolutionSheet task={taskOpen ? task : null} pending={taskPending} error={taskError} onClose={() => setTaskOpen(false)} onResolve={(outcome) => void resolveTask(outcome)} />
     </SafeAreaView>
   );
 }
@@ -280,6 +328,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1, gap: 2 },
   summary: { flexDirection: "row", gap: space.sm },
   summaryCard: { flex: 1, gap: space.xs },
+  quickActions: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
+  quickAction: { minHeight: 44, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: space.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm },
   privacyAction: { alignItems: "center", alignSelf: "flex-start", borderRadius: radius.md, paddingHorizontal: space.lg, paddingVertical: space.sm },
   tabs: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginTop: space.sm },
   entry: { gap: space.sm },

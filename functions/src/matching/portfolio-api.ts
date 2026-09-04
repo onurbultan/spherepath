@@ -4,6 +4,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   buildMatchMessageFallback,
   contactMemorySchema,
+  customerFacingContactName,
   createPortfolioItem,
   matchMessageRequestSchema,
   matchNotificationCommandSchema,
@@ -291,7 +292,7 @@ export const draftMatchMessage = onCall(callableOptions, async (request): Promis
 
     const portfolioItem = toRecord(itemSnapshot.id, item, (item.sourceAuthorName as string) ?? "Ofis danışmanı");
     const subject = {
-      contactName: (contact.fullName ?? contact.label ?? "İsimsiz kişi") as string,
+      contactName: customerFacingContactName((contact.fullName ?? contact.label) as string | null) ?? "İsimsiz kişi",
       headline: portfolioItem.headline,
       location: portfolioItem.location,
       askingPrice: portfolioItem.askingPrice,

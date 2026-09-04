@@ -9,10 +9,9 @@ import { SpText } from "@/shared/ui/SpText";
 import { SpButton, SpField, SpInput } from "@/shared/ui/SpField";
 import { useSpTheme } from "@/shared/ui/theme";
 import { radius, space } from "@/shared/ui/tokens.generated";
-import { configureCallIntegration, connectCallProvider, loadCallIntegration, loadOfficeTeam } from "../resources/settings";
+import { configureCallIntegration, connectCallProvider, loadCallIntegration, loadCallRoutingWebhookAddress, loadOfficeTeam } from "../resources/settings";
 
 const messageFrom = (error: unknown) => error instanceof Error ? error.message : "Telefon ayarları güncellenemedi.";
-const functionsOrigin = "https://europe-west8-spherepath-96ecd.cloudfunctions.net";
 
 /**
  * The switch needs two addresses and an extension per advisor before a call can
@@ -70,7 +69,7 @@ export function TelephonySettingsCard() {
       setConnected(state.connected);
       setMessage(state.connected
         ? "Verimor bu adrese bağlandı; çağrı olayları buraya düşecek."
-        : `Verimor farklı bir adres tutuyor: ${state.notificationUrl ?? "tanımsız"}`);
+        : "Verimor farklı bir olay bildirim adresi tutuyor. Bağlantı ayarını kontrol edin.");
     } catch (cause) {
       setConnected(false);
       setError(messageFrom(cause));
@@ -79,8 +78,18 @@ export function TelephonySettingsCard() {
     }
   }
 
-  const webhook = (name: string) =>
-    integration ? `${functionsOrigin}/${name}?integration=${integration.integrationId}&token=${integration.webhookToken}` : "";
+  async function shareRoutingAddress() {
+    setPending(true); setError(null);
+    try {
+      const address = await loadCallRoutingWebhookAddress();
+      await Share.share({ message: address });
+      setMessage("Güvenli yönlendirme adresi paylaşım menüsüne gönderildi.");
+    } catch (cause) {
+      setError(messageFrom(cause));
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
     <SpCard style={styles.card}>
@@ -116,12 +125,13 @@ export function TelephonySettingsCard() {
               <SpText variant="caption" color="secondary">
                 {connected === true
                   ? "Olay bildirimi bağlı. Yönlendirme adresini Verimor panelinde numaranın advisory webhook alanına yazın."
-                  : "Olay bildirimini “Verimor’a bağlan” kendisi yazar. Yönlendirme adresi ise panele elle girilir."}
+                  : "Olay bildirimini “Verimor’a bağlan” kendisi yazar. Gizli anahtar ekranda gösterilmez."}
               </SpText>
               {/* The panel is not on this device, so the address leaves by the share sheet. */}
               <SpButton
-                label="Yönlendirme adresini paylaş"
-                onPress={() => void Share.share({ message: webhook("verimorRoutingWebhook") })}
+                disabled={pending}
+                label="Güvenli yönlendirme adresini paylaş"
+                onPress={() => void shareRoutingAddress()}
                 tone="secondary"
               />
             </View>

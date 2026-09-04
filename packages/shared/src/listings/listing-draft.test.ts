@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createPropertyAndListing, existingListingDraftSchema, listingDraftSchema, listingPriceUpdateSchema, type ListingDraft } from "./listing-draft.js";
+import { createPropertyAndListing, existingListingDraftSchema, listingAuthorizationUpdateSchema, listingDraftSchema, listingPriceUpdateSchema, listingReadinessUpdateSchema, type ListingDraft } from "./listing-draft.js";
+import { listingActivationIssues } from "./listing-transitions.js";
 
 const draft: ListingDraft = { opportunityId: "opp-1", address: "Teşvikiye Mah. 12", regionSlug: "Şişli Merkez", propertyType: "apartment", roomCount: 3, areaM2: 145, features: ["parking"], authorizationType: "exclusive", askingPrice: 12_500_000, currency: "TRY", expiresAt: null };
 
@@ -32,5 +33,24 @@ describe("listing draft", () => {
       sourceInboxItemId: "note-1",
     });
     expect(result.sourceInboxItemId).toBe("note-1");
+  });
+
+  it("keeps an unknown authorization in preparation until it is verified", () => {
+    const listing = createPropertyAndListing({ ...draft, authorizationType: "unknown", askingPrice: null }, { officeId: "office", ownerUid: "owner" }, "contact", "property", 10).listing;
+    expect(listingActivationIssues(listing)).toEqual([
+      "Yetki türü doğrulandı",
+      "Liste fiyatı girildi",
+      "Yetki sözleşmesi veya muafiyet doğrulandı",
+      "EİDS kaydı veya muafiyet doğrulandı",
+      "Fotoğraf ve medya yayına hazır",
+    ]);
+    expect(listingAuthorizationUpdateSchema.parse({ listingId: "listing-1", authorizationType: "open" }).authorizationType).toBe("open");
+  });
+
+  it("requires explicit readiness evidence before activation", () => {
+    const listing = createPropertyAndListing(draft, { officeId: "office", ownerUid: "owner" }, "contact", "property", 10).listing;
+    expect(listingActivationIssues(listing)).toContain("EİDS kaydı veya muafiyet doğrulandı");
+    const evidence = listingReadinessUpdateSchema.parse({ listingId: "listing-1", evidence: { mandate: "verified", eids: "not_required", media: "ready", processingBasis: "verified" } }).evidence;
+    expect(listingActivationIssues({ ...listing, readinessEvidence: evidence })).toEqual([]);
   });
 });

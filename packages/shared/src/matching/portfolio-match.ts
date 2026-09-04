@@ -171,6 +171,25 @@ function overlaps(left: string, right: string): boolean {
   return [...leftTokens].some((token) => rightTokens.has(token));
 }
 
+/** Common market-area aliases let a district demand match a portfolio in one of its neighbourhoods. */
+const locationFamilies: Record<string, readonly string[]> = {
+  karsiyaka: ["karsiyaka", "bostanli", "mavisehir", "alaybey", "donanmaci", "tersane"],
+  urla: ["urla", "kadiovacik", "icmeler", "kuscular", "cesmealti", "iskele", "zeytinalani"],
+  kadikoy: ["kadikoy", "moda", "caddebostan", "feneryolu", "suadiye", "erenkoy", "kozyatagi"],
+  konak: ["konak", "alsancak", "guzelyali", "hatay", "esrefpasa"],
+};
+
+function locationFamily(value: string): string | null {
+  const valueTokens = tokens(value);
+  return Object.entries(locationFamilies).find(([, aliases]) => aliases.some((alias) => valueTokens.has(alias)))?.[0] ?? null;
+}
+
+export function locationsOverlap(left: string, right: string): boolean {
+  if (overlaps(left, right)) return true;
+  const leftFamily = locationFamily(left);
+  return leftFamily !== null && leftFamily === locationFamily(right);
+}
+
 function itemSearchText(item: PortfolioItemDraft): string {
   const featureTerms: Record<PropertyFeature, string> = {
     ground_floor: "zemin kat",
@@ -264,7 +283,7 @@ export function scorePortfolioItem(preferences: PropertyPreferences, item: Portf
   else { hardMismatch = true; addReason(reasons, "property_type", "mismatch", "Gayrimenkul türü talep dışında."); }
 
   if (!preferences.preferredLocations.length) addReason(reasons, "location", "unknown", "Talepte bölge belirtilmemiş.");
-  else if (preferences.preferredLocations.some((location) => overlaps(location, item.location))) addReason(reasons, "location", "match", `${item.location} aranan bölgelerle örtüşüyor.`);
+  else if (preferences.preferredLocations.some((location) => locationsOverlap(location, item.location))) addReason(reasons, "location", "match", `${item.location} aranan bölgelerle örtüşüyor.`);
   else addReason(reasons, "location", "mismatch", `${item.location} aranan bölgelerle örtüşmüyor.`);
 
   const budget = preferences.budgetRange;

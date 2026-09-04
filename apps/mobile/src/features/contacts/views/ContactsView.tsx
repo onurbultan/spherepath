@@ -49,6 +49,7 @@ import { choiceMetrics, controlMetrics, largeButtonMetrics } from "@/shared/ui/S
 
 const emptyDraft: ContactDraft = {
   fullName: "",
+  internalLabel: "",
   phone: "",
   metAtPlace: "",
   source: "in_person",
@@ -58,6 +59,7 @@ const emptyDraft: ContactDraft = {
 function draftFrom(contact: ContactRecord): ContactDraft {
   return {
     fullName: contact.fullName ?? contact.label ?? "",
+    internalLabel: contact.internalLabel ?? (contact.fullName ? contact.label ?? "" : ""),
     phone: contact.phone ?? "",
     metAtPlace: contact.metAtPlace ?? "",
     source: contact.source,
@@ -108,7 +110,7 @@ export default function ContactsView() {
   const filteredContacts = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase("tr-TR");
     if (!needle) return contacts;
-    return contacts.filter((contact) => [contact.fullName, contact.label, contact.phone, contact.metAtPlace]
+    return contacts.filter((contact) => [contact.fullName, contact.label, contact.internalLabel, contact.phone, contact.metAtPlace]
       .some((value) => value?.toLocaleLowerCase("tr-TR").includes(needle)));
   }, [contacts, search]);
   const visibleContacts = filteredContacts.slice(0, visibleCount);
@@ -222,7 +224,8 @@ export default function ContactsView() {
           <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
             <View style={styles.sheetHeader}><View><SpText variant="eyebrow" color="deed">HIZLI KAYIT</SpText><SpText variant="hero">{editing ? "Kişiyi düzenle" : "Yeni kişi"}</SpText></View><Pressable accessibilityLabel="Kapat" onPress={() => setPanelOpen(false)} style={[styles.iconButton, { borderColor: theme.line }]}><X color={theme.textSecondary} size={20} /></Pressable></View>
             {!editing ? <Pressable onPress={() => void chooseFromAddressBook()} style={[styles.addressBook, { backgroundColor: theme.deedBg }]}><BookUser color={theme.deed} size={18} /><View style={styles.contactCopy}><SpText color="deed">Rehberden tek kişi seç</SpText><SpText variant="bodySmall" color="secondary">Yalnızca seçtiğin kişinin adı ve telefonu forma alınır.</SpText></View></Pressable> : null}
-            <SpText variant="bodySmall" color="secondary">Ad, soyad veya tanımlayıcı</SpText><TextInput autoFocus={Boolean(editing)} placeholder="Örn. Ayşe Kaya" placeholderTextColor={theme.textTertiary} style={inputStyle} value={draft.fullName} onChangeText={(fullName) => setDraft({ ...draft, fullName })} />
+            <SpText variant="bodySmall" color="secondary">Ad soyad</SpText><TextInput autoFocus={Boolean(editing)} placeholder="Örn. Ayşe Kaya" placeholderTextColor={theme.textTertiary} style={inputStyle} value={draft.fullName} onChangeText={(fullName) => setDraft({ ...draft, fullName })} />
+            <SpText variant="bodySmall" color="secondary">İç etiket · isteğe bağlı, müşteriye gösterilmez</SpText><TextInput placeholder="Örn. Marina açık ev · sıcak aday" placeholderTextColor={theme.textTertiary} style={inputStyle} value={draft.internalLabel ?? ""} onChangeText={(internalLabel) => setDraft({ ...draft, internalLabel })} />
             <SpText variant="bodySmall" color="secondary">Telefon · isteğe bağlı</SpText><PhoneInput style={inputStyle} value={draft.phone} onChangeText={(phone) => setDraft({ ...draft, phone })} />
             <SpText variant="bodySmall" color="secondary">Tanışma yeri · isteğe bağlı</SpText><TextInput placeholder="Örn. Marina açık ev etkinliği" placeholderTextColor={theme.textTertiary} style={inputStyle} value={draft.metAtPlace} onChangeText={(metAtPlace) => setDraft({ ...draft, metAtPlace })} />
             <SpText variant="bodySmall" color="secondary">Kaynak</SpText><View style={styles.chips}>{contactSources.map((source) => <Pressable key={source} onPress={() => setDraft({ ...draft, source })} style={[styles.choice, { backgroundColor: draft.source === source ? theme.deedBg : theme.background, borderColor: draft.source === source ? theme.deed : theme.line }]}><SpText variant="bodySmall" color={draft.source === source ? "deed" : "secondary"}>{contactSourceLabels[source]}</SpText></Pressable>)}</View>

@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 async function expectNoSeriousAccessibilityViolations(page: Page) {
   const result = await new AxeBuilder({ page })
@@ -20,20 +20,6 @@ async function swipe(page: Page, selector: string, fromX: number, toX: number) {
     const end = new Touch({ identifier: 1, target, clientX: toX, clientY: y });
     target.dispatchEvent(new TouchEvent("touchend", { bubbles: true, cancelable: true, touches: [], changedTouches: [end] }));
   }, { fromX, toX });
-}
-
-async function expectIconAndTextCentered(action: Locator) {
-  const centerDifference = await action.evaluate((element) => {
-    const icon = element.querySelector("svg");
-    const textNode = Array.from(element.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim());
-    if (!icon || !textNode) return Number.POSITIVE_INFINITY;
-    const iconRect = icon.getBoundingClientRect();
-    const range = document.createRange();
-    range.selectNodeContents(textNode);
-    const textRect = range.getBoundingClientRect();
-    return Math.abs((iconRect.top + iconRect.height / 2) - (textRect.top + textRect.height / 2));
-  });
-  expect(centerDifference).toBeLessThanOrEqual(1.5);
 }
 
 test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır", async ({ context, page }, testInfo) => {
@@ -93,7 +79,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await expect(page.getByRole("heading", { name: "Kişiler" })).toBeVisible();
   await page.getByRole("button", { name: "Yeni kişi" }).click();
   const contactDialog = page.getByRole("dialog");
-  await contactDialog.getByLabel("Ad, soyad veya tanımlayıcı").fill(contactName);
+  await contactDialog.getByLabel("Ad soyad", { exact: true }).fill(contactName);
   await contactDialog.getByLabel("Telefon numarası").fill("5551112233");
   await contactDialog.getByLabel("Tanışma yeri isteğe bağlı").fill("Urla açık ev etkinliği");
   await contactDialog.getByLabel("Rol").selectOption({ label: "Satıcı" });
@@ -102,7 +88,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
 
   await page.getByRole("button", { name: "Yeni kişi" }).click();
   const secondContactDialog = page.getByRole("dialog");
-  await secondContactDialog.getByLabel("Ad, soyad veya tanımlayıcı").fill(`E2E Bora ${runId.slice(-6)}`);
+  await secondContactDialog.getByLabel("Ad soyad", { exact: true }).fill(`E2E Bora ${runId.slice(-6)}`);
   await secondContactDialog.getByLabel("Rol").selectOption({ label: "Alıcı" });
   await secondContactDialog.getByRole("button", { name: "Kişiyi kaydet" }).click();
 
@@ -137,9 +123,6 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await noteDialog.getByLabel("Not türü").selectOption("requirement");
   await noteDialog.getByRole("combobox", { name: "İlgili kişi ara" }).fill(contactName);
   await noteDialog.getByRole("option", { name: contactName }).click();
-  const analyzeRequirementButton = noteDialog.getByRole("button", { name: "Talep bilgilerini ve tarihi çıkar" });
-  await expectIconAndTextCentered(analyzeRequirementButton);
-  await analyzeRequirementButton.click();
   await expect(noteDialog.getByText("Talep bilgileri çıkarıldı")).toBeVisible();
   await noteDialog.getByRole("button", { name: "Talep oluştur" }).click();
   await page.getByRole("button", { name: "İşlendi" }).click();
@@ -400,7 +383,9 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
     Object.defineProperty(window, "MediaRecorder", { configurable: true, value: OfflineMediaRecorder });
     Object.defineProperty(navigator.mediaDevices, "getUserMedia", { configurable: true, value: async () => ({ getTracks: () => [{ stop() {} }] }) });
   });
-  await page.getByRole("checkbox", { name: /Görüşme bitti/ }).check();
+  await page.getByRole("tab", { name: "Sesli anlat" }).click();
+  const finishedMeetingConfirmation = page.getByRole("checkbox", { name: /Görüşme bitti/ });
+  if (!(await finishedMeetingConfirmation.isChecked())) await finishedMeetingConfirmation.check();
   await context.setOffline(true);
   await page.getByRole("button", { name: "Kaydı başlat" }).click();
   await expect(page.getByRole("button", { name: "Durdur" })).toBeVisible();

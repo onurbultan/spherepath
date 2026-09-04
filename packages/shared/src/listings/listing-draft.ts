@@ -3,6 +3,7 @@ import type {
   AuthorizationType,
   CurrencyCode,
   Listing,
+  ListingReadinessEvidence,
   ListingStatus,
   Property,
   PropertyFeature,
@@ -63,6 +64,43 @@ export const listingPriceUpdateSchema = z.object({
 
 export type ListingPriceUpdate = z.infer<typeof listingPriceUpdateSchema>;
 
+export const listingAuthorizationUpdateSchema = z.object({
+  listingId: z.string().trim().min(1).max(160),
+  authorizationType: z.enum(authorizationTypes),
+}).strict();
+
+export type ListingAuthorizationUpdate = z.infer<typeof listingAuthorizationUpdateSchema>;
+
+export const listingVerificationStatuses = ["pending", "verified", "not_required"] as const;
+export const listingVerificationStatusLabels = {
+  pending: "Bekliyor",
+  verified: "Doğrulandı",
+  not_required: "Muaf / gerekmiyor",
+} as const satisfies Record<(typeof listingVerificationStatuses)[number], string>;
+
+export const listingReadinessEvidenceSchema = z.object({
+  mandate: z.enum(listingVerificationStatuses),
+  eids: z.enum(listingVerificationStatuses),
+  media: z.enum(["pending", "ready"]),
+  processingBasis: z.enum(["pending", "verified"]),
+}).strict();
+
+export const listingReadinessUpdateSchema = z.object({
+  listingId: z.string().trim().min(1).max(160),
+  evidence: listingReadinessEvidenceSchema,
+}).strict();
+
+export type ListingReadinessUpdate = z.infer<typeof listingReadinessUpdateSchema>;
+
+export function initialListingReadinessEvidence(authorizationType: AuthorizationType): ListingReadinessEvidence {
+  return {
+    mandate: authorizationType === "verbal" ? "not_required" : "pending",
+    eids: "pending",
+    media: "pending",
+    processingBasis: "verified",
+  };
+}
+
 export function createPropertyAndListing(draft: ListingDraft, tenant: TenantOwned, ownerContactId: string, propertyId: string, now: number): { property: Property; listing: Listing } {
   const parsed = listingDraftSchema.parse(draft);
   const summary = {
@@ -82,6 +120,7 @@ export function createPropertyAndListing(draft: ListingDraft, tenant: TenantOwne
     listing: {
       ...tenant, propertyId, opportunityId: parsed.opportunityId, authorizationType: parsed.authorizationType,
       propertySummary: summary, askingPrice: parsed.askingPrice, currency: parsed.currency, status: "preparing",
+      readinessEvidence: initialListingReadinessEvidence(parsed.authorizationType),
       acquiredAt: now, expiresAt: parsed.expiresAt, deletedAt: null, createdAt: now, updatedAt: now,
     },
   };

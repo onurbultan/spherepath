@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Audited, Instant, TenantOwned } from "../domain/entities.js";
+import type { Audited, Instant, OpportunityType, TenantOwned } from "../domain/entities.js";
 import { contactDraftSchema } from "../contacts/contact-draft.js";
 import { nextActionTypeLabels, nextActionTypes } from "../interactions/manual-interaction.js";
 import { opportunityTypes } from "../opportunities/opportunity-draft.js";
@@ -90,7 +90,16 @@ export type UpdateInboxItemInput = z.infer<typeof updateInboxItemSchema>;
 const processBaseSchema = z.object({ inboxItemId: z.string().trim().min(1).max(160) });
 
 export const processInboxItemSchema = z.discriminatedUnion("action", [
-  processBaseSchema.extend({ action: z.literal("person"), contact: contactDraftSchema }),
+  processBaseSchema.extend({
+    action: z.literal("person"),
+    contact: contactDraftSchema,
+    /** The advisor-approved reading is applied atomically with the new contact. */
+    approvedInsights: voiceInsightsSchema.optional(),
+    /** A conversation note is a real interaction unless the advisor explicitly says otherwise. */
+    recordInteraction: z.boolean().default(true),
+    /** One note can create the person and the qualified work it describes. */
+    opportunityType: z.enum(opportunityTypes).nullable().default(null),
+  }),
   processBaseSchema.extend({
     action: z.literal("requirement"),
     contactId: z.string().trim().min(1).max(160),
@@ -110,6 +119,14 @@ export const processInboxItemSchema = z.discriminatedUnion("action", [
   if ((value.action === "requirement" || value.action === "follow_up") && value.nextActionAt < Date.now() - 60_000) {
     context.addIssue({ code: "custom", message: "Takip zamanı geçmişte olamaz.", path: ["nextActionAt"] });
   }
+  if (value.action === "person" && value.opportunityType !== null
+    && (value.contact.nextActionType == null || value.contact.nextActionAt == null)) {
+    context.addIssue({
+      code: "custom",
+      message: "Fırsat oluşturmak için ilk takip ve zamanı gerekli.",
+      path: ["contact", "nextActionAt"],
+    });
+  }
 });
 
 export type ProcessInboxItemInput = z.infer<typeof processInboxItemSchema>;
@@ -123,7 +140,7 @@ export interface InboxItemAnalysis {
   insights: VoiceInsights;
   nextActionType: (typeof nextActionTypes)[number] | null;
   nextActionAt: number | null;
-  opportunityType: "buyer_requirement" | "tenant_requirement";
+  opportunityType: OpportunityType;
   engine: "rules" | "vertex_ai";
 }
 
@@ -150,6 +167,33 @@ export function inboxAnalysisHighlights(analysis: InboxItemAnalysis | null): str
   const remembered = situations.length ? [] : analysis.insights.keyThingsToRemember.slice(0, 2);
   const next = analysis.nextActionType ? [`Sonraki: ${nextActionTypeLabels[analysis.nextActionType]}`] : [];
   return [...situations, ...remembered, ...next].slice(0, 4);
+}
+
+/**
+ * A typed or dictated conversation note that names an unlinked person should
+ * open as a person workflow once the richer reading arrives. WhatsApp group
+ * posts often name third parties, so they keep their original classification.
+ */
+export function inboxKindAfterAnalysis(
+  currentKind: InboxItemKind,
+  source: InboxItemSource,
+  linkedContactId: string | null,
+  analysis: InboxItemAnalysis,
+): InboxItemKind {
+  if (source !== "whatsapp" && linkedContactId === null && analysis.insights.contactName?.trim()) return "person";
+  return currentKind;
+}
+
+/** Derive the work type from the active preference or, for a single property
+ * being sold/let, from its structured situation. */
+export function inboxOpportunityType(insights: VoiceInsights): OpportunityType {
+  const transaction = insights.propertyPreferences.transactionType
+    ?? insights.propertySituations[0]?.propertyPreferences.transactionType
+    ?? null;
+  if (transaction === "rent") return "tenant_requirement";
+  if (transaction === "sell") return "seller_listing";
+  if (transaction === "let") return "landlord_listing";
+  return "buyer_requirement";
 }
 
 export const inboxPageQuerySchema = z.preprocess(

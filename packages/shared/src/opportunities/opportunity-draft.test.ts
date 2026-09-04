@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createOpportunity, opportunityDraftSchema, opportunityPath, opportunityStageLabel, suggestOpportunityTypeForRoles } from "./opportunity-draft.js";
+import { opportunityCriteriaSummary, opportunityCriteriaUpdateSchema, opportunityTransactionType } from "./opportunity-situation.js";
+import { emptyVoicePropertyPreferences } from "../voice/voice-note.js";
 
 describe("opportunity draft", () => {
   it("creates a new lead with a required next action", () => {
@@ -35,5 +37,12 @@ describe("opportunity draft", () => {
     expect(suggestOpportunityTypeForRoles(["seller"])).toBe("seller_listing");
     expect(suggestOpportunityTypeForRoles(["landlord"])).toBe("landlord_listing");
     expect(suggestOpportunityTypeForRoles(["unknown"])).toBeNull();
+  });
+
+  it("validates editable criteria and keeps the opportunity purpose authoritative", () => {
+    const preferences = { ...emptyVoicePropertyPreferences, preferredLocations: ["Karşıyaka"], bedroomCountMin: 2, livingRoomCountMin: 1 };
+    expect(opportunityCriteriaUpdateSchema.safeParse({ opportunityId: "opportunity-1", preferences }).success).toBe(true);
+    expect(opportunityTransactionType("tenant_requirement")).toBe("rent");
+    expect(opportunityCriteriaSummary("tenant_requirement", preferences)).toBe("Karşıyaka · 2+1 · kiralama talebi");
   });
 });

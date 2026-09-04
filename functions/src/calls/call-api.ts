@@ -226,7 +226,7 @@ async function storeCallEvent(
 
 // ------------------------------------------------------------- callables
 
-export const configureCallIntegration = onCall(callableOptions, async (request): Promise<{ integrationId: string; webhookToken: string }> => {
+export const configureCallIntegration = onCall(callableOptions, async (request): Promise<{ integrationId: string }> => {
   const claims = requireSpherepathClaims(request);
   if (claims.role !== "broker") throw new HttpsError("permission-denied", "Only a broker can configure telephony.");
   const envelope = readApiEnvelope<{
@@ -269,11 +269,11 @@ export const configureCallIntegration = onCall(callableOptions, async (request):
       createdAt: existing.data()?.createdAt ?? now,
       updatedAt: now,
     }, { merge: true });
-    return { integrationId: reference.id, webhookToken };
+    return { integrationId: reference.id };
   });
 });
 
-export const getCallIntegration = onCall(callableOptions, async (request): Promise<{ integrationId: string; webhookToken: string; extensionOwners: Record<string, string>; active: boolean } | null> => {
+export const getCallIntegration = onCall(callableOptions, async (request): Promise<{ integrationId: string; extensionOwners: Record<string, string>; active: boolean } | null> => {
   const claims = requireSpherepathClaims(request);
   if (claims.role !== "broker") throw new HttpsError("permission-denied", "Only a broker can read telephony settings.");
   const envelope = readApiEnvelope<unknown>(request.data);
@@ -283,10 +283,30 @@ export const getCallIntegration = onCall(callableOptions, async (request): Promi
     if (!data) return null;
     return {
       integrationId: snapshot.id,
-      webhookToken: data.webhookToken as string,
       extensionOwners: (data.extensionOwners ?? {}) as Record<string, string>,
       active: data.active === true,
     };
+  });
+});
+
+/**
+ * Returns the signed routing address only after an explicit broker action.
+ * It is deliberately absent from the settings query so secrets never land in
+ * the initial page DOM, accessibility tree, query cache, or ordinary telemetry.
+ */
+export const getCallRoutingWebhookAddress = onCall(callableOptions, async (request): Promise<{ address: string }> => {
+  const claims = requireSpherepathClaims(request);
+  if (claims.role !== "broker") throw new HttpsError("permission-denied", "Only a broker can read telephony settings.");
+  const envelope = readApiEnvelope<unknown>(request.data);
+  return observeApiRequest("getCallRoutingWebhookAddress", envelope.requestId, async () => {
+    const snapshot = await getFirestore().collection(integrationCollection).doc(claims.officeId).get();
+    const integration = snapshot.data();
+    if (!integration?.active || typeof integration.webhookToken !== "string") {
+      throw new HttpsError("failed-precondition", "Telefon ayarlarını önce kaydedin.");
+    }
+    const project = process.env.GCLOUD_PROJECT ?? process.env.GCP_PROJECT ?? "";
+    const query = new URLSearchParams({ integration: snapshot.id, token: integration.webhookToken });
+    return { address: `https://${callableOptions.region}-${project}.cloudfunctions.net/verimorRoutingWebhook?${query.toString()}` };
   });
 });
 
@@ -309,7 +329,7 @@ function eventWebhookUrl(integrationId: string, webhookToken: string): string {
  */
 export const connectCallProvider = onCall(
   { ...callableOptions, secrets: [verimorApiKey] },
-  async (request): Promise<{ notificationUrl: string | null; events: string[]; connected: boolean }> => {
+  async (request): Promise<{ events: string[]; connected: boolean }> => {
     const claims = requireSpherepathClaims(request);
     if (claims.role !== "broker") throw new HttpsError("permission-denied", "Only a broker can connect the switch.");
     const envelope = readApiEnvelope<unknown>(request.data, { command: true });
@@ -326,7 +346,7 @@ export const connectCallProvider = onCall(
       try {
         await source.connectEvents(expected);
         const stored = await source.readEventConnection();
-        return { ...stored, connected: stored.notificationUrl === expected };
+        return { events: stored.events, connected: stored.notificationUrl === expected };
       } catch (error) {
         logger.error("Call provider connection failed", { officeId: claims.officeId, error });
         const reason = error instanceof Error && error.message === "verimor_api_key_missing"

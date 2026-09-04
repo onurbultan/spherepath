@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, Building2, ChevronLeft, ChevronRight, ContactRound, Download, MessageSquarePlus, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, UserRoundPlus, X } from "lucide-react";
+import { Archive, ChevronLeft, ChevronRight, ContactRound, Download, MessageSquarePlus, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, UserRoundPlus, X } from "lucide-react";
 import {
   apiQueryKeys,
   contactDraftSchema,
@@ -27,11 +27,9 @@ import {
 import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
 import { ContactCombobox } from "@/shared/ui/ContactCombobox";
-import { ContactMemoryHighlights } from "../components/ContactMemoryHighlights";
 import { useSheetDismiss } from "@/shared/ui/useSheetDismiss";
 import { QuickDateField } from "@/shared/ui/QuickDateField";
 import { useSession } from "@/features/auth/resources/session";
-import { ContactInteractionTimeline } from "../components/ContactInteractionTimeline";
 import { archiveContact, listContacts, saveContact, saveContactPrivacy, type ContactRecord } from "../resources/contacts";
 import { listReferrals, saveReferral } from "@/features/referrals/resources/referrals";
 import { PhoneField } from "@/shared/ui/MaskedFields";
@@ -39,6 +37,7 @@ import { SpInput, SpSelect } from "@/shared/ui/SpField";
 
 const emptyDraft: ContactDraft = {
   fullName: "",
+  internalLabel: "",
   phone: "",
   metAtPlace: "",
   source: "in_person",
@@ -52,6 +51,7 @@ function privacyDraft(contact: ContactRecord): ContactPrivacyDraft {
 function contactDraft(contact: ContactRecord): ContactDraft {
   return {
     fullName: contact.fullName ?? contact.label ?? "",
+    internalLabel: contact.internalLabel ?? (contact.fullName ? contact.label ?? "" : ""),
     phone: contact.phone ?? "",
     metAtPlace: contact.metAtPlace ?? "",
     source: contact.source,
@@ -105,12 +105,10 @@ export function ContactsView() {
   const [segmentFilter, setSegmentFilter] = useState<"all" | "pending" | "buyers" | "stale" | "nophone">("all");
   const [sortBy, setSortBy] = useState<"recent" | "next" | "name">("recent");
   const [page, setPage] = useState(1);
-  const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<ContactRecord | null>(null);
   const [archivePending, setArchivePending] = useState(false);
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [dismissedDeepLink, setDismissedDeepLink] = useState<string | null>(null);
 
   const contactsQuery = useQuery({
     queryKey: apiQueryKeys.contacts,
@@ -123,12 +121,14 @@ export function ContactsView() {
   // advisor back here with the sheet already open on the right contact.
   const requestedEdit = searchParams.get("action") === "edit";
   const requestedPrivacy = searchParams.get("action") === "privacy";
-  const linkedContact = requestedContactId && dismissedDeepLink !== requestedContactId
+  const linkedContact = requestedContactId
     ? contacts.find((contact) => contact.id === requestedContactId) ?? null
     : null;
-  // An edit link carries a contactId too, but it asks for the form, not the
-  // detail sheet; honouring both stacked one panel on top of the other.
-  const activeSelectedContact = selectedContact ?? (requestedEdit || requestedPrivacy ? null : linkedContact);
+  useEffect(() => {
+    if (requestedContactId && !requestedEdit && !requestedPrivacy) {
+      router.replace(`/contacts/__contact__?contactId=${encodeURIComponent(requestedContactId)}`, { scroll: false });
+    }
+  }, [requestedContactId, requestedEdit, requestedPrivacy, router]);
   // The workspace page has no form of its own, so its edit action arrives here as
   // a link. Opening the sheet is an adjustment to a changed input rather than a
   // synchronisation with anything outside React, so it belongs in render and is
@@ -165,6 +165,7 @@ export function ContactsView() {
     return [
       contact.fullName,
       contact.label,
+      contact.internalLabel,
       contact.phone,
       contact.metAtPlace,
       ...contact.memory.keyThingsToRemember,
@@ -181,14 +182,16 @@ export function ContactsView() {
   const staleCount = contacts.filter((contact) => contact.relationship.meaningfulTouchCount > 0 && (contact.relationship.lastTouchAt ?? 0) < thirtyDaysAgo).length;
   const noPhoneCount = contacts.filter((contact) => !contact.phone).length;
 
-  useSheetDismiss(panelOpen, () => setPanelOpen(false));
+  function closeContactForm() {
+    setPanelOpen(false);
+    setEditing(null);
+    if (requestedEdit) {
+      router.replace(requestedContactId ? `/contacts?contactId=${encodeURIComponent(requestedContactId)}` : "/contacts", { scroll: false });
+    }
+  }
+  useSheetDismiss(panelOpen, closeContactForm);
   useSheetDismiss(Boolean(referralSource), () => setReferralSource(null));
   useSheetDismiss(Boolean(privacyEditing), () => setPrivacyEditing(null));
-  function closeContactDetail() {
-    setSelectedContact(null);
-    if (requestedContactId) setDismissedDeepLink(requestedContactId);
-  }
-  useSheetDismiss(Boolean(activeSelectedContact), closeContactDetail);
   useSheetDismiss(Boolean(archiveTarget), () => { if (!archivePending) setArchiveTarget(null); });
 
   function downloadContacts(items: ContactRecord[], suffix = "contacts") {
@@ -256,6 +259,9 @@ export function ContactsView() {
       setPanelOpen(false);
       setEditing(null);
       setDraft(emptyDraft);
+      if (editing && requestedEdit) {
+        router.replace(`/contacts/__contact__?contactId=${encodeURIComponent(savedContact.id)}`, { scroll: false });
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
@@ -271,7 +277,6 @@ export function ContactsView() {
   }
 
   function requestArchive(contact: ContactRecord) {
-    closeContactDetail();
     setArchiveError(null);
     setArchiveTarget(contact);
   }
@@ -369,34 +374,13 @@ export function ContactsView() {
         </>
       )}
 
-      {activeSelectedContact ? (
-        <div className="sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeContactDetail(); }}>
-          <section className="form-sheet contact-detail-sheet" role="dialog" aria-modal="true">
-            <div className="sheet-heading">
-              <div><p className="eyebrow">KİŞİ DETAYI</p><h2>{activeSelectedContact.fullName ?? activeSelectedContact.label}</h2><span className="sheet-subtitle">{contactRoleLabels[activeSelectedContact.roles[0] ?? "unknown"]} · {contactSourceLabels[activeSelectedContact.source]}</span></div>
-              <button className="icon-action" aria-label="Kapat" type="button" onClick={closeContactDetail}><X size={20} /></button>
-            </div>
-            <div className="contact-detail-actions">
-              <button className="primary-action inline-action" type="button" onClick={() => router.push(`/capture?contactId=${encodeURIComponent(activeSelectedContact.id)}`)}><MessageSquarePlus size={16} /> Temas kaydet</button>
-              <button className="secondary-action inline-action" type="button" onClick={() => router.push(`/listings?action=add-listing&ownerContactId=${encodeURIComponent(activeSelectedContact.id)}`)}><Building2 size={16} /> Yetkili portföy</button>
-              <button className="secondary-action inline-action" type="button" onClick={() => { closeContactDetail(); setReferralSource(activeSelectedContact); }}><UserRoundPlus size={16} /> Referans</button>
-            </div>
-            <div className="contact-detail-facts"><div><span>Telefon</span><strong>{activeSelectedContact.phone ?? "Eklenmedi"}</strong></div><div><span>Tanışma yeri</span><strong>{activeSelectedContact.metAtPlace || "Belirtilmedi"}</strong></div><div><span>Son temas</span><strong>{relativeDate(activeSelectedContact.relationship.lastTouchAt)}</strong></div><div><span>Sonraki adım</span><strong>{nextActionLabel(activeSelectedContact)}</strong></div></div>
-            {activeSelectedContact.memory.keyThingsToRemember.length ? <div className="contact-detail-section"><p className="eyebrow">HATIRLANACAKLAR</p><ul>{activeSelectedContact.memory.keyThingsToRemember.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}
-            <div className="contact-detail-section"><p className="eyebrow">GAYRİMENKUL HAFIZASI</p><ContactMemoryHighlights memory={activeSelectedContact.memory} /></div>
-            <ContactInteractionTimeline contactId={activeSelectedContact.id} />
-            <div className="contact-detail-section"><p className="eyebrow">UYUM</p><div className="privacy-status"><span className={activeSelectedContact.privacy.noticeStatus === "completed" ? "compliant" : "pending"}>{activeSelectedContact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</span><span className={activeSelectedContact.privacy.marketingConsent === "withdrawn" ? "withdrawn" : ""}>{activeSelectedContact.privacy.marketingConsent === "granted" ? "Pazarlama izni var" : activeSelectedContact.privacy.marketingConsent === "withdrawn" ? "İletişim istemiyor" : "Pazarlama izni bilinmiyor"}</span></div></div>
-            <div className="contact-detail-footer"><button className="secondary-action inline-action" onClick={() => { closeContactDetail(); setPrivacyEditing(activeSelectedContact); setPrivacy(privacyDraft(activeSelectedContact)); }} type="button"><ShieldCheck size={16} /> Uyumu düzenle</button><button className="secondary-action inline-action" onClick={() => { closeContactDetail(); openEdit(activeSelectedContact); }} type="button"><Pencil size={16} /> Düzenle</button><button className="secondary-action danger-secondary inline-action" onClick={() => requestArchive(activeSelectedContact)} type="button"><Archive size={16} /> Arşivle</button></div>
-          </section>
-        </div>
-      ) : null}
-
       {panelOpen ? (
-        <div className="sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setPanelOpen(false); }}>
+        <div className="sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeContactForm(); }}>
           <section className="form-sheet" role="dialog" aria-modal="true" aria-labelledby="contact-form-title">
-            <div className="sheet-heading"><div><p className="eyebrow">HIZLI KAYIT</p><h2 id="contact-form-title">{editing ? "Kişiyi düzenle" : "Yeni kişi"}</h2></div><button className="icon-action" aria-label="Kapat" type="button" onClick={() => setPanelOpen(false)}><X size={20} /></button></div>
+            <div className="sheet-heading"><div><p className="eyebrow">HIZLI KAYIT</p><h2 id="contact-form-title">{editing ? "Kişiyi düzenle" : "Yeni kişi"}</h2></div><button className="icon-action" aria-label="Kapat" type="button" onClick={closeContactForm}><X size={20} /></button></div>
             <form className="form-stack" onSubmit={submit}>
-              <label>Ad, soyad veya tanımlayıcı<SpInput autoFocus value={draft.fullName} onChange={(event) => setDraft({ ...draft, fullName: event.target.value })} required /></label>
+              <label>Ad soyad<SpInput autoFocus value={draft.fullName} onChange={(event) => setDraft({ ...draft, fullName: event.target.value })} required /></label>
+              <label>İç etiket <span className="optional">isteğe bağlı · müşteriye gösterilmez</span><SpInput value={draft.internalLabel ?? ""} onChange={(event) => setDraft({ ...draft, internalLabel: event.target.value })} placeholder="Örn. Marina açık ev · sıcak aday" /></label>
               <label>Telefon <span className="optional">isteğe bağlı</span><PhoneField value={draft.phone} onChange={(phone) => setDraft({ ...draft, phone })} /></label>
               <label>Tanışma yeri <span className="optional">isteğe bağlı</span><SpInput value={draft.metAtPlace} onChange={(event) => setDraft({ ...draft, metAtPlace: event.target.value })} placeholder="Örn. Marina açık ev etkinliği" /></label>
               <div className="form-row">

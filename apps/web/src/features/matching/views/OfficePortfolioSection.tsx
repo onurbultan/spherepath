@@ -58,7 +58,7 @@ function PortfolioMatchCard({ match, nearMiss = false }: { match: PortfolioMatch
   const [draftText, setDraftText] = useState<string | null>(null);
   const [usedTemplate, setUsedTemplate] = useState(false);
 
-  async function copyMessage() {
+  async function prepareMessage() {
     setCopyState("drafting");
     setDraftText(null);
     // The personalised draft is a nicety; a failure must never cost the advisor the message.
@@ -69,17 +69,10 @@ function PortfolioMatchCard({ match, nearMiss = false }: { match: PortfolioMatch
       // keep the template
     }
     setUsedTemplate(draft.source === "template");
-    // Shown before it is copied: this text goes to a customer over the advisor's
-    // own name, and a clipboard that refuses used to take the whole draft with it.
+    // Preview before copying: this text goes to a customer under the advisor's
+    // name, so opening a draft must not mutate the clipboard by itself.
     setDraftText(draft.message);
     setCopyState("idle");
-    try {
-      await navigator.clipboard.writeText(draft.message);
-      setCopyState("copied");
-      window.setTimeout(() => setCopyState("idle"), 2500);
-    } catch {
-      setCopyState("failed");
-    }
   }
 
   async function copyDraft() {
@@ -112,7 +105,7 @@ function PortfolioMatchCard({ match, nearMiss = false }: { match: PortfolioMatch
     {copyState === "failed" ? <p className="form-error compact-error">Panoya kopyalanamadı; metni yukarıdan seçip alabilirsiniz.</p> : null}
     {copyState === "copied" && usedTemplate ? <p className="compact-error">Kişiye özel taslak üretilemedi; standart metin kopyalandı.</p> : null}
     <div className="match-card-actions">
-      <button className="secondary-action compact-action" disabled={copyState === "drafting"} onClick={() => void copyMessage()} type="button">{copyState === "copied" ? <Check size={16} /> : <Copy size={16} />}{copyState === "drafting" ? "Taslak hazırlanıyor…" : copyState === "copied" ? "Kopyalandı" : "Mesaj taslağı"}</button>
+      <button className="secondary-action compact-action" disabled={copyState === "drafting"} onClick={() => void prepareMessage()} type="button"><Sparkles size={16} />{copyState === "drafting" ? "Taslak hazırlanıyor…" : "Mesaj taslağı"}</button>
       <Link className="secondary-action compact-action" href={`/capture?contactId=${encodeURIComponent(match.contactId)}`}>Teması kaydet</Link>
       {match.portfolioItem.listingUrl ? <a className="text-link" href={match.portfolioItem.listingUrl} rel="noreferrer" target="_blank">İlanı aç <ExternalLink size={14} /></a> : null}
     </div>
@@ -196,10 +189,10 @@ export function OfficePortfolioSection({ openSignal = 0 }: { openSignal?: number
   }
 
   return <section className="office-pool-section" id="office-pool" aria-labelledby="office-pool-title">
-    <div className="inline-section-heading"><div><h2 id="office-pool-title">Ofis havuzu eşleşmeleri</h2><span>kayıtlı alıcı taleplerinle ortak havuzun açıklanabilir kesişimi</span></div><div className="office-pool-heading-actions"><button className="text-button" disabled={!items.length} onClick={() => setShowPool((current) => !current)} type="button">{showPool ? "Eşleşmelere dön" : `Tüm havuzu gör · ${items.length}`}</button></div></div>
+    <div className="inline-section-heading"><div><h2 id="office-pool-title">Ofis havuzu eşleşmeleri</h2><span>satılık–alıcı ve kiralık–kiracı taleplerinin açıklanabilir kesişimi</span></div><div className="office-pool-heading-actions"><button className="text-button" disabled={!items.length} onClick={() => setShowPool((current) => !current)} type="button">{showPool ? "Eşleşmelere dön" : `Tüm havuzu gör · ${items.length}`}</button></div></div>
     {!showPool && matches.length ? <div className="match-strip" aria-label="Uygun eşleşmeler">{matches.slice(0, 3).map((match) => <PortfolioMatchCard key={`${match.contactId}-${match.portfolioItem.id}`} match={match} />)}</div> : null}
     {!showPool && nearMisses.length ? <div className="near-miss-block"><div className="near-miss-heading"><p className="eyebrow">YAKIN AMA TAM DEĞİL</p><p className="context-sentence">Tek bir kriterde kaçırıyor. Göstermeye değer mi, kararı sende.</p></div><div className="match-strip" aria-label="Yakın eşleşmeler">{nearMisses.slice(0, 3).map((match) => <PortfolioMatchCard key={`near-${match.contactId}-${match.portfolioItem.id}`} match={match} nearMiss />)}</div></div> : null}
-    {!showPool && !matches.length && items.length && !matchesQuery.isPending ? <SpCard className="office-pool-empty"><Network size={22} /><div><strong>Henüz uygun eşleşme yok</strong><p>Havuzdaki portföyler kayıtlı alıcı talepleriyle karşılaştırıldı.</p></div></SpCard> : null}
+    {!showPool && !matches.length && items.length && !matchesQuery.isPending ? <SpCard className="office-pool-empty"><Network size={22} /><div><strong>Henüz uygun eşleşme yok</strong><p>Havuzdaki satılık ve kiralık portföyler kayıtlı alıcı ve kiracı talepleriyle karşılaştırıldı.</p></div></SpCard> : null}
     {error && !open ? <p className="form-error notice">{error}</p> : null}{itemsQuery.isPending || matchesQuery.isPending ? <div className="content-state compact"><RefreshCw className="spin" size={20} /> Ofis havuzu taranıyor…</div> : itemsQuery.error || matchesQuery.error ? <p className="form-error notice">{messageFrom(itemsQuery.error ?? matchesQuery.error)}</p> : items.length === 0 ? <SpCard className="office-pool-empty"><Network size={22} /><div><strong>Ortak havuz henüz boş</strong><p>Bir WhatsApp portföy mesajını yapıştırarak ilk kaydı oluşturabilirsiniz.</p></div></SpCard> : null}
     {showPool && items.length ? <div className="portfolio-pool-grid">{items.slice(0, 12).map((item) => <SpCard className="pool-item-card" key={item.id}><div className="opportunity-top"><span className="stage-badge">{portfolioSourceLabels[item.source]}</span><span>{portfolioAuthorizationLabels[item.authorizationType]}</span></div><h3>{item.headline}</h3><p>{item.location} · {propertyTypeLabels[item.propertyType]}</p><strong>{item.askingPrice ? money(item.askingPrice.amount, item.askingPrice.currency) : "Fiyat belirtilmedi"}</strong><small>{item.sourceAuthorName || item.sharedByName} tarafından paylaşıldı</small><div className="pool-card-actions">{item.listingUrl ? <a className="text-link" href={item.listingUrl} rel="noreferrer" target="_blank">İlanı aç <ExternalLink size={14} /></a> : null}{session && (session.role === "broker" || session.uid === item.ownerUid) ? <button className="text-button danger" disabled={withdrawingId === item.id} onClick={() => void withdraw(item.id)} type="button">{withdrawingId === item.id ? "Kaldırılıyor…" : "Havuzdan kaldır"}</button> : null}</div></SpCard>)}</div> : null}
     {open ? <div className="sheet-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) close(); }}><section className="form-sheet wide-sheet" role="dialog" aria-modal="true"><div className="sheet-heading"><div><p className="eyebrow">ORTAK PORTFÖY</p><h2>{draft && batchTotal > 1 ? `Portföyleri incele · ${savedBatchCount + 1}/${batchTotal}` : "Mesajdan portföy oluştur"}</h2></div><button className="icon-action" aria-label="Kapat" onClick={close} type="button"><X size={20} /></button></div>

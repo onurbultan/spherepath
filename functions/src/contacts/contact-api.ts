@@ -250,6 +250,8 @@ export const updateContact = onCall(callableOptions(), async (request): Promise<
     const now = Timestamp.now();
     transaction.update(reference, {
       fullName: draft.fullName,
+      internalLabel: draft.internalLabel || null,
+      label: null,
       ...contactPhoneFields(draft.phone),
       metAtPlace: draft.metAtPlace || null,
       source: draft.source,

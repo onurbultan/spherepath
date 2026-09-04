@@ -5,14 +5,18 @@ import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
 import {
   analyzeInboxItemSchema,
+  applyInteractionToRelationship,
   classifyInboxText,
   contactMemorySchema,
   createContact as createContactEntity,
   createOpportunity as createOpportunityEntity,
   createPortfolioItem,
   createInboxItemSchema,
+  createInteraction,
   emptyVoiceInsights,
   inboxItemIdSchema,
+  inboxKindAfterAnalysis,
+  inboxOpportunityType,
   inboxItemKinds,
   inboxPageQuerySchema,
   opportunityTypeLabels,
@@ -55,12 +59,11 @@ async function analyzeText(text: string, knownContactName: string | null = null)
   }
   extraction = normalizeVoiceExtraction(extraction, text, knownContactName);
   extraction = normalizeVoiceActionTiming(extraction, text, now);
-  const transaction = extraction.insights.propertyPreferences.transactionType;
   return {
     insights: extraction.insights,
     nextActionType: extraction.interaction.nextActionType,
     nextActionAt: actionAtFrom(extraction.interaction.daysFromNow, extraction.interaction.actionTime, now),
-    opportunityType: transaction === "rent" ? "tenant_requirement" : "buyer_requirement",
+    opportunityType: inboxOpportunityType(extraction.insights),
     engine: extraction.provenance.engine,
   };
 }
@@ -292,7 +295,14 @@ export const analyzeInboxNote = onDocumentCreated(
         const contactId = (snapshot.data()!.linkedContactId ?? null) as string | null;
         const contactRef = bornHere && contactId ? db.collection("contacts").doc(contactId) : null;
         const contactSnapshot = contactRef ? await transaction.get(contactRef) : null;
-        transaction.update(reference, { analysis, analysisStatus: "ready", updatedAt: Timestamp.now() });
+        const current = snapshot.data()!;
+        const createdAt = current.createdAt as Timestamp | undefined;
+        const updatedAt = current.updatedAt as Timestamp | undefined;
+        const hasNotBeenEdited = Boolean(createdAt && updatedAt && createdAt.isEqual(updatedAt));
+        const analyzedKind = hasNotBeenEdited
+          ? inboxKindAfterAnalysis(current.kind as InboxItem["kind"], current.source as InboxItem["source"], (current.linkedContactId ?? null) as string | null, analysis)
+          : current.kind as InboxItem["kind"];
+        transaction.update(reference, { analysis, analysisStatus: "ready", kind: analyzedKind, updatedAt: Timestamp.now() });
         if (!contactSnapshot?.exists || contactSnapshot.data()!.deletedAt !== null) return;
         const now = Date.now();
         const currentMemory = contactMemorySchema.parse({
@@ -347,7 +357,15 @@ export const processInboxItem = onCall(callableOptions, async (request): Promise
         : parsed.data.action === "portfolio"
           ? db.collection("portfolioItems").doc()
           : db.collection("contacts").doc(parsed.data.contactId);
-    const stageEventRef = parsed.data.action === "requirement" ? db.collection("stageEvents").doc() : null;
+    const personInteractionRef = parsed.data.action === "person" && parsed.data.recordInteraction
+      ? db.collection("interactions").doc()
+      : null;
+    const personOpportunityRef = parsed.data.action === "person" && parsed.data.opportunityType
+      ? db.collection("opportunities").doc()
+      : null;
+    const stageEventRef = parsed.data.action === "requirement" || personOpportunityRef
+      ? db.collection("stageEvents").doc()
+      : null;
     let entityId = entityRef.id;
     await db.runTransaction(async (transaction) => {
       const [itemSnapshot, receipt] = await Promise.all([transaction.get(itemRef), transaction.get(commandRef)]);
@@ -366,6 +384,7 @@ export const processInboxItem = onCall(callableOptions, async (request): Promise
       if (contactSnapshot && (!contactSnapshot.exists || !canManage(contactSnapshot.data()!, claims) || contactSnapshot.data()!.deletedAt !== null)) throw new HttpsError("not-found", "Contact was not found.");
       const now = Date.now(); const nowStamp = Timestamp.fromMillis(now);
       let label: string;
+      const appliedActions: DocumentData[] = [];
       let linkedContactId = itemSnapshot.data()!.linkedContactId ?? null;
       if (parsed.data.action === "person") {
         const contact = createContactEntity(parsed.data.contact, { officeId: claims.officeId, ownerUid: claims.uid }, now);
@@ -373,11 +392,75 @@ export const processInboxItem = onCall(callableOptions, async (request): Promise
         // what they are looking for -- and the advisor pressed the button while
         // reading it. Creating the name and dropping the rest left the contact
         // empty of everything that makes them worth having.
-        const readInsights = (itemSnapshot.data()!.analysis as DocumentData | undefined)?.insights;
+        const readInsights = parsed.data.approvedInsights
+          ?? (itemSnapshot.data()!.analysis as DocumentData | undefined)?.insights;
         const memory = readInsights
           ? mergeVoiceInsightsIntoContactMemory(contact.memory, voiceInsightsSchema.parse(readInsights), now)
           : contact.memory;
-        transaction.create(entityRef, storedContact({ ...contact, memory }));
+        let relationship = contact.relationship;
+        if (personInteractionRef) {
+          const safeText = String(itemSnapshot.data()!.safeText ?? "").trim();
+          const interaction = createInteraction({
+            contactId: entityRef.id,
+            channel: parsed.data.contact.source === "inbound_call" ? "phone" : "other",
+            objective: parsed.data.opportunityType === "seller_listing" || parsed.data.opportunityType === "landlord_listing"
+              ? "request_listing"
+              : "get_acquainted",
+            direction: "mutual",
+            outcome: safeText.length >= 2 ? safeText : "Görüşme kaydedildi",
+            askOutcome: "not_applicable",
+            nextActionType: parsed.data.contact.nextActionType ?? null,
+            nextActionAt: parsed.data.contact.nextActionAt ?? null,
+            noteSummary: String(itemSnapshot.data()!.summary ?? "").slice(0, 1_000),
+            occurredAt: now,
+          }, { officeId: claims.officeId, ownerUid: claims.uid }, now);
+          relationship = applyInteractionToRelationship(relationship, interaction);
+          transaction.create(personInteractionRef, {
+            ...interaction,
+            occurredAt: Timestamp.fromMillis(interaction.occurredAt),
+            nextActionAt: timestamp(interaction.nextActionAt),
+            createdAt: nowStamp,
+          });
+          appliedActions.push({ type: "interaction_created", entityId: personInteractionRef.id, label: "Görüşme kaydedildi", appliedAt: nowStamp, undoneAt: null });
+        }
+        transaction.create(entityRef, storedContact({ ...contact, memory, relationship }));
+        if (personOpportunityRef && parsed.data.opportunityType) {
+          const opportunity = createOpportunityEntity({
+            subjectContactId: entityRef.id,
+            type: parsed.data.opportunityType,
+            nextActionType: parsed.data.contact.nextActionType!,
+            nextActionAt: parsed.data.contact.nextActionAt!,
+          }, { officeId: claims.officeId, ownerUid: claims.uid }, now);
+          transaction.create(personOpportunityRef, {
+            ...opportunity,
+            qualifiedAt: nowStamp,
+            stageEnteredAt: nowStamp,
+            nextActionAt: Timestamp.fromMillis(parsed.data.contact.nextActionAt!),
+            closedAt: null,
+            deletedAt: null,
+            createdAt: nowStamp,
+            updatedAt: nowStamp,
+          });
+          transaction.create(stageEventRef!, {
+            officeId: claims.officeId,
+            ownerUid: claims.uid,
+            entityType: "opportunity",
+            entityId: personOpportunityRef.id,
+            fromStage: null,
+            toStage: "new_lead",
+            reason: "Yeni kişi notundan oluşturuldu",
+            commandId: envelope.commandId,
+            occurredAt: nowStamp,
+            createdAt: nowStamp,
+          });
+          appliedActions.push({
+            type: "opportunity_created",
+            entityId: personOpportunityRef.id,
+            label: `${opportunityTypeLabels[parsed.data.opportunityType]} oluşturuldu`,
+            appliedAt: nowStamp,
+            undoneAt: null,
+          });
+        }
         linkedContactId = entityRef.id;
         label = `${parsed.data.contact.fullName} kişi olarak oluşturuldu`;
       } else if (parsed.data.action === "requirement") {
@@ -409,7 +492,11 @@ export const processInboxItem = onCall(callableOptions, async (request): Promise
       transaction.update(itemRef, {
         linkedContactId,
         status: "applied",
-        appliedActions: [...actions, { type: actionType, entityId: entityRef.id, label, appliedAt: nowStamp, undoneAt: null }],
+        appliedActions: [
+          ...actions,
+          { type: actionType, entityId: entityRef.id, label, appliedAt: nowStamp, undoneAt: null },
+          ...appliedActions,
+        ],
         updatedAt: nowStamp,
       });
       transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "processInboxItem", inboxItemId: itemRef.id, action: parsed.data.action, entityId: entityRef.id, createdAt: nowStamp });
@@ -443,16 +530,29 @@ export const undoInboxApplication = onCall(callableOptions, async (request): Pro
     await db.runTransaction(async (transaction) => {
       const [snapshot, receipt] = await Promise.all([transaction.get(ref), transaction.get(commandRef)]); if (receipt.exists) return;
       if (!snapshot.exists || !canManage(snapshot.data()!, claims)) throw new HttpsError("not-found", "Inbox item was not found.");
-      const data = snapshot.data()!; const actions = (data.appliedActions ?? []) as DocumentData[]; const contactAction = actions.find((action) => action.type === "contact_created" && action.undoneAt === null);
+      const data = snapshot.data()!; const actions = (data.appliedActions ?? []) as DocumentData[];
       const now = Timestamp.now();
-      if (contactAction?.entityId) {
-        const contactRef = db.collection("contacts").doc(contactAction.entityId as string); const contact = await transaction.get(contactRef);
-        if (contact.exists) {
-          if (!canManage(contact.data()!, claims)) throw new HttpsError("permission-denied", "Created contact is outside your workspace.");
-          const updatedAt = millis(contact.data()!.updatedAt) ?? 0; const appliedAt = millis(contactAction.appliedAt) ?? 0;
-          if (updatedAt > appliedAt + 1_000) throw new HttpsError("failed-precondition", "Kişi daha sonra düzenlendi; otomatik geri alma yapılamadı.");
-          transaction.update(contactRef, { deletedAt: now, updatedAt: now });
-        }
+      const generatedActions = actions.filter((action) => action.undoneAt === null && typeof action.entityId === "string"
+        && ["contact_created", "interaction_created", "opportunity_created"].includes(action.type as string));
+      const generatedRefs = generatedActions.map((action) => action.type === "contact_created"
+        ? db.collection("contacts").doc(action.entityId as string)
+        : action.type === "opportunity_created"
+          ? db.collection("opportunities").doc(action.entityId as string)
+          : db.collection("interactions").doc(action.entityId as string));
+      const generatedSnapshots = await Promise.all(generatedRefs.map((generatedRef) => transaction.get(generatedRef)));
+      for (const [index, generatedSnapshot] of generatedSnapshots.entries()) {
+        if (!generatedSnapshot?.exists) continue;
+        const generated = generatedSnapshot.data()!;
+        if (!canManage(generated, claims)) throw new HttpsError("permission-denied", "Created record is outside your workspace.");
+        const action = generatedActions[index]!;
+        const updatedAt = millis(generated.updatedAt) ?? millis(generated.createdAt) ?? 0;
+        const appliedAt = millis(action.appliedAt) ?? 0;
+        if (updatedAt > appliedAt + 1_000) throw new HttpsError("failed-precondition", "Oluşturulan kayıtlardan biri daha sonra düzenlendi; otomatik geri alma yapılamadı.");
+      }
+      for (const [index, generatedRef] of generatedRefs.entries()) {
+        if (!generatedSnapshots[index]?.exists) continue;
+        if (generatedActions[index]!.type === "interaction_created") transaction.delete(generatedRef);
+        else transaction.update(generatedRef, { deletedAt: now, updatedAt: now });
       }
       transaction.update(ref, { status: "needs_review", appliedActions: actions.map((action) => action.undoneAt === null ? { ...action, undoneAt: now } : action), updatedAt: now });
       transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "undoInboxApplication", inboxItemId: ref.id, createdAt: now });

@@ -38,7 +38,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="capture"
           options={{
-            title: "Kayıt",
+            title: "Temas kaydet",
             tabBarIcon: () => <Plus color={theme.onAsk} size={27} />,
             tabBarItemStyle: { marginTop: -16, height: 62, borderRadius: 31, backgroundColor: theme.ask, maxWidth: 62 },
             tabBarLabelStyle: { color: theme.onAsk, fontFamily: "Karla_700Bold", fontSize: 10 },

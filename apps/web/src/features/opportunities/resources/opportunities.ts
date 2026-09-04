@@ -2,6 +2,7 @@ import {
   createCommandId,
   type Contact,
   type Opportunity,
+  type OpportunityCriteriaUpdate,
   type OpportunityDraft,
   type OpportunityStage,
   type OpportunityStageCorrection,
@@ -42,4 +43,8 @@ export async function moveOpportunity(session: WorkspaceSession, transition: Opp
 
 export async function correctOpportunity(session: WorkspaceSession, correction: OpportunityStageCorrection): Promise<{ opportunityId: string; toStage: OpportunityStage; eventId: string }> {
   return apiClient.command<OpportunityStageCorrection, { opportunityId: string; toStage: OpportunityStage; eventId: string }>("correctOpportunityStage", correction, createCommandId(session.uid));
+}
+
+export async function updateOpportunityCriteria(session: WorkspaceSession, input: OpportunityCriteriaUpdate): Promise<{ opportunityId: string }> {
+  return apiClient.command<OpportunityCriteriaUpdate, { opportunityId: string }>("updateOpportunityCriteria", input, createCommandId(session.uid));
 }

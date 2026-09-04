@@ -17,7 +17,7 @@ async function recordMeeting(page: Page, meeting: Meeting, first = false) {
   await expect(page.getByRole("heading", { name: "Temas kaydet" })).toBeVisible();
   await page.getByRole("button", { name: first ? "Yeni kişi ekle" : "Yeni kişi", exact: true }).click();
   const personDialog = page.getByRole("dialog", { name: "Yeni kişi ekle" });
-  await personDialog.getByLabel("Ad, soyad veya tanımlayıcı").fill(meeting.name);
+  await personDialog.getByLabel("Ad soyad", { exact: true }).fill(meeting.name);
   await personDialog.getByLabel("Telefon numarası").fill(meeting.phone);
   await personDialog.getByLabel("Tanışma yeri isteğe bağlı").fill(meeting.place);
   await personDialog.getByLabel("Rol").selectOption({ label: meeting.role });
@@ -95,6 +95,7 @@ test("ilk kez kullanan danışman beş görüşmelik gününü kayıpsız yönet
   await listingDialog.getByLabel("Oda sayısı").fill("4");
   await listingDialog.getByLabel("m²").fill("240");
   await listingDialog.getByRole("button", { name: "Bahçeli" }).click();
+  await listingDialog.getByLabel("Yetki").selectOption({ label: "Tek yetkili" });
   await listingDialog.getByRole("button", { name: "Portföyü oluştur" }).click();
   await expect(page.getByRole("button", { name: "Fiyatı tamamla" })).toBeVisible();
 
@@ -108,6 +109,12 @@ test("ilk kez kullanan danışman beş görüşmelik gününü kayıpsız yönet
   await pricingDialog.getByRole("button", { name: "Fiyatı kaydet" }).click();
   await expect(page.getByText("₺18.500.000").first()).toBeVisible();
   await page.getByRole("button", { name: /Kuşçular Mahallesi 1204/ }).click();
+  const readinessDialog = page.getByRole("dialog");
+  await readinessDialog.getByLabel("Yetki sözleşmesi / dayanağı").selectOption("verified");
+  await readinessDialog.getByLabel("EİDS").selectOption("verified");
+  await readinessDialog.getByLabel("Fotoğraf ve medya").selectOption("ready");
+  await readinessDialog.getByRole("button", { name: "Yayın hazırlığını kaydet" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Durumu güncelle" }).click();
   const statusDialog = page.getByRole("dialog");
   await statusDialog.getByLabel("Not isteğe bağlı").fill("Fotoğraf çekimi ve ilan metni hazır.");
   await statusDialog.getByRole("button", { name: "Durumu kaydet" }).click();

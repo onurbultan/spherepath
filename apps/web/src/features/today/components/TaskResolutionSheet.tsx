@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { CalendarClock, Check, CircleSlash, PhoneOff, X } from "lucide-react";
-import { dailyTaskOutcomeSchema, nextActionTypeLabels, nextActionTypes, type DailyTaskOutcome, type TodayTask } from "@spherepath/shared";
+import { contactRoleLabels, dailyTaskOutcomeSchema, nextActionTypeLabels, nextActionTypes, opportunityStageLabel, opportunityTypeLabels, type DailyTaskOutcome, type TodayTask } from "@spherepath/shared";
 import { QuickDateField } from "@/shared/ui/QuickDateField";
 import { useSheetDismiss } from "@/shared/ui/useSheetDismiss";
 import { SpSelect, SpTextarea } from "@/shared/ui/SpField";
@@ -26,6 +26,14 @@ export function tomorrowAtTen(): string {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
+function taskContext(task: TodayTask): string[] {
+  const items: string[] = [];
+  if (task.contactRoles?.length) items.push(task.contactRoles.map((role) => contactRoleLabels[role]).join(" · "));
+  if (task.lastTouchAt) items.push(`Son temas ${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short" }).format(task.lastTouchAt)}`);
+  if (task.opportunityType && task.opportunityStage) items.push(`${opportunityTypeLabels[task.opportunityType]} · ${opportunityStageLabel(task.opportunityStage, task.opportunityType)}`);
+  return items;
+}
+
 /** Where the advisor goes to write up what actually happened on this task. */
 export function taskRecordHref(task: TodayTask): string {
   // Finishing a listing means entering its price, which happens on the
@@ -34,6 +42,7 @@ export function taskRecordHref(task: TodayTask): string {
   // Returning a call starts on the contact, where the dial button is.
   if (task.type === "return_call") return `/contacts/__contact__?contactId=${encodeURIComponent(task.contactId)}`;
   if (task.type === "complete_listing") return "/listings";
+  if (task.dealId) return "/listings#closing";
   return task.opportunityId
     ? `/opportunities?opportunityId=${encodeURIComponent(task.opportunityId)}`
     : `/capture?contactId=${encodeURIComponent(task.contactId)}`;
@@ -92,6 +101,7 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve }
         <div><p className="eyebrow">GÖREV SONUCU</p><h2 id="task-resolution-title">{task.title}</h2><span className="sheet-subtitle">{task.reason} · {taskDueLabel(task.dueAt)}</span></div>
         <button className="icon-action" aria-label="Kapat" disabled={pending} onClick={onClose} type="button"><X size={20} /></button>
       </div>
+      {taskContext(task).length ? <p className="privacy-hint">{taskContext(task).join(" · ")}</p> : null}
       <div className="task-resolution-choices" role="group" aria-label="Görev sonucu">
         <button className={status === "completed" ? "selected" : ""} onClick={() => { setStatus("completed"); setNote(""); }} type="button"><Check size={17} /><span><strong>Tamamlandı</strong><small>Bu aksiyonu kapat</small></span></button>
         <button className={status === "rescheduled" ? "selected" : ""} onClick={() => { setStatus("rescheduled"); setNote(""); }} type="button"><CalendarClock size={17} /><span><strong>Ertele</strong><small>Yeni tarih ve aksiyon belirle</small></span></button>

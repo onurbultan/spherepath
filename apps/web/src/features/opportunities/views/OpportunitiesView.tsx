@@ -1,17 +1,29 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, BriefcaseBusiness, LayoutGrid, List, Plus, RefreshCw, Search, X } from "lucide-react";
+import {
+  ArrowRight,
+  BriefcaseBusiness,
+  LayoutGrid,
+  List,
+  Plus,
+  RefreshCw,
+  Search,
+  X,
+} from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   apiQueryKeys,
+  currencyCodes,
   isOwnerOpportunity,
   nextActionTypeLabels,
   nextActionTypes,
   nextOpportunityStages,
   opportunitySituation,
+  opportunityCriteriaUpdateSchema,
+  opportunityTransactionType,
   opportunityDraftSchema,
   opportunityStageCorrectionSchema,
   opportunityStageLabel,
@@ -19,21 +31,38 @@ import {
   opportunityTransitionSchema,
   opportunityTypeLabels,
   opportunityTypes,
+  parseMoneyInput,
   propertyTypeLabels,
+  propertyTypes,
   suggestOpportunityTypeForRoles,
+  type CurrencyCode,
   type NextActionType,
   type OpportunityStage,
   type OpportunityType,
+  type PropertyType,
 } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
-import { listContacts } from "@/features/contacts/resources/contacts";
+import { listContacts, type ContactRecord } from "@/features/contacts/resources/contacts";
 import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
 import { useSheetDismiss } from "@/shared/ui/useSheetDismiss";
 import { ContactCombobox } from "@/shared/ui/ContactCombobox";
 import { QuickDateField } from "@/shared/ui/QuickDateField";
-import { correctOpportunity, getOpportunityDetail, listOpportunities, moveOpportunity, saveOpportunity, type OpportunityRecord } from "../resources/opportunities";
+import {
+  correctOpportunity,
+  getOpportunityDetail,
+  listOpportunities,
+  moveOpportunity,
+  saveOpportunity,
+  updateOpportunityCriteria,
+  type OpportunityRecord,
+} from "../resources/opportunities";
 import { SpInput, SpSelect, SpTextarea } from "@/shared/ui/SpField";
+import { MoneyField } from "@/shared/ui/MaskedFields";
+import {
+  opportunitiesForJourney,
+  type OpportunityJourneyFilter,
+} from "../viewModels/opportunity-list-scope";
 
 function localDateTime(days = 1): string {
   const date = new Date(Date.now() + days * 86_400_000);
@@ -50,23 +79,76 @@ function localDateTimeFrom(timestamp: number | null): string {
 }
 
 function messageFrom(error: unknown) {
-  return error instanceof Error ? error.message : "Fırsat işlemi tamamlanamadı.";
+  return error instanceof Error
+    ? error.message
+    : "Fırsat işlemi tamamlanamadı.";
 }
 
-const dateTime = (value: number) => new Intl.DateTimeFormat("tr-TR", {
-  day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
-}).format(value);
+const dateTime = (value: number) =>
+  new Intl.DateTimeFormat("tr-TR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
 
-const activeStages: OpportunityStage[] = ["new_lead", "first_contact", "appointment", "valuation", "mandate_offer"];
-const stageTone: Partial<Record<OpportunityStage, string>> = { new_lead: "cool", first_contact: "deed", appointment: "deed", valuation: "warm", mandate_offer: "good" };
+const activeStages: OpportunityStage[] = [
+  "new_lead",
+  "first_contact",
+  "appointment",
+  "valuation",
+  "mandate_offer",
+];
+const stageTone: Partial<Record<OpportunityStage, string>> = {
+  new_lead: "cool",
+  first_contact: "deed",
+  appointment: "deed",
+  valuation: "warm",
+  mandate_offer: "good",
+};
 type OpportunityOutcomeFilter = "open" | "won" | "lost";
-type OpportunityJourneyFilter = "owner" | "requirement";
 
-function budgetLabel(memory: OpportunityRecord["subjectContactMemory"]): string | null {
-  const budget = memory.propertyPreferences.budgetRange;
+interface CriteriaForm {
+  locations: string;
+  propertyTypes: PropertyType[];
+  budgetMin: string;
+  budgetMax: string;
+  currency: CurrencyCode;
+  bedrooms: string;
+  livingRooms: string;
+  areaMin: string;
+  mustHaves: string;
+  timeline: string;
+}
+
+function preferencesFor(opportunity: OpportunityRecord) {
+  return opportunitySituation(opportunity.subjectContactMemory, opportunity.type)?.propertyPreferences
+    ?? opportunity.subjectContactMemory.propertyPreferences;
+}
+
+function withCurrentContactMemory(opportunity: OpportunityRecord, contacts: readonly ContactRecord[]): OpportunityRecord {
+  const contact = contacts.find((item) => item.id === opportunity.subjectContactId);
+  return contact ? { ...opportunity, subjectContactName: contact.fullName ?? opportunity.subjectContactName, subjectContactMemory: contact.memory } : opportunity;
+}
+
+function optionalNumber(value: string): number | null {
+  const number = Number(value);
+  return value.trim() && Number.isFinite(number) ? number : null;
+}
+
+function budgetLabel(
+  preferences: OpportunityRecord["subjectContactMemory"]["propertyPreferences"],
+): string | null {
+  const budget = preferences.budgetRange;
   if (!budget) return null;
-  const formatter = new Intl.NumberFormat("tr-TR", { style: "currency", currency: budget.currency, maximumFractionDigits: 0 });
-  if (budget.min !== null && budget.max !== null) return `${formatter.format(budget.min)} – ${formatter.format(budget.max)}`;
+  const formatter = new Intl.NumberFormat("tr-TR", {
+    style: "currency",
+    currency: budget.currency,
+    maximumFractionDigits: 0,
+  });
+  if (budget.min !== null && budget.max !== null)
+    return `${formatter.format(budget.min)} – ${formatter.format(budget.max)}`;
   if (budget.min !== null) return `${formatter.format(budget.min)} ve üzeri`;
   return budget.max !== null ? `${formatter.format(budget.max)} ve altı` : null;
 }
@@ -76,16 +158,30 @@ function opportunityHighlights(opportunity: OpportunityRecord): string[] {
   // A contact selling one property while buying another keeps both situations;
   // showing the wrong one made two opportunities look identical on screen.
   const situation = opportunitySituation(memory, opportunity.type);
-  const preferences = situation?.propertyPreferences ?? memory.propertyPreferences;
+  const preferences =
+    situation?.propertyPreferences ?? memory.propertyPreferences;
   const highlights = [
-    preferences.propertyTypes.length ? preferences.propertyTypes.map((item) => propertyTypeLabels[item]).join(", ") : null,
-    preferences.preferredLocations.length ? preferences.preferredLocations.join(", ") : null,
-    budgetLabel(memory),
+    preferences.propertyTypes.length
+      ? preferences.propertyTypes
+          .map((item) => propertyTypeLabels[item])
+          .join(", ")
+      : null,
+    preferences.preferredLocations.length
+      ? preferences.preferredLocations.join(", ")
+      : null,
+    budgetLabel(preferences),
+    preferences.bedroomCountMin !== null
+      ? `${preferences.bedroomCountMin}+${preferences.livingRoomCountMin ?? 0} oda`
+      : null,
     preferences.areaMinM2 !== null ? `En az ${preferences.areaMinM2} m²` : null,
-    preferences.mustHaves[0] ? `Olmazsa olmaz: ${preferences.mustHaves[0]}` : null,
+    preferences.mustHaves[0]
+      ? `Olmazsa olmaz: ${preferences.mustHaves[0]}`
+      : null,
     preferences.timeline,
   ].filter((item): item is string => Boolean(item));
-  return highlights.length ? highlights.slice(0, 4) : memory.keyThingsToRemember.slice(0, 2);
+  return highlights.length
+    ? highlights.slice(0, 6)
+    : memory.keyThingsToRemember.slice(0, 2);
 }
 
 export function OpportunitiesView() {
@@ -94,10 +190,16 @@ export function OpportunitiesView() {
   const [referenceTime] = useState(Date.now);
   const { session } = useSession();
   const queryClient = useQueryClient();
-  const opportunitiesQuery = useQuery({ queryKey: apiQueryKeys.opportunities, queryFn: listOpportunities });
-  const contactsQuery = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts });
-  const opportunities = opportunitiesQuery.data ?? [];
+  const opportunitiesQuery = useQuery({
+    queryKey: apiQueryKeys.opportunities,
+    queryFn: listOpportunities,
+  });
+  const contactsQuery = useQuery({
+    queryKey: apiQueryKeys.contacts,
+    queryFn: listContacts,
+  });
   const contacts = contactsQuery.data ?? [];
+  const opportunities = (opportunitiesQuery.data ?? []).map((opportunity) => withCurrentContactMemory(opportunity, contacts));
   const [createOpen, setCreateOpen] = useState(false);
   const createRequested = searchParams.get("create") === "1";
   const requestedContactId = searchParams.get("contactId");
@@ -105,11 +207,18 @@ export function OpportunitiesView() {
   const [moving, setMoving] = useState<OpportunityRecord | null>(null);
   const [correcting, setCorrecting] = useState<OpportunityRecord | null>(null);
   const [selected, setSelected] = useState<OpportunityRecord | null>(null);
-  const [dismissedDeepLink, setDismissedDeepLink] = useState<string | null>(null);
+  const [criteriaEditing, setCriteriaEditing] = useState<OpportunityRecord | null>(null);
+  const [criteriaForm, setCriteriaForm] = useState<CriteriaForm>({ locations: "", propertyTypes: [], budgetMin: "", budgetMax: "", currency: "TRY", bedrooms: "", livingRooms: "", areaMin: "", mustHaves: "", timeline: "" });
+  const [dismissedDeepLink, setDismissedDeepLink] = useState<string | null>(
+    null,
+  );
   const requestedOpportunityId = searchParams.get("opportunityId");
-  const linkedOpportunity = requestedOpportunityId && dismissedDeepLink !== requestedOpportunityId
-    ? opportunities.find((opportunity) => opportunity.id === requestedOpportunityId) ?? null
-    : null;
+  const linkedOpportunity =
+    requestedOpportunityId && dismissedDeepLink !== requestedOpportunityId
+      ? (opportunities.find(
+          (opportunity) => opportunity.id === requestedOpportunityId,
+        ) ?? null)
+      : null;
   const activeSelected = selected ?? linkedOpportunity;
   const detailQuery = useQuery({
     queryKey: apiQueryKeys.opportunityDetail(activeSelected?.id ?? "none"),
@@ -118,69 +227,149 @@ export function OpportunitiesView() {
   });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [contactId, setContactId] = useState(searchParams.get("contactId") ?? "");
+  const [contactId, setContactId] = useState(
+    searchParams.get("contactId") ?? "",
+  );
   const [type, setType] = useState<OpportunityType>("seller_listing");
   const [typeWasChosen, setTypeWasChosen] = useState(false);
   const [actionType, setActionType] = useState<NextActionType>("call");
   const [actionAt, setActionAt] = useState(localDateTime());
-  const [targetStage, setTargetStage] = useState<OpportunityStage>("first_contact");
+  const [targetStage, setTargetStage] =
+    useState<OpportunityStage>("first_contact");
   const [reason, setReason] = useState("");
-  const [lostReason, setLostReason] = useState(""); const [lostKind, setLostKind] = useState<"lost" | "duplicate">("lost");
+  const [lostReason, setLostReason] = useState("");
+  const [lostKind, setLostKind] = useState<"lost" | "duplicate">("lost");
   const [correctionReason, setCorrectionReason] = useState("");
   const [view, setView] = useState<"board" | "list">("board");
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<OpportunityType | "all">("all");
-  const [journeyFilter, setJourneyFilter] = useState<OpportunityJourneyFilter>("owner");
-  const [actionFilter, setActionFilter] = useState<"all" | "missing" | "overdue">("all");
-  const [outcomeFilter, setOutcomeFilter] = useState<OpportunityOutcomeFilter>("open");
+  const [journeyFilter, setJourneyFilter] =
+    useState<OpportunityJourneyFilter>("owner");
+  const [actionFilter, setActionFilter] = useState<
+    "all" | "missing" | "overdue"
+  >("all");
+  const [outcomeFilter, setOutcomeFilter] =
+    useState<OpportunityOutcomeFilter>("open");
+
+  useEffect(() => {
+    if (!linkedOpportunity) return;
+    // A deep link is external navigation state; reflect its journey in the local controls.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setJourneyFilter(
+      linkedOpportunity.type === "buyer_requirement" ||
+        linkedOpportunity.type === "tenant_requirement"
+        ? "requirement"
+        : "owner",
+    );
+    setOutcomeFilter(
+      linkedOpportunity.stage === "won" || linkedOpportunity.stage === "lost"
+        ? linkedOpportunity.stage
+        : "open",
+    );
+  }, [linkedOpportunity]);
 
   function closeCreate() {
     setCreateOpen(false);
-    if (createRequested || requestedContactId) router.replace("/opportunities", { scroll: false });
+    if (createRequested || requestedContactId)
+      router.replace("/opportunities", { scroll: false });
   }
 
   const selectedContactId = contactId;
   const chooseContact = (nextContactId: string) => {
     setContactId(nextContactId);
-    const suggestion = suggestOpportunityTypeForRoles(contacts.find((contact) => contact.id === nextContactId)?.roles ?? []);
+    const suggestion = suggestOpportunityTypeForRoles(
+      contacts.find((contact) => contact.id === nextContactId)?.roles ?? [],
+    );
     if (suggestion) setType(suggestion);
     setTypeWasChosen(false);
   };
   const suggestedType = typeWasChosen
     ? null
-    : suggestOpportunityTypeForRoles(contacts.find((contact) => contact.id === selectedContactId)?.roles ?? []);
+    : suggestOpportunityTypeForRoles(
+        contacts.find((contact) => contact.id === selectedContactId)?.roles ??
+          [],
+      );
   const draftType = suggestedType ?? type;
   // A seller can genuinely have two properties, so this warns rather than blocks:
   // the duplicate that bites is the accidental one, made because another screen
   // refused the record the advisor was really after.
   const duplicateOpportunity = selectedContactId
-    ? opportunities.find((item) => item.subjectContactId === selectedContactId && item.type === draftType && activeStages.includes(item.stage))
+    ? opportunities.find(
+        (item) =>
+          item.subjectContactId === selectedContactId &&
+          item.type === draftType &&
+          activeStages.includes(item.stage),
+      )
     : undefined;
   const normalizedSearch = search.trim().toLocaleLowerCase("tr-TR");
-  const visibleOpportunities = opportunities.filter((opportunity) => {
-    const requirement = opportunity.type === "buyer_requirement" || opportunity.type === "tenant_requirement";
-    if ((journeyFilter === "requirement") !== requirement) return false;
+  const journeyOpportunities = opportunitiesForJourney(
+    opportunities,
+    journeyFilter,
+  );
+  const scopedOpportunities = journeyOpportunities.filter((opportunity) => {
     if (typeFilter !== "all" && opportunity.type !== typeFilter) return false;
-    if (actionFilter === "missing" && opportunity.nextActionAt !== null) return false;
-    if (actionFilter === "overdue" && (opportunity.nextActionAt === null || opportunity.nextActionAt >= referenceTime)) return false;
     if (!normalizedSearch) return true;
-    return [opportunity.subjectContactName, opportunityTypeLabels[opportunity.type], ...opportunityHighlights(opportunity)].some((value) => value.toLocaleLowerCase("tr-TR").includes(normalizedSearch));
+    return [
+      opportunity.subjectContactName,
+      opportunityTypeLabels[opportunity.type],
+      ...opportunityHighlights(opportunity),
+    ].some((value) =>
+      value.toLocaleLowerCase("tr-TR").includes(normalizedSearch),
+    );
   });
-  const openOpportunities = visibleOpportunities.filter((item) => activeStages.includes(item.stage));
-  const displayedOpportunities = outcomeFilter === "open"
-    ? openOpportunities
-    : visibleOpportunities.filter((item) => item.stage === outcomeFilter);
-  const wonCount = opportunities.filter((item) => item.stage === "won").length;
-  const lostCount = opportunities.filter((item) => item.stage === "lost" && item.lostKind !== "duplicate").length;
+  const visibleOpportunities = scopedOpportunities.filter((opportunity) => {
+    if (actionFilter === "missing") return opportunity.nextActionAt === null;
+    if (actionFilter === "overdue") {
+      return (
+        opportunity.nextActionAt !== null &&
+        opportunity.nextActionAt < referenceTime
+      );
+    }
+    return true;
+  });
+  const openOpportunities = visibleOpportunities.filter((item) =>
+    activeStages.includes(item.stage),
+  );
+  const scopedOpenOpportunities = scopedOpportunities.filter((item) =>
+    activeStages.includes(item.stage),
+  );
+  const displayedOpportunities =
+    outcomeFilter === "open"
+      ? openOpportunities
+      : visibleOpportunities.filter((item) => item.stage === outcomeFilter);
+  const wonCount = scopedOpportunities.filter(
+    (item) => item.stage === "won",
+  ).length;
+  const lostCount = scopedOpportunities.filter(
+    (item) => item.stage === "lost" && item.lostKind !== "duplicate",
+  ).length;
   const nextOpportunity = [...openOpportunities].sort((left, right) => {
     if (left.nextActionAt === null && right.nextActionAt !== null) return -1;
     if (left.nextActionAt !== null && right.nextActionAt === null) return 1;
-    if (left.nextActionAt !== right.nextActionAt) return (left.nextActionAt ?? 0) - (right.nextActionAt ?? 0);
+    if (left.nextActionAt !== right.nextActionAt)
+      return (left.nextActionAt ?? 0) - (right.nextActionAt ?? 0);
     return left.stageEnteredAt - right.stageEnteredAt;
   })[0];
-  const missingActionCount = opportunities.filter((item) => activeStages.includes(item.stage) && item.nextActionAt === null).length;
-  const overdueCount = opportunities.filter((item) => activeStages.includes(item.stage) && item.nextActionAt !== null && item.nextActionAt < referenceTime).length;
-  const averageStageDays = openOpportunities.length ? openOpportunities.reduce((sum, item) => sum + Math.max(0, Math.floor((referenceTime - item.stageEnteredAt) / 86_400_000)), 0) / openOpportunities.length : 0;
+  const missingActionCount = scopedOpportunities.filter(
+    (item) => activeStages.includes(item.stage) && item.nextActionAt === null,
+  ).length;
+  const overdueCount = scopedOpportunities.filter(
+    (item) =>
+      activeStages.includes(item.stage) &&
+      item.nextActionAt !== null &&
+      item.nextActionAt < referenceTime,
+  ).length;
+  const averageStageDays = scopedOpenOpportunities.length
+    ? scopedOpenOpportunities.reduce(
+        (sum, item) =>
+          sum +
+          Math.max(
+            0,
+            Math.floor((referenceTime - item.stageEnteredAt) / 86_400_000),
+          ),
+        0,
+      ) / scopedOpenOpportunities.length
+    : 0;
 
   function selectOutcome(next: OpportunityOutcomeFilter) {
     setOutcomeFilter(next);
@@ -192,10 +381,16 @@ export function OpportunitiesView() {
 
   function recordActionSummary(opportunity: OpportunityRecord): string {
     if (opportunity.stage === "won") {
-      if (isOwnerOpportunity(opportunity.type)) return opportunity.propertyId ? "Portföye dönüştü" : "Portföy bilgileri bekliyor";
+      if (isOwnerOpportunity(opportunity.type))
+        return opportunity.propertyId
+          ? "Portföye dönüştü"
+          : "Portföy bilgileri bekliyor";
       return "Müşteri kazanıldı";
     }
-    if (opportunity.stage === "lost") return opportunity.lostKind === "duplicate" ? "Mükerrer kayıt kapatıldı" : "Kayıt kapatıldı";
+    if (opportunity.stage === "lost")
+      return opportunity.lostKind === "duplicate"
+        ? "Mükerrer kayıt kapatıldı"
+        : "Kayıt kapatıldı";
     return opportunity.nextActionAt
       ? `${opportunity.nextActionType ? nextActionTypeLabels[opportunity.nextActionType] : "Aksiyon"} · ${dateTime(opportunity.nextActionAt)}`
       : "Sonraki aksiyon yok";
@@ -209,13 +404,78 @@ export function OpportunitiesView() {
   useSheetDismiss(activeCreateOpen, closeCreate);
   useSheetDismiss(Boolean(moving), () => setMoving(null));
   useSheetDismiss(Boolean(correcting), () => setCorrecting(null));
+  useSheetDismiss(Boolean(criteriaEditing), () => setCriteriaEditing(null));
 
   async function invalidate() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunities }),
       queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
-      ...(moving ? [queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunityDetail(moving.id) })] : []),
+      ...(moving
+        ? [
+            queryClient.invalidateQueries({
+              queryKey: apiQueryKeys.opportunityDetail(moving.id),
+            }),
+          ]
+        : []),
     ]);
+  }
+
+  function openCriteriaEditor(opportunity: OpportunityRecord) {
+    const current = withCurrentContactMemory(detailQuery.data?.opportunity.id === opportunity.id ? detailQuery.data.opportunity : opportunity, contacts);
+    const preferences = preferencesFor(current);
+    setCriteriaEditing(current);
+    setCriteriaForm({
+      locations: preferences.preferredLocations.join(", "),
+      propertyTypes: preferences.propertyTypes,
+      budgetMin: preferences.budgetRange?.min?.toString() ?? "",
+      budgetMax: preferences.budgetRange?.max?.toString() ?? "",
+      currency: preferences.budgetRange?.currency ?? "TRY",
+      bedrooms: preferences.bedroomCountMin?.toString() ?? "",
+      livingRooms: preferences.livingRoomCountMin?.toString() ?? "",
+      areaMin: preferences.areaMinM2?.toString() ?? "",
+      mustHaves: preferences.mustHaves.join(", "),
+      timeline: preferences.timeline ?? "",
+    });
+    closeDetail();
+    setError(null);
+  }
+
+  async function saveCriteria(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session || !criteriaEditing) return;
+    const current = preferencesFor(criteriaEditing);
+    const budgetMin = parseMoneyInput(criteriaForm.budgetMin);
+    const budgetMax = parseMoneyInput(criteriaForm.budgetMax);
+    const parsed = opportunityCriteriaUpdateSchema.safeParse({
+      opportunityId: criteriaEditing.id,
+      preferences: {
+        ...current,
+        transactionType: opportunityTransactionType(criteriaEditing.type),
+        propertyTypes: criteriaForm.propertyTypes,
+        preferredLocations: criteriaForm.locations.split(",").map((item) => item.trim()).filter(Boolean),
+        budgetRange: budgetMin !== null || budgetMax !== null ? { min: budgetMin, max: budgetMax, currency: criteriaForm.currency } : null,
+        bedroomCountMin: optionalNumber(criteriaForm.bedrooms),
+        livingRoomCountMin: optionalNumber(criteriaForm.livingRooms),
+        roomCountMin: optionalNumber(criteriaForm.bedrooms),
+        areaMinM2: optionalNumber(criteriaForm.areaMin),
+        mustHaves: criteriaForm.mustHaves.split(",").map((item) => item.trim()).filter(Boolean),
+        timeline: criteriaForm.timeline.trim() || null,
+      },
+    });
+    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Kriterleri kontrol et.");
+    setPending(true); setError(null);
+    try {
+      await updateOpportunityCriteria(session, parsed.data);
+      const opportunityId = criteriaEditing.id;
+      setCriteriaEditing(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunities }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunityDetail(opportunityId) }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.portfolioMatches }),
+      ]);
+    } catch (nextError) { setError(messageFrom(nextError)); }
+    finally { setPending(false); }
   }
 
   async function create(event: FormEvent<HTMLFormElement>) {
@@ -223,18 +483,44 @@ export function OpportunitiesView() {
     if (!session) return;
     const submitted = new FormData(event.currentTarget);
     const submittedActionAt = String(submitted.get("nextActionAt") ?? actionAt);
-    const parsed = opportunityDraftSchema.safeParse({ subjectContactId: selectedContactId, type: draftType, nextActionType: actionType, nextActionAt: new Date(submittedActionAt).getTime() });
-    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Fırsat bilgilerini kontrol et.");
-    setPending(true); setError(null);
-    try { await saveOpportunity(session, parsed.data); setJourneyFilter(type === "buyer_requirement" || type === "tenant_requirement" ? "requirement" : "owner"); closeCreate(); await invalidate(); }
-    catch (nextError) { setError(messageFrom(nextError)); }
-    finally { setPending(false); }
+    const parsed = opportunityDraftSchema.safeParse({
+      subjectContactId: selectedContactId,
+      type: draftType,
+      nextActionType: actionType,
+      nextActionAt: new Date(submittedActionAt).getTime(),
+    });
+    if (!parsed.success)
+      return setError(
+        parsed.error.issues[0]?.message ?? "Fırsat bilgilerini kontrol et.",
+      );
+    setPending(true);
+    setError(null);
+    try {
+      await saveOpportunity(session, parsed.data);
+      setJourneyFilter(
+        type === "buyer_requirement" || type === "tenant_requirement"
+          ? "requirement"
+          : "owner",
+      );
+      closeCreate();
+      await invalidate();
+    } catch (nextError) {
+      setError(messageFrom(nextError));
+    } finally {
+      setPending(false);
+    }
   }
 
   function openMove(opportunity: OpportunityRecord) {
     const next = nextOpportunityStages(opportunity.stage)[0];
     if (!next) return;
-    setMoving(opportunity); setTargetStage(next); setActionType(opportunity.nextActionType ?? "call"); setActionAt(localDateTimeFrom(opportunity.nextActionAt)); setReason(""); setLostReason(""); setError(null);
+    setMoving(opportunity);
+    setTargetStage(next);
+    setActionType(opportunity.nextActionType ?? "call");
+    setActionAt(localDateTimeFrom(opportunity.nextActionAt));
+    setReason("");
+    setLostReason("");
+    setError(null);
   }
 
   async function move(event: FormEvent<HTMLFormElement>) {
@@ -252,59 +538,927 @@ export function OpportunitiesView() {
       nextActionType: terminal ? null : actionType,
       nextActionAt: terminal ? null : new Date(submittedActionAt).getTime(),
     });
-    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Aşama bilgilerini kontrol et.");
-    setPending(true); setError(null);
+    if (!parsed.success)
+      return setError(
+        parsed.error.issues[0]?.message ?? "Aşama bilgilerini kontrol et.",
+      );
+    setPending(true);
+    setError(null);
     const completedOpportunity = moving;
     try {
       await moveOpportunity(session, parsed.data);
       setMoving(null);
       await invalidate();
-      if (targetStage === "won" && isOwnerOpportunity(completedOpportunity.type)) {
-        router.push(`/listings?action=complete-won&opportunityId=${encodeURIComponent(completedOpportunity.id)}`);
+      if (
+        targetStage === "won" &&
+        isOwnerOpportunity(completedOpportunity.type)
+      ) {
+        router.push(
+          `/listings?action=complete-won&opportunityId=${encodeURIComponent(completedOpportunity.id)}`,
+        );
       }
+    } catch (nextError) {
+      setError(messageFrom(nextError));
+    } finally {
+      setPending(false);
     }
-    catch (nextError) { setError(messageFrom(nextError)); }
-    finally { setPending(false); }
   }
 
   function openCorrection(opportunity: OpportunityRecord) {
-    setCorrecting(opportunity); setTargetStage(opportunity.stage === "new_lead" ? "first_contact" : "new_lead"); setActionType(opportunity.nextActionType ?? "call"); setActionAt(localDateTimeFrom(opportunity.nextActionAt)); setCorrectionReason(""); setLostReason(""); setError(null);
+    setCorrecting(opportunity);
+    setTargetStage(
+      opportunity.stage === "new_lead" ? "first_contact" : "new_lead",
+    );
+    setActionType(opportunity.nextActionType ?? "call");
+    setActionAt(localDateTimeFrom(opportunity.nextActionAt));
+    setCorrectionReason("");
+    setLostReason("");
+    setError(null);
   }
 
   async function correct(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!session || !correcting) return;
+    event.preventDefault();
+    if (!session || !correcting) return;
     const terminal = targetStage === "won" || targetStage === "lost";
-    const parsed = opportunityStageCorrectionSchema.safeParse({ opportunityId: correcting.id, toStage: targetStage, reason: correctionReason, lostReason: targetStage === "lost" ? lostReason.trim() || null : null, lostKind: targetStage === "lost" ? lostKind : "lost", nextActionType: terminal ? null : actionType, nextActionAt: terminal ? null : new Date(actionAt).getTime() });
-    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Düzeltme bilgilerini kontrol et.");
-    setPending(true); setError(null);
+    const parsed = opportunityStageCorrectionSchema.safeParse({
+      opportunityId: correcting.id,
+      toStage: targetStage,
+      reason: correctionReason,
+      lostReason: targetStage === "lost" ? lostReason.trim() || null : null,
+      lostKind: targetStage === "lost" ? lostKind : "lost",
+      nextActionType: terminal ? null : actionType,
+      nextActionAt: terminal ? null : new Date(actionAt).getTime(),
+    });
+    if (!parsed.success)
+      return setError(
+        parsed.error.issues[0]?.message ?? "Düzeltme bilgilerini kontrol et.",
+      );
+    setPending(true);
+    setError(null);
     const completedOpportunity = correcting;
     try {
       await correctOpportunity(session, parsed.data);
       setCorrecting(null);
       await invalidate();
-      if (targetStage === "won" && isOwnerOpportunity(completedOpportunity.type)) {
-        router.push(`/listings?action=complete-won&opportunityId=${encodeURIComponent(completedOpportunity.id)}`);
+      if (
+        targetStage === "won" &&
+        isOwnerOpportunity(completedOpportunity.type)
+      ) {
+        router.push(
+          `/listings?action=complete-won&opportunityId=${encodeURIComponent(completedOpportunity.id)}`,
+        );
       }
+    } catch (nextError) {
+      setError(messageFrom(nextError));
+    } finally {
+      setPending(false);
     }
-    catch (nextError) { setError(messageFrom(nextError)); }
-    finally { setPending(false); }
   }
 
-  return <AppShell>
-    <header className="page-header contacts-header"><div><p className="eyebrow">TALEPLER VE SONUÇLAR</p><h1>Fırsatlar</h1><p className="context-sentence">Açık işleri ilerlet; kazanılan ve kaybedilen kayıtları gerektiğinde yeniden aç.</p></div><div className="header-actions"><div className="segmented-control"><button className={view === "board" && outcomeFilter === "open" ? "selected" : ""} onClick={() => { setView("board"); setOutcomeFilter("open"); }} type="button"><LayoutGrid size={13} /> Pano</button><button className={view === "list" ? "selected" : ""} onClick={() => setView("list")} type="button"><List size={13} /> Liste</button></div><button className="secondary-action inline-action" disabled={!nextOpportunity} onClick={() => nextOpportunity && openMove(nextOpportunity)} type="button">{nextOpportunity ? `${nextOpportunity.subjectContactName}: ilerlet` : "İlerletilecek fırsat yok"} <ArrowRight size={15} /></button><button className="primary-action inline-action" disabled={!contacts.length} onClick={() => { setCreateOpen(true); setError(null); }} type="button"><Plus size={18} /> Yeni fırsat</button></div></header>
-    {error && !activeCreateOpen && !moving ? <p className="form-error notice">{error}</p> : null}
-    {opportunities.length ? <div className="segmented-control" aria-label="Fırsat yolu"><button className={journeyFilter === "owner" ? "selected" : ""} onClick={() => { setJourneyFilter("owner"); setTypeFilter("all"); }} type="button">Portföy adayları</button><button className={journeyFilter === "requirement" ? "selected" : ""} onClick={() => { setJourneyFilter("requirement"); setTypeFilter("all"); }} type="button">Müşteri talepleri</button></div> : null}
-    {opportunities.length ? <><div className="opportunity-insights"><button aria-pressed={actionFilter === "missing"} className={missingActionCount ? "warning" : ""} onClick={() => { selectOutcome("open"); setActionFilter((current) => current === "missing" ? "all" : "missing"); }} type="button">{missingActionCount} fırsatta sonraki aksiyon yok</button><button aria-pressed={actionFilter === "overdue"} className={overdueCount ? "danger" : ""} onClick={() => { selectOutcome("open"); setActionFilter((current) => current === "overdue" ? "all" : "overdue"); }} type="button">{overdueCount} aksiyon gecikti</button><span>Aşamada ortalama <strong>{averageStageDays.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} gün</strong></span><button aria-pressed={outcomeFilter === "won"} className="opportunity-outcomes" onClick={() => selectOutcome("won")} type="button">Kazanılan · {wonCount}</button><button aria-pressed={outcomeFilter === "lost"} onClick={() => selectOutcome("lost")} type="button">Kaybedilen · {lostCount}</button></div><div className="opportunity-filterbar"><label className="contact-search"><Search size={16} aria-hidden /><SpInput aria-label="Fırsatlarda ara" placeholder="Kişi, bölge veya talep ara" type="search" value={search} onChange={(event) => setSearch(event.target.value)} /></label><label><span className="sr-only">Fırsat türü</span><SpSelect value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as OpportunityType | "all")}><option value="all">Tüm fırsat türleri</option>{opportunityTypes.map((item) => <option key={item} value={item}>{opportunityTypeLabels[item]}</option>)}</SpSelect></label><div className="segmented-control opportunity-outcome-filter" aria-label="Fırsat durumu"><button className={outcomeFilter === "open" ? "selected" : ""} onClick={() => selectOutcome("open")} type="button">Açık · {opportunities.filter((item) => activeStages.includes(item.stage)).length}</button><button className={outcomeFilter === "won" ? "selected" : ""} onClick={() => selectOutcome("won")} type="button">Kazanılan · {wonCount}</button><button className={outcomeFilter === "lost" ? "selected" : ""} onClick={() => selectOutcome("lost")} type="button">Kaybedilen · {lostCount}</button></div></div></> : null}
-    {opportunitiesQuery.isPending ? <div className="content-state"><RefreshCw className="spin" size={22} /> Fırsatlar yükleniyor…</div> : opportunitiesQuery.error ? <p className="form-error notice">{messageFrom(opportunitiesQuery.error)}</p> : opportunities.length === 0 ? <SpCard className="empty-state"><div className="card-icon secondary"><BriefcaseBusiness size={20} /></div><h2>İlk fırsatını oluştur</h2><p>Kayıtlı bir kişiyi talebe dönüştür ve sıradaki gerçek işi belirle.</p>{contacts.length ? <button className="secondary-action" onClick={() => setCreateOpen(true)} type="button">Fırsat oluştur</button> : <p>Önce bir kişi eklemelisin.</p>}</SpCard> : displayedOpportunities.length === 0 ? <SpCard className="empty-state"><div className="card-icon secondary"><Search size={20} /></div><h2>{outcomeFilter === "open" ? "Eşleşen açık fırsat yok" : outcomeFilter === "won" ? "Eşleşen kazanılmış kayıt yok" : "Eşleşen kaybedilmiş kayıt yok"}</h2><p>Arama metnini veya filtreleri değiştir.</p><button className="secondary-action" onClick={() => { setSearch(""); setTypeFilter("all"); setActionFilter("all"); }} type="button">Filtreleri temizle</button></SpCard> : view === "board" && outcomeFilter === "open" ? <section className="opportunity-board" aria-label="Fırsat panosu">{activeStages.map((stage) => {
-      const items = openOpportunities.filter((item) => item.stage === stage);
-      return <div className={`opportunity-column stage-tone-${stageTone[stage] ?? "deed"}`} key={stage}><div className="opportunity-column-heading"><span>{opportunityStageLabel(stage, journeyFilter === "requirement" ? "buyer_requirement" : "seller_listing")}</span><strong>{items.length}</strong></div><div className="opportunity-column-list">{items.map((opportunity) => <button className={`kanban-card ${!opportunity.nextActionAt ? "missing-action" : opportunity.nextActionAt < referenceTime ? "overdue-action" : ""}`} key={opportunity.id} onClick={() => setSelected(opportunity)} type="button"><span>{opportunityTypeLabels[opportunity.type]}</span><strong>{opportunity.subjectContactName}</strong><small className={!opportunity.nextActionAt ? "missing" : opportunity.nextActionAt < referenceTime ? "overdue" : ""}>{opportunity.nextActionAt ? `${opportunity.nextActionType ? nextActionTypeLabels[opportunity.nextActionType] : "Sonraki aksiyon"} · ${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(opportunity.nextActionAt)}` : "Sonraki aksiyon yok"}</small><em>{Math.max(0, Math.floor((referenceTime - opportunity.stageEnteredAt) / 86_400_000))} gündür bu aşamada</em></button>)}{items.length === 0 ? <div className="kanban-empty">Bu aşamada fırsat yok</div> : null}</div></div>;
-    })}</section> : <section className="opportunity-list-table"><div className="opportunity-list-head"><span>Kişi</span><span>Tür</span><span>Aşama</span><span>{outcomeFilter === "open" ? "Sonraki aksiyon" : "Sonuç"}</span><span>Aşama süresi</span></div>{displayedOpportunities.map((opportunity) => <button key={opportunity.id} onClick={() => setSelected(opportunity)} type="button"><strong>{opportunity.subjectContactName}</strong><span>{opportunityTypeLabels[opportunity.type]}</span><span className={`stage-badge stage-${opportunity.stage}`}>{opportunityStageLabel(opportunity.stage, opportunity.type)}</span><span>{recordActionSummary(opportunity)}</span><span>{Math.max(0, Math.floor((referenceTime - opportunity.stageEnteredAt) / 86_400_000))} gün</span></button>)}</section>}
+  return (
+    <AppShell>
+      <header className="page-header contacts-header">
+        <div>
+          <p className="eyebrow">TALEPLER VE SONUÇLAR</p>
+          <h1>Fırsatlar</h1>
+          <p className="context-sentence">
+            Açık işleri ilerlet; kazanılan ve kaybedilen kayıtları gerektiğinde
+            yeniden aç.
+          </p>
+        </div>
+        <div className="header-actions">
+          <div className="segmented-control">
+            <button
+              className={
+                view === "board" && outcomeFilter === "open" ? "selected" : ""
+              }
+              onClick={() => {
+                setView("board");
+                setOutcomeFilter("open");
+              }}
+              type="button"
+            >
+              <LayoutGrid size={13} /> Pano
+            </button>
+            <button
+              className={view === "list" ? "selected" : ""}
+              onClick={() => setView("list")}
+              type="button"
+            >
+              <List size={13} /> Liste
+            </button>
+          </div>
+          <button
+            className="secondary-action inline-action"
+            disabled={!nextOpportunity}
+            onClick={() => nextOpportunity && openMove(nextOpportunity)}
+            type="button"
+          >
+            {nextOpportunity
+              ? `${nextOpportunity.subjectContactName}: ilerlet`
+              : "İlerletilecek fırsat yok"}{" "}
+            <ArrowRight size={15} />
+          </button>
+          <button
+            className="primary-action inline-action"
+            disabled={!contacts.length}
+            onClick={() => {
+              setCreateOpen(true);
+              setError(null);
+            }}
+            type="button"
+          >
+            <Plus size={18} /> Yeni fırsat
+          </button>
+        </div>
+      </header>
+      {error && !activeCreateOpen && !moving ? (
+        <p className="form-error notice">{error}</p>
+      ) : null}
+      {opportunities.length ? (
+        <div className="segmented-control" aria-label="Fırsat yolu">
+          <button
+            className={journeyFilter === "owner" ? "selected" : ""}
+            onClick={() => {
+              setJourneyFilter("owner");
+              setTypeFilter("all");
+            }}
+            type="button"
+          >
+            Portföy adayları
+          </button>
+          <button
+            className={journeyFilter === "requirement" ? "selected" : ""}
+            onClick={() => {
+              setJourneyFilter("requirement");
+              setTypeFilter("all");
+            }}
+            type="button"
+          >
+            Müşteri talepleri
+          </button>
+        </div>
+      ) : null}
+      {opportunities.length ? (
+        <>
+          <div className="opportunity-insights">
+            <button
+              aria-pressed={actionFilter === "missing"}
+              className={missingActionCount ? "warning" : ""}
+              onClick={() => {
+                selectOutcome("open");
+                setActionFilter((current) =>
+                  current === "missing" ? "all" : "missing",
+                );
+              }}
+              type="button"
+            >
+              {missingActionCount} fırsatta sonraki aksiyon yok
+            </button>
+            <button
+              aria-pressed={actionFilter === "overdue"}
+              className={overdueCount ? "danger" : ""}
+              onClick={() => {
+                selectOutcome("open");
+                setActionFilter((current) =>
+                  current === "overdue" ? "all" : "overdue",
+                );
+              }}
+              type="button"
+            >
+              {overdueCount} aksiyon gecikti
+            </button>
+            <span>
+              Aşamada ortalama{" "}
+              <strong>
+                {averageStageDays.toLocaleString("tr-TR", {
+                  maximumFractionDigits: 1,
+                })}{" "}
+                gün
+              </strong>
+            </span>
+            <button
+              aria-pressed={outcomeFilter === "won"}
+              className="opportunity-outcomes"
+              onClick={() => selectOutcome("won")}
+              type="button"
+            >
+              Kazanılan · {wonCount}
+            </button>
+            <button
+              aria-pressed={outcomeFilter === "lost"}
+              onClick={() => selectOutcome("lost")}
+              type="button"
+            >
+              Kaybedilen · {lostCount}
+            </button>
+          </div>
+          <div className="opportunity-filterbar">
+            <label className="contact-search">
+              <Search size={16} aria-hidden />
+              <SpInput
+                aria-label="Fırsatlarda ara"
+                placeholder="Kişi, bölge veya talep ara"
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </label>
+            <label>
+              <span className="sr-only">Fırsat türü</span>
+              <SpSelect
+                value={typeFilter}
+                onChange={(event) =>
+                  setTypeFilter(event.target.value as OpportunityType | "all")
+                }
+              >
+                <option value="all">Tüm fırsat türleri</option>
+                {opportunityTypes.map((item) => (
+                  <option key={item} value={item}>
+                    {opportunityTypeLabels[item]}
+                  </option>
+                ))}
+              </SpSelect>
+            </label>
+            <div
+              className="segmented-control opportunity-outcome-filter"
+              aria-label="Fırsat durumu"
+            >
+              <button
+                className={outcomeFilter === "open" ? "selected" : ""}
+                onClick={() => selectOutcome("open")}
+                type="button"
+              >
+                Açık ·{" "}
+                {
+                  scopedOpenOpportunities.length
+                }
+              </button>
+              <button
+                className={outcomeFilter === "won" ? "selected" : ""}
+                onClick={() => selectOutcome("won")}
+                type="button"
+              >
+                Kazanılan · {wonCount}
+              </button>
+              <button
+                className={outcomeFilter === "lost" ? "selected" : ""}
+                onClick={() => selectOutcome("lost")}
+                type="button"
+              >
+                Kaybedilen · {lostCount}
+              </button>
+            </div>
+          </div>
+        </>
+      ) : null}
+      {opportunitiesQuery.isPending ? (
+        <div className="content-state">
+          <RefreshCw className="spin" size={22} /> Fırsatlar yükleniyor…
+        </div>
+      ) : opportunitiesQuery.error ? (
+        <p className="form-error notice">
+          {messageFrom(opportunitiesQuery.error)}
+        </p>
+      ) : opportunities.length === 0 ? (
+        <SpCard className="empty-state">
+          <div className="card-icon secondary">
+            <BriefcaseBusiness size={20} />
+          </div>
+          <h2>İlk fırsatını oluştur</h2>
+          <p>
+            Kayıtlı bir kişiyi talebe dönüştür ve sıradaki gerçek işi belirle.
+          </p>
+          {contacts.length ? (
+            <button
+              className="secondary-action"
+              onClick={() => setCreateOpen(true)}
+              type="button"
+            >
+              Fırsat oluştur
+            </button>
+          ) : (
+            <p>Önce bir kişi eklemelisin.</p>
+          )}
+        </SpCard>
+      ) : displayedOpportunities.length === 0 ? (
+        <SpCard className="empty-state">
+          <div className="card-icon secondary">
+            <Search size={20} />
+          </div>
+          <h2>
+            {outcomeFilter === "open"
+              ? "Eşleşen açık fırsat yok"
+              : outcomeFilter === "won"
+                ? "Eşleşen kazanılmış kayıt yok"
+                : "Eşleşen kaybedilmiş kayıt yok"}
+          </h2>
+          <p>Arama metnini veya filtreleri değiştir.</p>
+          <button
+            className="secondary-action"
+            onClick={() => {
+              setSearch("");
+              setTypeFilter("all");
+              setActionFilter("all");
+            }}
+            type="button"
+          >
+            Filtreleri temizle
+          </button>
+        </SpCard>
+      ) : view === "board" && outcomeFilter === "open" ? (
+        <section className="opportunity-board" aria-label="Fırsat panosu">
+          {activeStages.map((stage) => {
+            const items = openOpportunities.filter(
+              (item) => item.stage === stage,
+            );
+            return (
+              <div
+                className={`opportunity-column stage-tone-${stageTone[stage] ?? "deed"}`}
+                key={stage}
+              >
+                <div className="opportunity-column-heading">
+                  <span>
+                    {opportunityStageLabel(
+                      stage,
+                      journeyFilter === "requirement"
+                        ? "buyer_requirement"
+                        : "seller_listing",
+                    )}
+                  </span>
+                  <strong>{items.length}</strong>
+                </div>
+                <div className="opportunity-column-list">
+                  {items.map((opportunity) => (
+                    <button
+                      className={`kanban-card ${!opportunity.nextActionAt ? "missing-action" : opportunity.nextActionAt < referenceTime ? "overdue-action" : ""}`}
+                      key={opportunity.id}
+                      onClick={() => setSelected(opportunity)}
+                      type="button"
+                    >
+                      <span>{opportunityTypeLabels[opportunity.type]}</span>
+                      <strong>{opportunity.subjectContactName}</strong>
+                      <small
+                        className={
+                          !opportunity.nextActionAt
+                            ? "missing"
+                            : opportunity.nextActionAt < referenceTime
+                              ? "overdue"
+                              : ""
+                        }
+                      >
+                        {opportunity.nextActionAt
+                          ? `${opportunity.nextActionType ? nextActionTypeLabels[opportunity.nextActionType] : "Sonraki aksiyon"} · ${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(opportunity.nextActionAt)}`
+                          : "Sonraki aksiyon yok"}
+                      </small>
+                      <em>
+                        {Math.max(
+                          0,
+                          Math.floor(
+                            (referenceTime - opportunity.stageEnteredAt) /
+                              86_400_000,
+                          ),
+                        )}{" "}
+                        gündür bu aşamada
+                      </em>
+                    </button>
+                  ))}
+                  {items.length === 0 ? (
+                    <div className="kanban-empty">Bu aşamada fırsat yok</div>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      ) : (
+        <section className="opportunity-list-table">
+          <div className="opportunity-list-head">
+            <span>Kişi</span>
+            <span>Tür</span>
+            <span>Aşama</span>
+            <span>
+              {outcomeFilter === "open" ? "Sonraki aksiyon" : "Sonuç"}
+            </span>
+            <span>Aşama süresi</span>
+          </div>
+          {displayedOpportunities.map((opportunity) => (
+            <button
+              key={opportunity.id}
+              onClick={() => setSelected(opportunity)}
+              type="button"
+            >
+              <strong>{opportunity.subjectContactName}</strong>
+              <span>{opportunityTypeLabels[opportunity.type]}</span>
+              <span className={`stage-badge stage-${opportunity.stage}`}>
+                {opportunityStageLabel(opportunity.stage, opportunity.type)}
+              </span>
+              <span>{recordActionSummary(opportunity)}</span>
+              <span>
+                {Math.max(
+                  0,
+                  Math.floor(
+                    (referenceTime - opportunity.stageEnteredAt) / 86_400_000,
+                  ),
+                )}{" "}
+                gün
+              </span>
+            </button>
+          ))}
+        </section>
+      )}
 
-    {activeSelected ? <div className="sheet-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) closeDetail(); }}><section className="form-sheet" role="dialog" aria-modal="true"><div className="sheet-heading"><div><p className="eyebrow">FIRSAT DETAYI</p><h2>{activeSelected.subjectContactName}</h2><p className="context-sentence">{opportunityTypeLabels[activeSelected.type]}</p></div><button className="icon-action" aria-label="Kapat" onClick={closeDetail} type="button"><X size={20} /></button></div>{detailQuery.isPending ? <div className="content-state"><RefreshCw className="spin" size={20} /> Detay yükleniyor…</div> : detailQuery.error ? <p className="form-error">{messageFrom(detailQuery.error)}</p> : <><div className="detail-summary"><span className={`stage-badge stage-${activeSelected.stage}`}>{opportunityStageLabel(activeSelected.stage, activeSelected.type)}</span><p>Bu aşamada {Math.max(0, Math.floor((referenceTime - activeSelected.stageEnteredAt) / 86_400_000))} gündür.</p>{opportunityHighlights(detailQuery.data?.opportunity ?? activeSelected).length ? <div className="opportunity-highlights">{opportunityHighlights(detailQuery.data?.opportunity ?? activeSelected).map((highlight) => <span key={highlight}>{highlight}</span>)}</div> : null}</div><ol className="stage-timeline">{detailQuery.data?.stageEvents.map((stageEvent) => <li key={stageEvent.id}><div className="timeline-dot" /><div><strong>{opportunityStageLabel(stageEvent.toStage as OpportunityStage, activeSelected.type)}</strong><time>{dateTime(stageEvent.occurredAt)}</time>{stageEvent.reason ? <p>{stageEvent.reason}</p> : null}</div></li>)}</ol><div className="opportunity-detail-actions"><Link className="secondary-action inline-link" href={`/capture?contactId=${encodeURIComponent(activeSelected.subjectContactId)}`}>Teması kaydet</Link><button className="secondary-action inline-action" onClick={() => { openCorrection(activeSelected); closeDetail(); }} type="button">Aşamayı düzelt</button>{activeSelected.stage === "won" && isOwnerOpportunity(activeSelected.type) && !activeSelected.propertyId ? <Link className="primary-action inline-link" href={`/listings?action=complete-won&opportunityId=${encodeURIComponent(activeSelected.id)}`}>Portföyü tamamla <ArrowRight size={15} /></Link> : nextOpportunityStages(activeSelected.stage).length ? <button className="primary-action inline-action" onClick={() => { openMove(activeSelected); closeDetail(); }} type="button">Aşamayı ilerlet <ArrowRight size={15} /></button> : null}</div></>}</section></div> : null}
+      {activeSelected ? (
+        <div
+          className="sheet-backdrop"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) closeDetail();
+          }}
+        >
+          <section className="form-sheet" role="dialog" aria-modal="true">
+            <div className="sheet-heading">
+              <div>
+                <p className="eyebrow">FIRSAT DETAYI</p>
+                <h2>{activeSelected.subjectContactName}</h2>
+                <p className="context-sentence">
+                  {opportunityTypeLabels[activeSelected.type]}
+                </p>
+              </div>
+              <button
+                className="icon-action"
+                aria-label="Kapat"
+                onClick={closeDetail}
+                type="button"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            {detailQuery.isPending ? (
+              <div className="content-state">
+                <RefreshCw className="spin" size={20} /> Detay yükleniyor…
+              </div>
+            ) : detailQuery.error ? (
+              <p className="form-error">{messageFrom(detailQuery.error)}</p>
+            ) : (
+              <>
+                <div className="detail-summary">
+                  <span className={`stage-badge stage-${activeSelected.stage}`}>
+                    {opportunityStageLabel(
+                      activeSelected.stage,
+                      activeSelected.type,
+                    )}
+                  </span>
+                  <p>
+                    Bu aşamada{" "}
+                    {Math.max(
+                      0,
+                      Math.floor(
+                        (referenceTime - activeSelected.stageEnteredAt) /
+                          86_400_000,
+                      ),
+                    )}{" "}
+                    gündür.
+                  </p>
+                  {activeSelected.nextActionAt &&
+                  activeSelected.nextActionType ? (
+                    <p>
+                      <strong>Sonraki aksiyon:</strong>{" "}
+                      {nextActionTypeLabels[activeSelected.nextActionType]} ·{" "}
+                      {dateTime(activeSelected.nextActionAt)}
+                    </p>
+                  ) : (
+                    <p className="compliance-warning">
+                      Sonraki aksiyon belirlenmedi.
+                    </p>
+                  )}
+                  {opportunityHighlights(
+                    withCurrentContactMemory(detailQuery.data?.opportunity ?? activeSelected, contacts),
+                  ).length ? (
+                    <div className="opportunity-highlights">
+                      {opportunityHighlights(
+                        withCurrentContactMemory(detailQuery.data?.opportunity ?? activeSelected, contacts),
+                      ).map((highlight) => (
+                        <span key={highlight}>{highlight}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <ol className="stage-timeline">
+                  {detailQuery.data?.stageEvents.map((stageEvent) => (
+                    <li key={stageEvent.id}>
+                      <div className="timeline-dot" />
+                      <div>
+                        <strong>
+                          {opportunityStageLabel(
+                            stageEvent.toStage as OpportunityStage,
+                            activeSelected.type,
+                          )}
+                        </strong>
+                        <time>{dateTime(stageEvent.occurredAt)}</time>
+                        {stageEvent.reason ? <p>{stageEvent.reason}</p> : null}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+                <div className="opportunity-detail-actions">
+                  <Link
+                    className="secondary-action inline-link"
+                    href={`/capture?contactId=${encodeURIComponent(activeSelected.subjectContactId)}`}
+                  >
+                    Teması kaydet
+                  </Link>
+                  <button
+                    className="secondary-action inline-action"
+                    onClick={() => openCriteriaEditor(withCurrentContactMemory(detailQuery.data?.opportunity ?? activeSelected, contacts))}
+                    type="button"
+                  >
+                    Kriterleri düzenle
+                  </button>
+                  <button
+                    className="secondary-action inline-action"
+                    onClick={() => {
+                      openCorrection(activeSelected);
+                      closeDetail();
+                    }}
+                    type="button"
+                  >
+                    Aşamayı düzelt
+                  </button>
+                  {activeSelected.stage === "won" &&
+                  isOwnerOpportunity(activeSelected.type) &&
+                  !activeSelected.propertyId ? (
+                    <Link
+                      className="primary-action inline-link"
+                      href={`/listings?action=complete-won&opportunityId=${encodeURIComponent(activeSelected.id)}`}
+                    >
+                      Portföyü tamamla <ArrowRight size={15} />
+                    </Link>
+                  ) : nextOpportunityStages(activeSelected.stage).length ? (
+                    <button
+                      className="primary-action inline-action"
+                      onClick={() => {
+                        openMove(activeSelected);
+                        closeDetail();
+                      }}
+                      type="button"
+                    >
+                      Aşamayı ilerlet <ArrowRight size={15} />
+                    </button>
+                  ) : null}
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      ) : null}
 
-    {activeCreateOpen ? <div className="sheet-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) closeCreate(); }}><section className="form-sheet" role="dialog" aria-modal="true"><div className="sheet-heading"><div><p className="eyebrow">YENİ TALEP</p><h2>Fırsat oluştur</h2></div><button className="icon-action" aria-label="Kapat" onClick={closeCreate} type="button"><X size={20} /></button></div><form className="form-stack" onSubmit={create}><ContactCombobox contacts={contacts} value={selectedContactId} onChange={chooseContact} /><label>Fırsat türü<SpSelect value={draftType} onChange={(event) => { setType(event.target.value as OpportunityType); setTypeWasChosen(true); }}>{opportunityTypes.map((item) => <option key={item} value={item}>{opportunityTypeLabels[item]}</option>)}</SpSelect></label><label>Sonraki adım<SpSelect value={actionType} onChange={(event) => setActionType(event.target.value as NextActionType)}>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</SpSelect></label><QuickDateField value={actionAt} onChange={setActionAt} /><SpInput name="nextActionAt" type="hidden" value={actionAt} />{duplicateOpportunity ? <p className="privacy-hint">Bu kişinin zaten açık bir “{opportunityTypeLabels[draftType]}” fırsatı var ({opportunityStageLabel(duplicateOpportunity.stage, duplicateOpportunity.type)}). Ayrı bir mülk için ikincisini açabilirsiniz.</p> : null}{error ? <p className="form-error">{error}</p> : null}<button className="primary-action auth-submit" disabled={pending || !selectedContactId} type="submit">{pending ? "Oluşturuluyor…" : duplicateOpportunity ? "Yine de oluştur" : "Fırsatı oluştur"}</button></form></section></div> : null}
+      {criteriaEditing ? (
+        <div className="sheet-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target && !pending) setCriteriaEditing(null); }}>
+          <section className="form-sheet" role="dialog" aria-modal="true" aria-labelledby="criteria-title">
+            <div className="sheet-heading">
+              <div><p className="eyebrow">TALEP KRİTERLERİ</p><h2 id="criteria-title">{criteriaEditing.subjectContactName}</h2><p className="context-sentence">Bu bilgiler eşleşme motorunda ve fırsat detayında birlikte kullanılır.</p></div>
+              <button className="icon-action" aria-label="Kapat" disabled={pending} onClick={() => setCriteriaEditing(null)} type="button"><X size={20} /></button>
+            </div>
+            <form className="form-stack" onSubmit={saveCriteria}>
+              <label>Bölgeler <small>virgülle ayır</small><SpInput value={criteriaForm.locations} onChange={(event) => setCriteriaForm((current) => ({ ...current, locations: event.target.value }))} placeholder="Karşıyaka, Bostanlı" /></label>
+              <fieldset><legend>Mülk türleri</legend><div className="chip-row">{propertyTypes.map((item) => <button className={`choice-chip ${criteriaForm.propertyTypes.includes(item) ? "selected" : ""}`} key={item} onClick={() => setCriteriaForm((current) => ({ ...current, propertyTypes: current.propertyTypes.includes(item) ? current.propertyTypes.filter((value) => value !== item) : [...current.propertyTypes, item] }))} type="button">{propertyTypeLabels[item]}</button>)}</div></fieldset>
+              <div className="form-row">
+                <label>Minimum bütçe<MoneyField currency={criteriaForm.currency} value={criteriaForm.budgetMin} onChange={(value) => setCriteriaForm((current) => ({ ...current, budgetMin: value }))} /></label>
+                <label>Maksimum bütçe<MoneyField currency={criteriaForm.currency} value={criteriaForm.budgetMax} onChange={(value) => setCriteriaForm((current) => ({ ...current, budgetMax: value }))} /></label>
+                <label>Para birimi<SpSelect value={criteriaForm.currency} onChange={(event) => setCriteriaForm((current) => ({ ...current, currency: event.target.value as CurrencyCode }))}>{currencyCodes.map((item) => <option key={item}>{item}</option>)}</SpSelect></label>
+              </div>
+              <div className="form-row">
+                <label>Yatak odası<SpInput min="0" type="number" value={criteriaForm.bedrooms} onChange={(event) => setCriteriaForm((current) => ({ ...current, bedrooms: event.target.value }))} /></label>
+                <label>Salon<SpInput min="0" type="number" value={criteriaForm.livingRooms} onChange={(event) => setCriteriaForm((current) => ({ ...current, livingRooms: event.target.value }))} /></label>
+                <label>Minimum m²<SpInput min="1" type="number" value={criteriaForm.areaMin} onChange={(event) => setCriteriaForm((current) => ({ ...current, areaMin: event.target.value }))} /></label>
+              </div>
+              <label>Olmazsa olmazlar <small>virgülle ayır</small><SpInput value={criteriaForm.mustHaves} onChange={(event) => setCriteriaForm((current) => ({ ...current, mustHaves: event.target.value }))} placeholder="Havuz, otopark" /></label>
+              <label>Zamanlama<SpInput value={criteriaForm.timeline} onChange={(event) => setCriteriaForm((current) => ({ ...current, timeline: event.target.value }))} placeholder="1 Ekim'de taşınacak" /></label>
+              {error ? <p className="form-error">{error}</p> : null}
+              <button className="primary-action auth-submit" disabled={pending} type="submit">{pending ? "Kaydediliyor…" : "Kriterleri kaydet"}</button>
+            </form>
+          </section>
+        </div>
+      ) : null}
 
-    {moving ? <div className="sheet-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) setMoving(null); }}><section className="form-sheet" role="dialog" aria-modal="true"><div className="sheet-heading"><div><p className="eyebrow">AŞAMA GEÇİŞİ</p><h2>{moving.subjectContactName}</h2></div><button className="icon-action" aria-label="Kapat" onClick={() => setMoving(null)} type="button"><X size={20} /></button></div><form className="form-stack" onSubmit={move}><label>Yeni aşama<SpSelect value={targetStage} onChange={(event) => setTargetStage(event.target.value as OpportunityStage)}>{nextOpportunityStages(moving.stage).map((stage) => <option key={stage} value={stage}>{opportunityStageLabel(stage, moving.type)}</option>)}</SpSelect></label><label>Geçiş notu <span className="optional">isteğe bağlı</span><SpTextarea value={reason} onChange={(event) => setReason(event.target.value)} /></label>{targetStage === "lost" ? <><label>Kaydı neden kapatıyorsun?<SpSelect value={lostKind} onChange={(event) => setLostKind(event.target.value as "lost" | "duplicate")}><option value="lost">İş kaybedildi</option><option value="duplicate">Mükerrer kayıt — kaybedilmiş bir iş değil</option></SpSelect></label><label>{lostKind === "duplicate" ? "Açıklama" : "Kayıp nedeni"}<SpTextarea required value={lostReason} onChange={(event) => setLostReason(event.target.value)} /></label>{lostKind === "duplicate" ? <p className="privacy-hint">Mükerrer kapatılan kayıtlar kayıp istatistiğine girmez.</p> : null}</> : targetStage !== "won" ? <><label>Sonraki adım<SpSelect value={actionType} onChange={(event) => setActionType(event.target.value as NextActionType)}>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</SpSelect></label><QuickDateField value={actionAt} onChange={setActionAt} /><SpInput name="nextActionAt" type="hidden" value={actionAt} /></> : <p className="privacy-hint">{isOwnerOpportunity(moving.type) ? "Yetkiyi kaydettikten sonra adres, fiyat ve mülk bilgilerini tamamlayarak portföyü oluşturacaksın." : "Bu kayıt müşteri talebi olarak sonuçlanır; kendi portföyüne mülk eklemez."}</p>}{error ? <p className="form-error">{error}</p> : null}<button className="primary-action auth-submit" disabled={pending} type="submit">{pending ? "İlerletiliyor…" : targetStage === "won" && isOwnerOpportunity(moving.type) ? "Yetkiyi al ve portföyü tamamla" : targetStage === "won" ? "Talebi sonuçlandır" : "Aşamayı kaydet"}</button></form></section></div> : null}
-    {correcting ? <div className="sheet-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) setCorrecting(null); }}><section className="form-sheet" role="dialog" aria-modal="true"><div className="sheet-heading"><div><p className="eyebrow">DENETİM İZLİ DÜZELTME</p><h2>{correcting.subjectContactName}</h2></div><button className="icon-action" aria-label="Kapat" onClick={() => setCorrecting(null)} type="button"><X size={20} /></button></div><form className="form-stack" onSubmit={correct}><label>Doğru aşama<SpSelect value={targetStage} onChange={(event) => setTargetStage(event.target.value as OpportunityStage)}>{opportunityStages.filter((stage) => stage !== correcting.stage).map((stage) => <option key={stage} value={stage}>{opportunityStageLabel(stage, correcting.type)}</option>)}</SpSelect></label><label>Düzeltme nedeni<SpTextarea required value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} /></label>{targetStage === "lost" ? <><label>Kaydı neden kapatıyorsun?<SpSelect value={lostKind} onChange={(event) => setLostKind(event.target.value as "lost" | "duplicate")}><option value="lost">İş kaybedildi</option><option value="duplicate">Mükerrer kayıt — kaybedilmiş bir iş değil</option></SpSelect></label><label>{lostKind === "duplicate" ? "Açıklama" : "Kayıp nedeni"}<SpTextarea required value={lostReason} onChange={(event) => setLostReason(event.target.value)} /></label>{lostKind === "duplicate" ? <p className="privacy-hint">Mükerrer kapatılan kayıtlar kayıp istatistiğine girmez.</p> : null}</> : targetStage !== "won" ? <><label>Sonraki adım<SpSelect value={actionType} onChange={(event) => setActionType(event.target.value as NextActionType)}>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</SpSelect></label><QuickDateField value={actionAt} onChange={setActionAt} /></> : null}<p className="privacy-hint">Eski aşama silinmez; düzeltme nedeni zaman çizelgesine eklenir.</p>{error ? <p className="form-error">{error}</p> : null}<button className="primary-action auth-submit" disabled={pending}>Aşamayı düzelt</button></form></section></div> : null}
-  </AppShell>;
+      {activeCreateOpen ? (
+        <div
+          className="sheet-backdrop"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) closeCreate();
+          }}
+        >
+          <section className="form-sheet" role="dialog" aria-modal="true">
+            <div className="sheet-heading">
+              <div>
+                <p className="eyebrow">YENİ TALEP</p>
+                <h2>Fırsat oluştur</h2>
+              </div>
+              <button
+                className="icon-action"
+                aria-label="Kapat"
+                onClick={closeCreate}
+                type="button"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <form className="form-stack" onSubmit={create}>
+              <ContactCombobox
+                contacts={contacts}
+                value={selectedContactId}
+                onChange={chooseContact}
+              />
+              <label>
+                Fırsat türü
+                <SpSelect
+                  value={draftType}
+                  onChange={(event) => {
+                    setType(event.target.value as OpportunityType);
+                    setTypeWasChosen(true);
+                  }}
+                >
+                  {opportunityTypes.map((item) => (
+                    <option key={item} value={item}>
+                      {opportunityTypeLabels[item]}
+                    </option>
+                  ))}
+                </SpSelect>
+              </label>
+              <label>
+                Sonraki adım
+                <SpSelect
+                  value={actionType}
+                  onChange={(event) =>
+                    setActionType(event.target.value as NextActionType)
+                  }
+                >
+                  {nextActionTypes.map((item) => (
+                    <option key={item} value={item}>
+                      {nextActionTypeLabels[item]}
+                    </option>
+                  ))}
+                </SpSelect>
+              </label>
+              <QuickDateField value={actionAt} onChange={setActionAt} />
+              <SpInput name="nextActionAt" type="hidden" value={actionAt} />
+              {duplicateOpportunity ? (
+                <p className="privacy-hint">
+                  Bu kişinin zaten açık bir “{opportunityTypeLabels[draftType]}”
+                  fırsatı var (
+                  {opportunityStageLabel(
+                    duplicateOpportunity.stage,
+                    duplicateOpportunity.type,
+                  )}
+                  ). Ayrı bir mülk için ikincisini açabilirsiniz.
+                </p>
+              ) : null}
+              {error ? <p className="form-error">{error}</p> : null}
+              <button
+                className="primary-action auth-submit"
+                disabled={pending || !selectedContactId}
+                type="submit"
+              >
+                {pending
+                  ? "Oluşturuluyor…"
+                  : duplicateOpportunity
+                    ? "Yine de oluştur"
+                    : "Fırsatı oluştur"}
+              </button>
+            </form>
+          </section>
+        </div>
+      ) : null}
+
+      {moving ? (
+        <div
+          className="sheet-backdrop"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setMoving(null);
+          }}
+        >
+          <section className="form-sheet" role="dialog" aria-modal="true">
+            <div className="sheet-heading">
+              <div>
+                <p className="eyebrow">AŞAMA GEÇİŞİ</p>
+                <h2>{moving.subjectContactName}</h2>
+              </div>
+              <button
+                className="icon-action"
+                aria-label="Kapat"
+                onClick={() => setMoving(null)}
+                type="button"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <form className="form-stack" onSubmit={move}>
+              <label>
+                Yeni aşama
+                <SpSelect
+                  value={targetStage}
+                  onChange={(event) =>
+                    setTargetStage(event.target.value as OpportunityStage)
+                  }
+                >
+                  {nextOpportunityStages(moving.stage).map((stage) => (
+                    <option key={stage} value={stage}>
+                      {opportunityStageLabel(stage, moving.type)}
+                    </option>
+                  ))}
+                </SpSelect>
+              </label>
+              <label>
+                Geçiş notu <span className="optional">isteğe bağlı</span>
+                <SpTextarea
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                />
+              </label>
+              {targetStage === "lost" ? (
+                <>
+                  <label>
+                    Kaydı neden kapatıyorsun?
+                    <SpSelect
+                      value={lostKind}
+                      onChange={(event) =>
+                        setLostKind(event.target.value as "lost" | "duplicate")
+                      }
+                    >
+                      <option value="lost">İş kaybedildi</option>
+                      <option value="duplicate">
+                        Mükerrer kayıt — kaybedilmiş bir iş değil
+                      </option>
+                    </SpSelect>
+                  </label>
+                  <label>
+                    {lostKind === "duplicate" ? "Açıklama" : "Kayıp nedeni"}
+                    <SpTextarea
+                      required
+                      value={lostReason}
+                      onChange={(event) => setLostReason(event.target.value)}
+                    />
+                  </label>
+                  {lostKind === "duplicate" ? (
+                    <p className="privacy-hint">
+                      Mükerrer kapatılan kayıtlar kayıp istatistiğine girmez.
+                    </p>
+                  ) : null}
+                </>
+              ) : targetStage !== "won" ? (
+                <>
+                  <label>
+                    Sonraki adım
+                    <SpSelect
+                      value={actionType}
+                      onChange={(event) =>
+                        setActionType(event.target.value as NextActionType)
+                      }
+                    >
+                      {nextActionTypes.map((item) => (
+                        <option key={item} value={item}>
+                          {nextActionTypeLabels[item]}
+                        </option>
+                      ))}
+                    </SpSelect>
+                  </label>
+                  <QuickDateField value={actionAt} onChange={setActionAt} />
+                  <SpInput name="nextActionAt" type="hidden" value={actionAt} />
+                </>
+              ) : (
+                <p className="privacy-hint">
+                  {isOwnerOpportunity(moving.type)
+                    ? "Yetkiyi kaydettikten sonra adres, fiyat ve mülk bilgilerini tamamlayarak portföyü oluşturacaksın."
+                    : "Bu kayıt müşteri talebi olarak sonuçlanır; kendi portföyüne mülk eklemez."}
+                </p>
+              )}
+              {error ? <p className="form-error">{error}</p> : null}
+              <button
+                className="primary-action auth-submit"
+                disabled={pending}
+                type="submit"
+              >
+                {pending
+                  ? "İlerletiliyor…"
+                  : targetStage === "won" && isOwnerOpportunity(moving.type)
+                    ? "Yetkiyi al ve portföyü tamamla"
+                    : targetStage === "won"
+                      ? "Talebi sonuçlandır"
+                      : "Aşamayı kaydet"}
+              </button>
+            </form>
+          </section>
+        </div>
+      ) : null}
+      {correcting ? (
+        <div
+          className="sheet-backdrop"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setCorrecting(null);
+          }}
+        >
+          <section className="form-sheet" role="dialog" aria-modal="true">
+            <div className="sheet-heading">
+              <div>
+                <p className="eyebrow">DENETİM İZLİ DÜZELTME</p>
+                <h2>{correcting.subjectContactName}</h2>
+              </div>
+              <button
+                className="icon-action"
+                aria-label="Kapat"
+                onClick={() => setCorrecting(null)}
+                type="button"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <form className="form-stack" onSubmit={correct}>
+              <label>
+                Doğru aşama
+                <SpSelect
+                  value={targetStage}
+                  onChange={(event) =>
+                    setTargetStage(event.target.value as OpportunityStage)
+                  }
+                >
+                  {opportunityStages
+                    .filter((stage) => stage !== correcting.stage)
+                    .map((stage) => (
+                      <option key={stage} value={stage}>
+                        {opportunityStageLabel(stage, correcting.type)}
+                      </option>
+                    ))}
+                </SpSelect>
+              </label>
+              <label>
+                Düzeltme nedeni
+                <SpTextarea
+                  required
+                  value={correctionReason}
+                  onChange={(event) => setCorrectionReason(event.target.value)}
+                />
+              </label>
+              {targetStage === "lost" ? (
+                <>
+                  <label>
+                    Kaydı neden kapatıyorsun?
+                    <SpSelect
+                      value={lostKind}
+                      onChange={(event) =>
+                        setLostKind(event.target.value as "lost" | "duplicate")
+                      }
+                    >
+                      <option value="lost">İş kaybedildi</option>
+                      <option value="duplicate">
+                        Mükerrer kayıt — kaybedilmiş bir iş değil
+                      </option>
+                    </SpSelect>
+                  </label>
+                  <label>
+                    {lostKind === "duplicate" ? "Açıklama" : "Kayıp nedeni"}
+                    <SpTextarea
+                      required
+                      value={lostReason}
+                      onChange={(event) => setLostReason(event.target.value)}
+                    />
+                  </label>
+                  {lostKind === "duplicate" ? (
+                    <p className="privacy-hint">
+                      Mükerrer kapatılan kayıtlar kayıp istatistiğine girmez.
+                    </p>
+                  ) : null}
+                </>
+              ) : targetStage !== "won" ? (
+                <>
+                  <label>
+                    Sonraki adım
+                    <SpSelect
+                      value={actionType}
+                      onChange={(event) =>
+                        setActionType(event.target.value as NextActionType)
+                      }
+                    >
+                      {nextActionTypes.map((item) => (
+                        <option key={item} value={item}>
+                          {nextActionTypeLabels[item]}
+                        </option>
+                      ))}
+                    </SpSelect>
+                  </label>
+                  <QuickDateField value={actionAt} onChange={setActionAt} />
+                </>
+              ) : null}
+              <p className="privacy-hint">
+                Eski aşama silinmez; düzeltme nedeni zaman çizelgesine eklenir.
+              </p>
+              {error ? <p className="form-error">{error}</p> : null}
+              <button className="primary-action auth-submit" disabled={pending}>
+                Aşamayı düzelt
+              </button>
+            </form>
+          </section>
+        </div>
+      ) : null}
+    </AppShell>
+  );
 }

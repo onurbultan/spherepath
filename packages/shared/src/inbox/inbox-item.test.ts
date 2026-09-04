@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyVoiceInsights } from "../voice/voice-note";
-import { classifyInboxText, inboxAnalysisHighlights, isInboxItemResolved, maskSensitiveInboxText, processInboxItemSchema, updateInboxItemSchema, type InboxAppliedAction } from "./inbox-item";
+import { classifyInboxText, inboxAnalysisHighlights, inboxKindAfterAnalysis, inboxOpportunityType, isInboxItemResolved, maskSensitiveInboxText, processInboxItemSchema, updateInboxItemSchema, type InboxAppliedAction, type InboxItemAnalysis } from "./inbox-item";
 
 describe("inbox classification", () => {
   it("suggests a requirement and detects a location", () => {
@@ -34,6 +34,66 @@ describe("inbox classification", () => {
   it("validates a requirement conversion as one trusted command", () => {
     expect(processInboxItemSchema.parse({ inboxItemId: "note-1", action: "requirement", contactId: "contact-1", opportunityType: "buyer_requirement", nextActionType: "call", nextActionAt: Date.now() + 86_400_000, approvedInsights: emptyVoiceInsights }).action).toBe("requirement");
     expect(processInboxItemSchema.safeParse({ inboxItemId: "note-1", action: "requirement", contactId: "contact-1", opportunityType: "seller_listing", nextActionType: "call", nextActionAt: Date.now() + 86_400_000, approvedInsights: emptyVoiceInsights }).success).toBe(false);
+  });
+
+  it("validates a new person, interaction, opportunity and follow-up as one trusted command", () => {
+    const result = processInboxItemSchema.parse({
+      inboxItemId: "note-1",
+      action: "person",
+      contact: {
+        fullName: "Selin Aras",
+        phone: "",
+        metAtPlace: "Telefon görüşmesi",
+        source: "inbound_call",
+        role: "tenant",
+        nextActionType: "message",
+        nextActionAt: Date.now() + 86_400_000,
+      },
+      approvedInsights: emptyVoiceInsights,
+      opportunityType: "tenant_requirement",
+    });
+    expect(result).toMatchObject({ action: "person", recordInteraction: true, opportunityType: "tenant_requirement" });
+  });
+
+  it("does not open work for a new person without a dated first follow-up", () => {
+    expect(processInboxItemSchema.safeParse({
+      inboxItemId: "note-1",
+      action: "person",
+      contact: { fullName: "Selin Aras", phone: "", metAtPlace: "", source: "other", role: "tenant" },
+      opportunityType: "tenant_requirement",
+    }).success).toBe(false);
+  });
+});
+
+describe("post-analysis inbox routing", () => {
+  const analysis = {
+    insights: {
+      keyThingsToRemember: [], propertyContext: null,
+      propertyPreferences: { transactionType: null, propertyTypes: [], preferredLocations: [], budgetRange: null, bedroomCountMin: null, livingRoomCountMin: null, roomCountMin: null, areaMinM2: null, areaMaxM2: null, mustHaves: [], dealBreakers: [], timeline: null },
+      propertySituations: [], suggestedActionReason: null, contactName: "Mert Yalın", contactPhone: null,
+    },
+    nextActionType: "call", nextActionAt: Date.now() + 86_400_000,
+    opportunityType: "seller_listing", engine: "rules",
+  } satisfies InboxItemAnalysis;
+
+  it("routes an unlinked typed note naming someone to the person workflow", () => {
+    expect(inboxKindAfterAnalysis("follow_up", "typed", null, analysis)).toBe("person");
+  });
+
+  it("does not reinterpret linked or WhatsApp notes", () => {
+    expect(inboxKindAfterAnalysis("follow_up", "typed", "contact-1", analysis)).toBe("follow_up");
+    expect(inboxKindAfterAnalysis("property", "whatsapp", null, analysis)).toBe("property");
+  });
+
+  it("derives a seller opportunity from a subject-property situation", () => {
+    expect(inboxOpportunityType({
+      ...analysis.insights,
+      propertySituations: [{
+        propertyContext: "subject_property",
+        summary: "Balıklıova'da satılık villa",
+        propertyPreferences: { ...analysis.insights.propertyPreferences, transactionType: "sell" },
+      }],
+    })).toBe("seller_listing");
   });
 });
 

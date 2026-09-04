@@ -26,18 +26,14 @@ export async function listInboxItems(session?: WorkspaceSession): Promise<InboxI
 export async function createInboxNote(session: WorkspaceSession, text: string, source: "typed" | "whatsapp" = "typed"): Promise<InboxItemRecord> {
   const input: CreateInboxItemInput = { source, text, linkedContactId: null, requestedKind: null };
   const commandId = createCommandId(session.uid); const local = localRecord(session, input, commandId);
-  const queue = await readQueue(); await writeQueue([...queue, { commandId, ownerUid: session.uid, input, local }]);
   if (await isOnline()) {
-    void apiClient.command<CreateInboxItemInput, { item: InboxItemRecord }>("createInboxItem", input, commandId)
-      .then(async () => writeQueue((await readQueue()).filter((item) => item.commandId !== commandId)))
-      .catch(async (error: unknown) => {
-        if (networkFailure(error)) return;
-        const current = await readQueue();
-        await writeQueue(current.map((item) => item.commandId === commandId
-          ? { ...item, local: { ...item.local, status: "failed", errorCode: "sync_failed", updatedAt: Date.now() } }
-          : item));
-      });
+    try {
+      return (await apiClient.command<CreateInboxItemInput, { item: InboxItemRecord }>("createInboxItem", input, commandId)).item;
+    } catch (error) {
+      if (!networkFailure(error)) throw error;
+    }
   }
+  const queue = await readQueue(); await writeQueue([...queue, { commandId, ownerUid: session.uid, input, local }]);
   return local;
 }
 

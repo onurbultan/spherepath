@@ -16,10 +16,14 @@ import {
   contactPrivacyDraftSchema,
   currencyCodes,
   dealDraftSchema,
+  dealSourceLabels,
+  dealSources,
   dealStageLabels,
   dealTransitionSchema,
   marketingChannelLabels,
   marketingChannels,
+  nextActionTypeLabels,
+  nextActionTypes,
   nextDealStages,
   nextPresentationStatuses,
   presentationDraftSchema,
@@ -27,6 +31,7 @@ import {
   type CurrencyCode,
   type DealStage,
   type MarketingChannel,
+  type NextActionType,
   parseMoneyInput,
 } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
@@ -50,6 +55,7 @@ import {
   type DealRecord,
 } from "../resources/closing";
 import { MoneyInput } from "@/shared/ui/MaskedInputs";
+import { SpDateField } from "@/shared/ui/SpDateField";
 import {
   buttonMetrics,
   choiceMetrics,
@@ -59,6 +65,8 @@ import {
 
 const messageFrom = (error: unknown) =>
   error instanceof Error ? error.message : "Kapama işlemi tamamlanamadı.";
+function localDateTime(days = 0): string { const date = new Date(Date.now() + days * 86_400_000); if (days > 0) date.setHours(10, 0, 0, 0); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16); }
+function localDateTimeFrom(value: number): string { const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16); }
 export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
   const theme = useSpTheme();
   const { session } = useSession();
@@ -83,6 +91,8 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
   const [contactId, setContactId] = useState("");
   const [channel, setChannel] = useState<MarketingChannel>("whatsapp");
   const [message, setMessage] = useState("");
+  const [dealSource, setDealSource] = useState<(typeof dealSources)[number]>("presentation");
+  const [dealSourceNote, setDealSourceNote] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const selectedListing = listingId || available[0]?.id || "";
@@ -97,6 +107,10 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
   const [commissionAmount, setCommissionAmount] = useState("");
   const [currency, setCurrency] = useState<CurrencyCode>("TRY");
   const [lostReason, setLostReason] = useState("");
+  const [dealOccurredAt, setDealOccurredAt] = useState(localDateTime());
+  const [dealEvidence, setDealEvidence] = useState("");
+  const [dealNextActionType, setDealNextActionType] = useState<NextActionType>("call");
+  const [dealNextActionAt, setDealNextActionAt] = useState(localDateTime(1));
   const choice = (selected: boolean) => [
     styles.choice,
     {
@@ -114,6 +128,10 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
   ];
   const selectedContactRecord = contacts.find(
     (item) => item.id === selectedContact,
+  );
+  const sentPresentation = query.data?.presentations.find(
+    (item) => item.listingId === selectedListing && item.contactId === selectedContact
+      && ["sent", "delivered", "read", "replied"].includes(item.status),
   );
   const marketingEligibility = selectedContactRecord
     ? canMarketOnChannel(selectedContactRecord.privacy, channel)
@@ -145,6 +163,12 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
         const parsed = dealDraftSchema.safeParse({
           listingId: selectedListing,
           buyerContactId: selectedContact || null,
+          buyerOpportunityId: null,
+          source: dealSource,
+          sourcePresentationId: dealSource === "presentation" ? sentPresentation?.id ?? null : null,
+          sourceNote: dealSource === "presentation" ? null : dealSourceNote.trim() || null,
+          nextActionType: dealNextActionType,
+          nextActionAt: new Date(dealNextActionAt).getTime(),
         });
         if (!parsed.success) throw new Error("İşlem bilgilerini kontrol et.");
         await saveDeal(session, parsed.data);
@@ -227,6 +251,10 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
     );
     setCurrency(deal.currency ?? "TRY");
     setLostReason(deal.lostReason ?? "");
+    setDealOccurredAt(localDateTime());
+    setDealEvidence("");
+    setDealNextActionType(deal.nextActionType ?? "call");
+    setDealNextActionAt(deal.nextActionAt ? localDateTimeFrom(deal.nextActionAt) : localDateTime(1));
     setError(null);
   }
   async function advanceDeal() {
@@ -234,6 +262,10 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
     const parsed = dealTransitionSchema.safeParse({
       dealId: movingDeal.id,
       toStage: dealStage,
+      occurredAt: new Date(dealOccurredAt).getTime(),
+      evidenceNote: dealEvidence.trim(),
+      nextActionType: dealStage === "closed" || dealStage === "lost" ? null : dealNextActionType,
+      nextActionAt: dealStage === "closed" || dealStage === "lost" ? null : new Date(dealNextActionAt).getTime(),
       offerAmount: dealStage === "offer" ? parseMoneyInput(offerAmount) : null,
       actualAmount:
         dealStage === "closed" ? parseMoneyInput(actualAmount) : null,
@@ -281,7 +313,7 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
         </Pressable>
         <Pressable
           disabled={!available.length}
-          onPress={() => setMode("deal")}
+          onPress={() => { setDealNextActionType("call"); setDealNextActionAt(localDateTime(1)); setMode("deal"); }}
           style={[styles.action, { borderColor: theme.line }]}
         >
           <Handshake color={theme.textSecondary} size={17} />
@@ -324,6 +356,8 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
           <SpText color="secondary">
             {item.listingAddress} · {dealStageLabels[item.stage]}
           </SpText>
+          {item.lastStageNote ? <SpText variant="bodySmall" color="secondary">{item.lastStageNote}</SpText> : null}
+          {item.nextActionAt && item.nextActionType ? <SpText variant="bodySmall" color="deed">Sonraki: {nextActionTypeLabels[item.nextActionType]} · {new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(item.nextActionAt)}</SpText> : null}
           {item.offerAmount && item.currency ? (
             <SpText variant="bodySmall" color="deed">
               Teklif:{" "}
@@ -520,6 +554,30 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
                   </View>
                 ) : null}
               </>
+            ) : mode === "deal" ? (
+              <>
+                <SpText variant="title">İşlem kaynağı</SpText>
+                <View style={styles.choices}>
+                  {dealSources.map((item) => (
+                    <Pressable key={item} onPress={() => { setDealSource(item); setError(null); }} style={choice(dealSource === item)}>
+                      <SpText variant="bodySmall" color={dealSource === item ? "deed" : "secondary"}>{dealSourceLabels[item]}</SpText>
+                    </Pressable>
+                  ))}
+                </View>
+                {dealSource === "presentation" ? (
+                  <View style={[styles.hint, { backgroundColor: sentPresentation ? theme.deedBg : theme.askBg }]}>
+                    <SpText variant="bodySmall" color={sentPresentation ? "deed" : "ask"}>{sentPresentation ? "Gönderilmiş sunum işleme bağlanacak." : "Önce gönderimi doğrula veya farklı kaynak seç."}</SpText>
+                  </View>
+                ) : (
+                  <>
+                    <SpText variant="title">Kaynak açıklaması</SpText>
+                    <TextInput multiline style={[inputStyle, styles.multiline]} value={dealSourceNote} onChangeText={setDealSourceNote} placeholder="Örn. Müşteri ilan üzerinden aradı." placeholderTextColor={theme.textTertiary} />
+                  </>
+                )}
+                <SpText variant="title">İlk takip</SpText>
+                <View style={styles.choices}>{nextActionTypes.map((item) => <Pressable key={item} onPress={() => setDealNextActionType(item)} style={choice(dealNextActionType === item)}><SpText variant="bodySmall" color={dealNextActionType === item ? "deed" : "secondary"}>{nextActionTypeLabels[item]}</SpText></Pressable>)}</View>
+                <SpDateField label="Takip zamanı" onChange={setDealNextActionAt} value={dealNextActionAt} />
+              </>
             ) : null}
             {error ? (
               <View style={[styles.error, { backgroundColor: theme.askBg }]}>
@@ -529,7 +587,8 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
             <Pressable
               disabled={
                 pending ||
-                (mode === "presentation" && !marketingEligibility.allowed)
+                (mode === "presentation" && !marketingEligibility.allowed) ||
+                (mode === "deal" && (!selectedContact || (dealSource === "presentation" && !sentPresentation)))
               }
               onPress={() => void create()}
               style={[
@@ -538,7 +597,8 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
                   backgroundColor: theme.ask,
                   opacity:
                     pending ||
-                    (mode === "presentation" && !marketingEligibility.allowed)
+                    (mode === "presentation" && !marketingEligibility.allowed) ||
+                    (mode === "deal" && (!selectedContact || (dealSource === "presentation" && !sentPresentation)))
                       ? 0.5
                       : 1,
                 },
@@ -574,6 +634,9 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
                 <X color={theme.textSecondary} size={20} />
               </Pressable>
             </View>
+            <SpDateField label="Aşama ne zaman gerçekleşti" onChange={setDealOccurredAt} value={dealOccurredAt} />
+            <SpText variant="title">Doğrulama notu</SpText>
+            <TextInput accessibilityLabel="Doğrulama notu" multiline placeholder="Örn. Alıcıyla yer gösterimi tamamlandı." placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.multiline]} value={dealEvidence} onChangeText={setDealEvidence} />
             <SpText variant="title">Yeni aşama</SpText>
             <View
               accessibilityLabel="Yeni aşama"
@@ -691,7 +754,13 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
                   onChangeText={setLostReason}
                 />
               </>
-            ) : null}
+            ) : dealStage === "closed" ? null : (
+              <>
+                <SpText variant="title">Sonraki aksiyon</SpText>
+                <View style={styles.choices}>{nextActionTypes.map((item) => <Pressable key={item} onPress={() => setDealNextActionType(item)} style={choice(dealNextActionType === item)}><SpText variant="bodySmall" color={dealNextActionType === item ? "deed" : "secondary"}>{nextActionTypeLabels[item]}</SpText></Pressable>)}</View>
+                <SpDateField label="Sonraki aksiyon zamanı" onChange={setDealNextActionAt} value={dealNextActionAt} />
+              </>
+            )}
             {error ? (
               <View style={[styles.error, { backgroundColor: theme.askBg }]}>
                 <SpText color="ask">{error}</SpText>

@@ -86,5 +86,23 @@ export async function extractPortfolioDraftWithVertex(text: string, source: Port
     logger.warn("Vertex portfolio extraction failed schema validation", { responseId: response.responseId, issues: parsed.error.issues.map((issue) => ({ path: issue.path.join("."), code: issue.code })) });
     throw new Error("vertex_invalid_schema");
   }
-  return parsed.data;
+  return normalizePortfolioExtraction(text, parsed.data);
+}
+
+/** Re-applies explicit facts so a model omission cannot erase advisor input. */
+export function normalizePortfolioExtraction(text: string, draft: PortfolioItemDraft): PortfolioItemDraft {
+  const room = text.match(/\b(\d{1,2})\s*\+\s*(\d{1,2})\b/u);
+  const explicitFeatures = [
+    /\b(?:otopark|garaj)(?:lı|li|lu|lü)?\b/iu.test(text) ? "parking" as const : null,
+    /\bhavuz(?:lu|lü)?\b/iu.test(text) ? "pool" as const : null,
+    /\bbahçe(?:li|si)?\b/iu.test(text) ? "garden" as const : null,
+    /\bsite\s+içinde\b/iu.test(text) ? "gated_community" as const : null,
+    /\bdeniz\s+manzara(?:lı|sı)\b/iu.test(text) ? "sea_view" as const : null,
+  ].filter((item): item is NonNullable<typeof item> => item !== null);
+  return portfolioItemDraftSchema.parse({
+    ...draft,
+    bedroomCount: draft.bedroomCount ?? (room?.[1] ? Number(room[1]) : null),
+    livingRoomCount: draft.livingRoomCount ?? (room?.[2] ? Number(room[2]) : null),
+    features: [...new Set([...draft.features, ...explicitFeatures])],
+  });
 }

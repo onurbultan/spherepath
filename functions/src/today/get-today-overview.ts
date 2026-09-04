@@ -1,6 +1,6 @@
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { buildTodayOverview, dailyTaskOutcomeSchema, istanbulDayKey, replaceDailyPlanItemSchema, replaceDailyPlanTask, selectDailyPlanTasks, todayOverviewQuerySchema, topUpDailyPlanTasks, type DailyTaskOutcome, type OpportunityStage, type ReplaceDailyPlanItemInput, type TodayOverview, type TodayTask } from "../../../packages/shared/src/index";
+import { buildTodayOverview, dailyTaskOutcomeSchema, istanbulDayKey, replaceDailyPlanItemSchema, replaceDailyPlanTask, selectDailyPlanTasks, todayOverviewQuerySchema, topUpDailyPlanTasks, type DailyTaskOutcome, type OpportunityStage, type OpportunityType, type ReplaceDailyPlanItemInput, type TodayOverview, type TodayTask } from "../../../packages/shared/src/index";
 import { requireSpherepathClaims } from "../auth/claims.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 
@@ -8,7 +8,7 @@ function millis(value: unknown): number | null {
   return value instanceof Timestamp ? value.toMillis() : null;
 }
 
-const dailyPlanSchemaVersion = 2;
+const dailyPlanSchemaVersion = 3;
 
 function candidateFingerprint(tasks: readonly TodayTask[]): string {
   return [...tasks]
@@ -69,6 +69,7 @@ export const getTodayOverview = onCall(
           lastTouchAt: millis(data.relationship?.lastTouchAt),
           nextActionAt: millis(data.relationship?.nextActionAt),
           nextActionType: data.relationship?.nextActionType ?? null,
+          roles: data.roles ?? [],
           deletedAt: millis(data.deletedAt),
         };
       })
@@ -88,6 +89,7 @@ export const getTodayOverview = onCall(
           estimatedValue: data.estimatedValue && typeof data.estimatedValue.amount === "number" && typeof data.estimatedValue.currency === "string"
             ? { amount: data.estimatedValue.amount as number, currency: data.estimatedValue.currency as string }
             : null,
+          type: data.type as OpportunityType,
           deletedAt: millis(data.deletedAt),
         };
       })
@@ -107,7 +109,17 @@ export const getTodayOverview = onCall(
         deletedAt: millis(data.deletedAt),
       };
     }).filter((item) => item.deletedAt === null);
-    const deals = dealsSnapshot.docs.map((item) => ({ id: item.id, stage: item.data().stage, closedAt: millis(item.data().closedAt), deletedAt: millis(item.data().deletedAt) })).filter((item) => item.deletedAt === null);
+    const deals = dealsSnapshot.docs.map((item) => ({
+      id: item.id,
+      stage: item.data().stage,
+      buyerContactId: (item.data().buyerContactId ?? null) as string | null,
+      buyerContactName: typeof item.data().buyerContactId === "string" ? contactNames.get(item.data().buyerContactId as string) ?? null : null,
+      nextActionAt: millis(item.data().nextActionAt),
+      nextActionType: item.data().nextActionType ?? null,
+      createdAt: millis(item.data().createdAt) ?? 0,
+      closedAt: millis(item.data().closedAt),
+      deletedAt: millis(item.data().deletedAt),
+    })).filter((item) => item.deletedAt === null);
     const interactions = interactionsSnapshot.docs.map((item) => {
       const data = item.data();
       return {
@@ -214,20 +226,24 @@ export const completeDailyTask = onCall(
     const envelope = readApiEnvelope<DailyTaskOutcome>(request.data, { command: true });
     const parsed = dailyTaskOutcomeSchema.safeParse(envelope.data);
     if (!parsed.success) throw new HttpsError("invalid-argument", "Daily task outcome is invalid.", parsed.error.flatten());
-    if (!/^(next-action|first-interaction|opportunity-action|missed-call)-/.test(parsed.data.taskId)) throw new HttpsError("invalid-argument", "Daily task identifier is invalid.");
+    if (!/^(next-action|first-interaction|opportunity-action|deal-action|missed-call)-/.test(parsed.data.taskId)) throw new HttpsError("invalid-argument", "Daily task identifier is invalid.");
     return observeApiRequest("completeDailyTask", envelope.requestId, async () => {
       const db = getFirestore();
       const commandRef = db.collection("commands").doc(envelope.commandId!);
       const completionRef = db.collection("dailyTaskCompletions").doc(`${claims.uid}-${istanbulDayKey(Date.now())}-${parsed.data.taskId}`.replace(/[^a-zA-Z0-9_-]/g, "_"));
       const opportunityPrefix = "opportunity-action-";
+      const dealPrefix = "deal-action-";
       const callPrefix = "missed-call-";
       const contactPrefixes = ["next-action-", "first-interaction-"] as const;
       const opportunityId = parsed.data.taskId.startsWith(opportunityPrefix) ? parsed.data.taskId.slice(opportunityPrefix.length) : null;
+      const dealId = parsed.data.taskId.startsWith(dealPrefix) ? parsed.data.taskId.slice(dealPrefix.length) : null;
       const callId = parsed.data.taskId.startsWith(callPrefix) ? parsed.data.taskId.slice(callPrefix.length) : null;
       const contactPrefix = contactPrefixes.find((prefix) => parsed.data.taskId.startsWith(prefix));
       const contactId = contactPrefix ? parsed.data.taskId.slice(contactPrefix.length) : null;
       const targetRef = opportunityId
         ? db.collection("opportunities").doc(opportunityId)
+        : dealId
+          ? db.collection("deals").doc(dealId)
         : callId
           ? db.collection("calls").doc(callId)
         : contactId
@@ -274,6 +290,17 @@ export const completeDailyTask = onCall(
             && contactActionAt instanceof Timestamp
             && opportunityActionAt instanceof Timestamp
             && Math.abs(contactActionAt.toMillis() - opportunityActionAt.toMillis()) <= 5 * 60 * 1_000;
+        } else if (dealId && typeof targetData.buyerContactId === "string") {
+          const contactRef = db.collection("contacts").doc(targetData.buyerContactId);
+          const contactSnapshot = await transaction.get(contactRef);
+          const contactData = contactSnapshot.data();
+          if (contactSnapshot.exists
+            && contactData?.officeId === claims.officeId
+            && (contactData?.ownerUid === claims.uid || claims.role === "broker")
+            && !(contactData?.deletedAt instanceof Timestamp)) {
+            resolvedContactRef = contactRef;
+            resolvedContactData = contactData ?? null;
+          }
         } else if (callId && typeof targetData.contactId === "string") {
           const contactRef = db.collection("contacts").doc(targetData.contactId);
           const contactSnapshot = await transaction.get(contactRef);
@@ -295,7 +322,7 @@ export const completeDailyTask = onCall(
           : null;
 
         const now = Timestamp.now();
-        if (opportunityId) {
+        if (opportunityId || dealId) {
           transaction.update(targetRef, {
             nextActionAt: parsed.data.status === "rescheduled" ? Timestamp.fromMillis(parsed.data.rescheduledAt!) : null,
             nextActionType: parsed.data.status === "rescheduled" ? parsed.data.rescheduledActionType : null,
@@ -383,12 +410,12 @@ async function loadTaskCandidates(claims: ReturnType<typeof requireSpherepathCla
   const [contactSnapshot, opportunitySnapshot] = await Promise.all([contactsQuery.limit(1_000).get(), opportunitiesQuery.limit(1_000).get()]);
   const contacts = contactSnapshot.docs.map((item) => {
     const data = item.data();
-    return { id: item.id, name: (data.fullName ?? data.label ?? "İsimsiz kişi") as string, createdAt: millis(data.createdAt) ?? 0, meaningfulTouchCount: Number(data.relationship?.meaningfulTouchCount ?? 0), lastTouchAt: millis(data.relationship?.lastTouchAt), nextActionAt: millis(data.relationship?.nextActionAt), nextActionType: data.relationship?.nextActionType ?? null, deletedAt: millis(data.deletedAt) };
+    return { id: item.id, name: (data.fullName ?? data.label ?? "İsimsiz kişi") as string, createdAt: millis(data.createdAt) ?? 0, meaningfulTouchCount: Number(data.relationship?.meaningfulTouchCount ?? 0), lastTouchAt: millis(data.relationship?.lastTouchAt), nextActionAt: millis(data.relationship?.nextActionAt), nextActionType: data.relationship?.nextActionType ?? null, roles: data.roles ?? [], deletedAt: millis(data.deletedAt) };
   }).filter((item) => item.deletedAt === null);
   const names = new Map(contacts.map((item) => [item.id, item.name]));
   const opportunities = opportunitySnapshot.docs.map((item) => {
     const data = item.data();
-    return { id: item.id, subjectContactId: data.subjectContactId as string, subjectContactName: names.get(data.subjectContactId as string) ?? "İsimsiz kişi", stage: data.stage as OpportunityStage, nextActionAt: millis(data.nextActionAt), nextActionType: data.nextActionType ?? null, createdAt: millis(data.createdAt) ?? 0, deletedAt: millis(data.deletedAt) };
+    return { id: item.id, subjectContactId: data.subjectContactId as string, subjectContactName: names.get(data.subjectContactId as string) ?? "İsimsiz kişi", stage: data.stage as OpportunityStage, type: data.type as OpportunityType, nextActionAt: millis(data.nextActionAt), nextActionType: data.nextActionType ?? null, createdAt: millis(data.createdAt) ?? 0, deletedAt: millis(data.deletedAt) };
   }).filter((item) => item.deletedAt === null);
   return buildTodayOverview(contacts, opportunities, Date.now()).tasks;
 }

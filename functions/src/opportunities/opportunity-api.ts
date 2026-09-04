@@ -3,9 +3,14 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   contactMemorySchema,
   createOpportunity as createOpportunityEntity,
+  isOwnerOpportunity,
+  opportunityCriteriaSummary,
+  opportunityCriteriaUpdateSchema,
   opportunityDraftSchema,
   opportunityImpliedRole,
+  opportunityTransactionType,
   type Contact,
+  type OpportunityCriteriaUpdate,
   type StageEvent,
   type Opportunity,
   type OpportunityDraft,
@@ -255,5 +260,62 @@ export const createOpportunity = onCall(callableOptions, async (request): Promis
       (contact?.fullName ?? contact?.label ?? "İsimsiz kişi") as string,
       contactMemory(contact),
     ) };
+  });
+});
+
+export const updateOpportunityCriteria = onCall(callableOptions, async (request): Promise<{ opportunityId: string }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<OpportunityCriteriaUpdate>(request.data, { command: true });
+  const parsed = opportunityCriteriaUpdateSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Opportunity criteria are invalid.", parsed.error.flatten());
+
+  return observeApiRequest("updateOpportunityCriteria", envelope.requestId, async () => {
+    const firestore = getFirestore();
+    const opportunityRef = firestore.collection("opportunities").doc(parsed.data.opportunityId);
+    const commandRef = firestore.collection("commands").doc(envelope.commandId!);
+    await firestore.runTransaction(async (transaction) => {
+      const [receipt, opportunitySnapshot] = await Promise.all([transaction.get(commandRef), transaction.get(opportunityRef)]);
+      if (receipt.exists) {
+        const data = receipt.data()!;
+        if (data.officeId !== claims.officeId || data.ownerUid !== claims.uid || data.type !== "updateOpportunityCriteria") {
+          throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+        }
+        return;
+      }
+      if (!opportunitySnapshot.exists) throw new HttpsError("not-found", "Opportunity was not found.");
+      const opportunity = opportunitySnapshot.data()!;
+      if (opportunity.officeId !== claims.officeId || (opportunity.ownerUid !== claims.uid && claims.role !== "broker") || opportunity.deletedAt instanceof Timestamp) {
+        throw new HttpsError("permission-denied", "Opportunity is outside your workspace.");
+      }
+      const contactRef = firestore.collection("contacts").doc(opportunity.subjectContactId as string);
+      const contactSnapshot = await transaction.get(contactRef);
+      if (!contactSnapshot.exists) throw new HttpsError("not-found", "Opportunity contact was not found.");
+      const contact = contactSnapshot.data()!;
+      if (contact.officeId !== claims.officeId || (contact.ownerUid !== claims.uid && claims.role !== "broker") || contact.deletedAt instanceof Timestamp) {
+        throw new HttpsError("permission-denied", "Opportunity contact is outside your workspace.");
+      }
+
+      const type = opportunity.type as Opportunity["type"];
+      const propertyContext = isOwnerOpportunity(type) ? "subject_property" : "search_preference";
+      const preferences = { ...parsed.data.preferences, transactionType: opportunityTransactionType(type) };
+      const currentMemory = contactMemory(contact);
+      const nextSituation = { propertyContext, summary: opportunityCriteriaSummary(type, preferences), propertyPreferences: preferences };
+      const matchingIndex = currentMemory.propertySituations.findIndex((item) => item.propertyContext === propertyContext);
+      const propertySituations = matchingIndex >= 0
+        ? currentMemory.propertySituations.map((item, index) => index === matchingIndex ? nextSituation : item)
+        : [nextSituation, ...currentMemory.propertySituations].slice(0, 3);
+      const now = Timestamp.now();
+      transaction.update(contactRef, {
+        memory: {
+          ...currentMemory,
+          propertyPreferences: propertyContext === "search_preference" ? preferences : currentMemory.propertyPreferences,
+          propertySituations,
+          updatedAt: now,
+        },
+        updatedAt: now,
+      });
+      transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "updateOpportunityCriteria", opportunityId: opportunityRef.id, createdAt: now });
+    });
+    return { opportunityId: parsed.data.opportunityId };
   });
 });

@@ -176,6 +176,9 @@ describe("callable API vertical slice", () => {
     await expect(advanceListing(envelope({ listingId: listing.listing.id, toStatus: "active", reason: "Missing valuation" }, "request-listing-advance-missing-price", "command-listing-advance-missing-price"))).rejects.toThrow();
     const updateListingPrice = httpsCallable(functions, "updateListingPrice");
     await updateListingPrice(envelope({ listingId: listing.listing.id, askingPrice: 11_000_000, currency: "TRY" }, "request-listing-price", "command-listing-price"));
+    await expect(advanceListing(envelope({ listingId: listing.listing.id, toStatus: "active", reason: "Missing readiness evidence" }, "request-listing-advance-missing-evidence", "command-listing-advance-missing-evidence"))).rejects.toThrow();
+    const updateListingReadiness = httpsCallable(functions, "updateListingReadiness");
+    await updateListingReadiness(envelope({ listingId: listing.listing.id, evidence: { mandate: "verified", eids: "not_required", media: "ready", processingBasis: "verified" } }, "request-listing-readiness", "command-listing-readiness"));
     await advanceListing(envelope({ listingId: listing.listing.id, toStatus: "active", reason: "Ready to market" }, "request-listing-advance", "command-listing-advance"));
     const listListings = httpsCallable(functions, "listListings");
     const listedListings = (await listListings(envelope(undefined, "request-list-listings"))).data as { listings: Array<{ id: string; status: string; askingPrice: number }> };
@@ -189,19 +192,33 @@ describe("callable API vertical slice", () => {
     await advancePresentation(envelope({ presentationId: presentation.presentationId, toStatus: "user_approved" }, "request-presentation-approved", "command-presentation-approved"));
     await advancePresentation(envelope({ presentationId: presentation.presentationId, toStatus: "sent" }, "request-presentation-sent", "command-presentation-sent"));
 
+    const buyerOpportunity = (await createOpportunity(envelope({
+      subjectContactId: created.contact.id,
+      type: "buyer_requirement",
+      nextActionType: "call",
+      nextActionAt: Date.now() + 86_400_000,
+    }, "request-buyer-opportunity", "command-buyer-opportunity"))).data as { opportunity: { id: string } };
+
     const createDeal = httpsCallable(functions, "createDeal");
-    const deal = (await createDeal(envelope({ listingId: listing.listing.id, buyerContactId: created.contact.id }, "request-deal", "command-deal"))).data as { dealId: string };
+    const dealTime = Date.now();
+    const deal = (await createDeal(envelope({ listingId: listing.listing.id, buyerContactId: created.contact.id, buyerOpportunityId: buyerOpportunity.opportunity.id, source: "presentation", sourcePresentationId: presentation.presentationId, sourceNote: null, nextActionType: "appointment", nextActionAt: dealTime + 86_400_000 }, "request-deal", "command-deal"))).data as { dealId: string };
     const advanceDeal = httpsCallable(functions, "advanceDeal");
-    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "viewing", offerAmount: null, actualAmount: null, commissionAmount: null, currency: null, lostReason: null }, "request-deal-viewing", "command-deal-viewing"));
-    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "offer", offerAmount: 9_500_000, actualAmount: null, commissionAmount: null, currency: "TRY", lostReason: null }, "request-deal-offer", "command-deal-offer"));
-    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "contract", offerAmount: null, actualAmount: null, commissionAmount: null, currency: null, lostReason: null }, "request-deal-contract", "command-deal-contract"));
-    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "closed", offerAmount: null, actualAmount: 9_300_000, commissionAmount: 186_000, currency: "TRY", lostReason: null }, "request-deal-closed", "command-deal-closed"));
+    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "viewing", occurredAt: dealTime + 1_000, evidenceNote: "Gezi tarihi müşteriyle teyit edildi.", nextActionType: "appointment", nextActionAt: dealTime + 86_400_000, offerAmount: null, actualAmount: null, commissionAmount: null, currency: null, lostReason: null }, "request-deal-viewing", "command-deal-viewing"));
+    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "offer", occurredAt: dealTime + 2_000, evidenceNote: "Yazılı teklif alındı.", nextActionType: "call", nextActionAt: dealTime + 86_400_000, offerAmount: 9_500_000, actualAmount: null, commissionAmount: null, currency: "TRY", lostReason: null }, "request-deal-offer", "command-deal-offer"));
+    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "contract", occurredAt: dealTime + 3_000, evidenceNote: "Sözleşme taraflarca teyit edildi.", nextActionType: "appointment", nextActionAt: dealTime + 86_400_000, offerAmount: null, actualAmount: null, commissionAmount: null, currency: null, lostReason: null }, "request-deal-contract", "command-deal-contract"));
+    await advanceDeal(envelope({ dealId: deal.dealId, toStage: "closed", occurredAt: dealTime + 4_000, evidenceNote: "Tapu devri ve tahsilat tamamlandı.", nextActionType: null, nextActionAt: null, offerAmount: null, actualAmount: 9_300_000, commissionAmount: 186_000, currency: "TRY", lostReason: null }, "request-deal-closed", "command-deal-closed"));
     const getClosingOverview = httpsCallable(functions, "getClosingOverview");
     const closing = (await getClosingOverview(envelope(undefined, "request-closing"))).data as { presentations: Array<{ id: string; status: string }>; deals: Array<{ id: string; stage: string; actualAmount: number | null; commissionAmount: number | null }> };
     expect(closing.presentations).toEqual([expect.objectContaining({ id: presentation.presentationId, status: "sent" })]);
     expect(closing.deals).toEqual([expect.objectContaining({ id: deal.dealId, stage: "closed", actualAmount: 9_300_000, commissionAmount: 186_000 })]);
     const listingsAfterClosing = (await listListings(envelope(undefined, "request-list-listings-after-closing"))).data as { listings: Array<{ id: string; status: string }> };
     expect(listingsAfterClosing.listings).toEqual([expect.objectContaining({ id: listing.listing.id, status: "sold" })]);
+    const opportunitiesAfterClosing = (await listOpportunities(envelope(undefined, "request-opportunities-after-closing"))).data as { opportunities: Array<{ id: string; stage: string; nextActionAt: number | null }> };
+    expect(opportunitiesAfterClosing.opportunities).toContainEqual(expect.objectContaining({
+      id: buyerOpportunity.opportunity.id,
+      stage: "won",
+      nextActionAt: null,
+    }));
 
     const registerVoiceNote = httpsCallable(functions, "registerVoiceNote");
     const voiceRequest = envelope({
@@ -469,9 +486,61 @@ describe("callable API vertical slice", () => {
     const requirementReplay = (await processInboxItem({ ...requirementCommand, requestId: `request-inbox-requirement-replay-${runId}` })).data as { entityId: string };
     expect(requirementReplay.entityId).toBe(requirementResult.entityId);
 
+    const updateOpportunityCriteria = httpsCallable(functions, "updateOpportunityCriteria");
+    await updateOpportunityCriteria(envelope({
+      opportunityId: requirementResult.entityId,
+      preferences: {
+        ...requirementInsights.propertyPreferences,
+        preferredLocations: ["Karşıyaka", "Bostanlı"],
+        budgetRange: { min: 35_000, max: 45_000, currency: "TRY" },
+        mustHaves: ["Havuzlu", "Otoparklı"],
+        timeline: "1 Ekim'de taşınacak",
+      },
+    }, "request-opportunity-criteria", "command-opportunity-criteria"));
+    const requirementDetail = (await getOpportunityDetail(envelope({ opportunityId: requirementResult.entityId }, "request-requirement-detail"))).data as {
+      opportunity: { subjectContactMemory: { propertyPreferences: { preferredLocations: string[]; budgetRange: { max: number } | null; mustHaves: string[]; timeline: string | null } } };
+    };
+    expect(requirementDetail.opportunity.subjectContactMemory.propertyPreferences).toMatchObject({
+      preferredLocations: ["Karşıyaka", "Bostanlı"],
+      budgetRange: { max: 45_000 },
+      mustHaves: ["Havuzlu", "Otoparklı"],
+      timeline: "1 Ekim'de taşınacak",
+    });
+
     const personNote = (await createInboxItem(envelope({ source: "typed", text: "Akış Kişisi ile tanıştım", linkedContactId: null, requestedKind: "person" }, "request-inbox-person-create", "command-inbox-person-create"))).data as { item: { id: string } };
-    const personResult = (await processInboxItem(envelope({ inboxItemId: personNote.item.id, action: "person", contact: { fullName: "Akış Kişisi", phone: "+905551112244", metAtPlace: "Akış notu", source: "other", role: "unknown" } }, "request-inbox-person", "command-inbox-person"))).data as { item: { linkedContactId: string }; entityId: string };
+    const personFollowUpAt = Date.now() + 5 * 86_400_000;
+    const personResult = (await processInboxItem(envelope({
+      inboxItemId: personNote.item.id,
+      action: "person",
+      contact: { fullName: "Akış Kişisi", phone: "+905551112244", metAtPlace: "Akış notu", source: "other", role: "seller", nextActionType: "valuation", nextActionAt: personFollowUpAt },
+      approvedInsights: {
+        ...requirementInsights,
+        keyThingsToRemember: ["Balıklıova'da 4+1 satılık villa"],
+        propertyContext: "subject_property",
+        propertyPreferences: { ...requirementInsights.propertyPreferences, transactionType: null, preferredLocations: [], budgetRange: null, mustHaves: [] },
+        propertySituations: [{
+          propertyContext: "subject_property",
+          summary: "Balıklıova'da 4+1 satılık villa",
+          propertyPreferences: { ...requirementInsights.propertyPreferences, transactionType: "sell", preferredLocations: ["Balıklıova"], budgetRange: null, bedroomCountMin: 4, mustHaves: ["Havuzlu", "Otoparklı"] },
+        }],
+      },
+      recordInteraction: true,
+      opportunityType: "seller_listing",
+    }, "request-inbox-person", "command-inbox-person"))).data as { item: { linkedContactId: string; appliedActions: Array<{ type: string; entityId: string | null }> }; entityId: string };
     expect(personResult.item.linkedContactId).toBe(personResult.entityId);
+    expect(personResult.item.appliedActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "contact_created", entityId: personResult.entityId }),
+      expect.objectContaining({ type: "interaction_created" }),
+      expect.objectContaining({ type: "opportunity_created" }),
+    ]));
+    const personOpportunityId = personResult.item.appliedActions.find((action) => action.type === "opportunity_created")?.entityId;
+    expect(personOpportunityId).toBeTruthy();
+    const afterPersonOpportunities = (await listOpportunities(envelope(undefined, "request-opportunities-after-person"))).data as { opportunities: Array<{ id: string; type: string; subjectContactMemory: { propertySituations: Array<{ summary: string }> } }> };
+    expect(afterPersonOpportunities.opportunities).toContainEqual(expect.objectContaining({
+      id: personOpportunityId,
+      type: "seller_listing",
+      subjectContactMemory: expect.objectContaining({ propertySituations: [expect.objectContaining({ summary: "Balıklıova'da 4+1 satılık villa" })] }),
+    }));
 
     const portfolioNote = (await createInboxItem(envelope({ source: "typed", text: "Urla'da satılık bahçeli villa", linkedContactId: null, requestedKind: "property" }, "request-inbox-portfolio-create", "command-inbox-portfolio-create"))).data as { item: { id: string } };
     const portfolioFromNote = (await processInboxItem(envelope({ inboxItemId: portfolioNote.item.id, action: "portfolio", contactId: null, portfolio: { source: "manual", sourceAuthorName: null, headline: "Urla bahçeli villa", summary: "Akış notundan oluşturulan satılık bahçeli villa", transactionType: "sell", propertyType: "villa", location: "Urla", askingPrice: { amount: 15_000_000, currency: "TRY" }, bedroomCount: 3, livingRoomCount: 1, areaM2: 180, landAreaM2: null, features: ["garden"], attributes: [], authorizationType: "unknown", titleDeedType: "unknown", constructionAllowed: null, listingUrl: null } }, "request-inbox-portfolio", "command-inbox-portfolio"))).data as { item: { appliedActions: Array<{ type: string }> }; entityId: string };
@@ -504,7 +573,7 @@ describe("callable API vertical slice", () => {
     expect(contactExport.export.contact.id).toBe(created.contact.id);
     expect(contactExport.export.interactions.length).toBeGreaterThan(0);
     expect(contactExport.export.opportunities.length).toBeGreaterThan(0);
-    expect(contactExport.export.contact.memory.propertyPreferences).toMatchObject({ preferredLocations: ["Urla"], budgetRange: { max: 60_000 } });
+    expect(contactExport.export.contact.memory.propertyPreferences).toMatchObject({ preferredLocations: ["Karşıyaka", "Bostanlı"], budgetRange: { max: 45_000 } });
     const deletionContact = (await createContact(envelope({
       fullName: "Deletion Integration Contact",
       phone: "+90 555 111 22 33",

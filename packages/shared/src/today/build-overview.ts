@@ -1,4 +1,4 @@
-import type { Contact, Opportunity } from "../domain/entities.js";
+import type { Contact, ContactRole, Deal, Opportunity } from "../domain/entities.js";
 import { z } from "zod";
 import { nextActionTypeLabels, nextActionTypes } from "../interactions/manual-interaction.js";
 import { scoreDailyTaskCandidate } from "../daily-plan/rank-tasks.js";
@@ -11,6 +11,7 @@ export interface TodayContact {
   lastTouchAt?: number | null;
   nextActionAt: number | null;
   nextActionType: Contact["relationship"]["nextActionType"];
+  roles?: ContactRole[];
 }
 
 export interface TodayOpportunity {
@@ -22,6 +23,7 @@ export interface TodayOpportunity {
   nextActionType: Opportunity["nextActionType"];
   createdAt?: number;
   estimatedValue?: { amount: number; currency: string } | null;
+  type?: Opportunity["type"];
 }
 
 export type DailyTaskResolutionStatus = "completed" | "skipped" | "rescheduled" | "contact_opt_out";
@@ -40,9 +42,14 @@ export interface TodayTask {
   dueAt: number | null;
   type: "record_interaction" | "next_action" | "complete_listing" | "return_call";
   opportunityId?: string;
+  dealId?: string;
   priority: "overdue" | "bottleneck" | "relationship";
   resolutionStatus?: DailyTaskResolutionStatus | null;
   resolutionNote?: string | null;
+  contactRoles?: ContactRole[];
+  lastTouchAt?: number | null;
+  opportunityType?: Opportunity["type"];
+  opportunityStage?: Opportunity["stage"];
   /** Weighted urgency from rankDailyTaskCandidates; higher comes first. */
   priorityScore?: number;
 }
@@ -64,7 +71,7 @@ export interface TodayListing {
   ownerContactId?: string | null;
   ownerContactName?: string | null;
 }
-export interface TodayDeal { id: string; stage: "presentation" | "viewing" | "offer" | "contract" | "closed" | "lost"; closedAt?: number | null }
+export interface TodayDeal { id: string; stage: Deal["stage"]; buyerContactId?: string | null; buyerContactName?: string | null; nextActionAt?: number | null; nextActionType?: Deal["nextActionType"]; createdAt?: number; closedAt?: number | null }
 export interface TodayInteraction {
   id: string;
   contactId: string;
@@ -258,6 +265,18 @@ export function buildTodayOverview(
       type: "next_action",
       priority: (opportunity.nextActionAt ?? now) < now ? "overdue" : "bottleneck",
     }));
+  const dealTasks = deals
+    .filter((deal) => deal.stage !== "closed" && deal.stage !== "lost" && deal.buyerContactId && deal.nextActionAt != null && deal.nextActionType)
+    .map<TodayTask>((deal) => ({
+      id: `deal-action-${deal.id}`,
+      contactId: deal.buyerContactId!,
+      dealId: deal.id,
+      title: deal.buyerContactName ?? contacts.find((contact) => contact.id === deal.buyerContactId)?.name ?? "Açık işlem",
+      reason: nextActionTypeLabels[deal.nextActionType!],
+      dueAt: deal.nextActionAt!,
+      type: "next_action",
+      priority: deal.nextActionAt! < now ? "overdue" : "bottleneck",
+    }));
   const dayMs = 86_400_000;
   // Deal size only compares within a currency; the largest open opportunity in each
   // currency is the yardstick, so "large for its kind" scores the same in TRY and GBP.
@@ -285,9 +304,19 @@ export function buildTodayOverview(
       complianceBlocked: false,
     });
   };
-  const rankedTasks = [...missedCalls, ...opportunityTasks, ...unpricedListings, ...scheduled, ...uncontacted]
+  const rankedTasks = [...missedCalls, ...dealTasks, ...opportunityTasks, ...unpricedListings, ...scheduled, ...uncontacted]
     .filter((task) => !completedTaskIds.has(task.id))
-    .map((task) => ({ ...task, priorityScore: taskPriorityScore(task) }))
+    .map((task) => {
+      const contact = contactById.get(task.contactId);
+      const opportunity = task.opportunityId ? opportunityById.get(task.opportunityId) : undefined;
+      return {
+        ...task,
+        contactRoles: contact?.roles ?? [],
+        lastTouchAt: contact?.lastTouchAt ?? null,
+        ...(opportunity ? { opportunityType: opportunity.type, opportunityStage: opportunity.stage } : {}),
+        priorityScore: taskPriorityScore(task),
+      };
+    })
     .sort((left, right) => right.priorityScore - left.priorityScore
       || (left.dueAt ?? Number.MAX_SAFE_INTEGER) - (right.dueAt ?? Number.MAX_SAFE_INTEGER)
       || left.id.localeCompare(right.id));

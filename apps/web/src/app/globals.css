@@ -1016,9 +1016,9 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .settings-subnav > div { display: grid; gap: 2px; }
 .settings-subnav > div > span { padding: 0 10px 4px; color: var(--text-tertiary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10px; letter-spacing: 1.1px; text-transform: uppercase; }
 .settings-subnav a, .settings-subnav button { position: relative; width: 100%; min-height: 34px; padding: 0 10px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); display: flex; align-items: center; gap: 9px; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
-.settings-subnav a:hover { background: var(--sunk); color: var(--text-primary); }
-.settings-subnav a.active { background: var(--deed-bg); color: var(--deed); font-weight: 700; }
-.settings-subnav a.active::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; border-radius: 0 3px 3px 0; background: var(--deed); }
+.settings-subnav a:hover, .settings-subnav button:hover { background: var(--sunk); color: var(--text-primary); }
+.settings-subnav a.active, .settings-subnav button.active { background: var(--deed-bg); color: var(--deed); font-weight: 700; }
+.settings-subnav a.active::before, .settings-subnav button.active::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; border-radius: 0 3px 3px 0; background: var(--deed); }
 .settings-subnav a em { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10px; font-style: normal; }
 .settings-subnav button:disabled { opacity: .55; cursor: not-allowed; }
 .privacy-policy-list { margin: 0; padding-left: 20px; display: grid; gap: var(--space-md); color: var(--text-secondary); line-height: 1.5; }
@@ -1168,7 +1168,7 @@ textarea.sp-control.is-compact { min-height: 80px; }
   .settings-subnav > div { display: contents; }
   .settings-subnav > div > span { display: none; }
   .settings-subnav a, .settings-subnav button { flex: 0 0 auto; width: auto; padding: 0 11px; border: 1px solid var(--line); }
-  .settings-subnav a.active::before { display: none; }
+  .settings-subnav a.active::before, .settings-subnav button.active::before { display: none; }
 }
 
 @media (max-width: 800px) {

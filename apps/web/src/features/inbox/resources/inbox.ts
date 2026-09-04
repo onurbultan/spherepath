@@ -23,13 +23,14 @@ export async function listInboxItems(session?: WorkspaceSession): Promise<InboxI
 export async function createInboxNote(session: WorkspaceSession, text: string): Promise<InboxItemRecord> {
   const input: CreateInboxItemInput = { source: "typed", text, linkedContactId: null, requestedKind: null };
   const commandId = createCommandId(session.uid); const local = localRecord(session, input, commandId);
+  if (isOnline()) {
+    try {
+      return (await apiClient.command<CreateInboxItemInput, { item: InboxItemRecord }>("createInboxItem", input, commandId)).item;
+    } catch (error) {
+      if (!networkFailure(error)) throw error;
+    }
+  }
   writeQueue([...readQueue().filter((item) => item.commandId !== commandId), { commandId, ownerUid: session.uid, input, local }]);
-  if (isOnline()) void apiClient.command<CreateInboxItemInput, { item: InboxItemRecord }>("createInboxItem", input, commandId)
-    .then(() => {
-      writeQueue(readQueue().filter((item) => item.commandId !== commandId));
-      window.dispatchEvent(new Event("spherepath-offline-synced"));
-    })
-    .catch((error: unknown) => { if (!networkFailure(error)) writeQueue(readQueue().map((item) => item.commandId === commandId ? { ...item, local: { ...item.local, status: "failed", errorCode: "sync_failed", updatedAt: Date.now() } } : item)); });
   return local;
 }
 export async function flushInboxQueue(session: WorkspaceSession): Promise<number> {

@@ -150,4 +150,16 @@ describe("voice extraction normalization", () => {
     expect(result.insights.propertyPreferences.preferredLocations).toEqual(["Urla"]);
     expect(result.insights.propertyPreferences.budgetRange).toEqual({ min: null, max: 12_000_000, currency: "TRY" });
   });
+
+  it("keeps a Turkish rental requirement's room plan, budget, pool and parking", () => {
+    const transcript = "Karşıyaka'da kiralık 4+1 daire arıyor. En fazla 45 bin TL; havuz ve otopark şart.";
+    const result = normalizeVoiceExtraction(extraction("rent", "message"), transcript);
+    expect(result.insights.propertyPreferences).toMatchObject({
+      transactionType: "rent",
+      bedroomCountMin: 4,
+      livingRoomCountMin: 1,
+      budgetRange: { min: null, max: 45_000, currency: "TRY" },
+      mustHaves: ["Otoparklı", "Havuzlu"],
+    });
+  });
 });

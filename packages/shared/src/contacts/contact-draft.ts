@@ -52,7 +52,8 @@ export const contactRoleLabels: Record<ContactRole, string> = {
 };
 
 export const contactDraftSchema = z.object({
-  fullName: z.string().trim().min(2, "Ad veya tanımlayıcı en az 2 karakter olmalı.").max(120),
+  fullName: z.string().trim().min(2, "Ad soyad en az 2 karakter olmalı.").max(120),
+  internalLabel: z.string().trim().max(80, "İç etiket en fazla 80 karakter olabilir.").optional(),
   phone: z.string().trim().max(30, "Telefon numarası en fazla 30 karakter olabilir."),
   metAtPlace: z.string().trim().max(160, "Tanışma yeri en fazla 160 karakter olabilir."),
   source: z.enum(contactSources),
@@ -67,6 +68,12 @@ export const contactDraftSchema = z.object({
 
 export type ContactDraft = z.infer<typeof contactDraftSchema>;
 
+/** Free-form internal suffixes must never leak into customer-facing copy. */
+export function customerFacingContactName(value: string | null | undefined): string | null {
+  const name = value?.split("·", 1)[0]?.trim() ?? "";
+  return name || null;
+}
+
 export function createContact(draft: ContactDraft, tenant: TenantOwned, now: number): Contact {
   const parsed = contactDraftSchema.parse(draft);
 
@@ -77,6 +84,7 @@ export function createContact(draft: ContactDraft, tenant: TenantOwned, now: num
     // the trusted API fills it in from `normalizePhone` before the contact is stored.
     phoneHash: null,
     fullName: parsed.fullName,
+    internalLabel: parsed.internalLabel || null,
     label: null,
     metAtPlace: parsed.metAtPlace || null,
     metAt: now,

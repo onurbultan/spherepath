@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
 import { BriefcaseBusiness, ContactRound, Handshake, House, ListTodo, Network, Plus, Pyramid, SlidersHorizontal, Users } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { apiQueryKeys } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
@@ -20,8 +20,8 @@ import { TopBar } from "./TopBar";
 const workNavigation = [
   { label: "Akış", icon: ListTodo, href: "/", count: null },
   { label: "Huni", icon: Pyramid, href: "/funnel", count: null },
-  { label: "Kayıt", icon: Plus, href: "/capture", count: null },
-  { label: "Portföy", icon: House, href: "/listings", count: "listings" },
+  { label: "Temas kaydet", icon: Plus, href: "/capture", count: null },
+  { label: "Aktif portföy", icon: House, href: "/listings", count: "listings" },
   { label: "Kişiler", icon: ContactRound, href: "/contacts", count: "contacts" },
 ] as const;
 const swipePaths = workNavigation.map((item) => item.href);
@@ -29,12 +29,13 @@ const swipePaths = workNavigation.map((item) => item.href);
 const officeNavigation = [
   { label: "Fırsatlar", icon: BriefcaseBusiness, href: "/opportunities", count: "opportunities" },
   { label: "Kapama", icon: Handshake, href: "/closing", count: null },
-  { label: "Ofis havuzu", icon: Network, href: "/listings#office-pool", count: "portfolioItems" },
+  { label: "Ofis havuzu", icon: Network, href: "/listings?view=pool", count: "portfolioItems" },
   { label: "Ekip", icon: Users, href: "/team", count: "team" },
 ] as const;
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const currentPathname = pathname === "/" ? pathname : pathname.replace(/\/+$/, "");
   const router = useRouter();
   const { session } = useSession();
@@ -77,8 +78,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [router]);
 
   function navItem({ label, icon: Icon, href, count }: { label: string; icon: typeof ListTodo; href: string; count: string | null }) {
-    const route = href.split("#")[0] ?? href;
-    const active = currentPathname === route && !href.includes("#");
+    const route = href.split(/[?#]/)[0] ?? href;
+    const requestedView = href.includes("?") ? new URLSearchParams(href.split("?")[1]).get("view") : null;
+    const active = currentPathname === route && !href.includes("#") && (requestedView ? searchParams.get("view") === requestedView : !(route === "/listings" && searchParams.get("view") === "pool"));
     const value = count ? counts[count] : undefined;
     return (
       <Link key={href} href={href} className={`${active ? "nav-item active" : "nav-item"}${href === "/capture" ? " nav-capture" : ""}`} aria-current={active ? "page" : undefined}>

@@ -104,6 +104,13 @@ export interface ContactMemory {
 }
 export type AuthorizationType = "exclusive" | "open" | "verbal" | "unknown";
 export type ListingStatus = "preparing" | "active" | "reserved" | "sold" | "rented" | "removed";
+export type ListingVerificationStatus = "pending" | "verified" | "not_required";
+export interface ListingReadinessEvidence {
+  mandate: ListingVerificationStatus;
+  eids: ListingVerificationStatus;
+  media: "pending" | "ready";
+  processingBasis: Exclude<ListingVerificationStatus, "not_required">;
+}
 export type LegalBasis = "legitimate_interest" | "contract" | "legal_obligation" | "explicit_consent";
 export type MarketingChannel = "phone" | "whatsapp" | "sms" | "email";
 export type IysStatus = "unknown" | "approved" | "rejected" | "exempt";
@@ -139,6 +146,9 @@ export interface Contact extends TenantOwned, Audited {
   phone: string | null;
   phoneHash: string | null;
   fullName: string | null;
+  /** Advisor-only shorthand; never use this field in customer-facing copy. */
+  internalLabel?: string | null;
+  /** Legacy identity fallback retained for existing records. */
   label: string | null;
   metAtPlace: string | null;
   metAt: Instant;
@@ -264,6 +274,8 @@ export interface Listing extends TenantOwned, Audited {
   askingPrice: number | null;
   currency: CurrencyCode;
   status: ListingStatus;
+  /** Optional for legacy records; missing evidence is treated as pending. */
+  readinessEvidence?: ListingReadinessEvidence;
   acquiredAt: Instant;
   expiresAt: Instant | null;
   deletedAt: Instant | null;
@@ -290,7 +302,15 @@ export type DealStage = "presentation" | "viewing" | "offer" | "contract" | "clo
 export interface Deal extends TenantOwned, Audited {
   listingId: string;
   buyerContactId: string | null;
+  buyerOpportunityId: string | null;
+  source: "presentation" | "direct_inquiry" | "referral" | "other";
+  sourcePresentationId: string | null;
+  sourceNote: string | null;
   stage: DealStage;
+  stageEnteredAt: Instant;
+  lastStageNote: string | null;
+  nextActionAt: Instant | null;
+  nextActionType: NextActionType | null;
   offerAmount: number | null;
   actualAmount: number | null;
   commissionAmount: number | null;

@@ -16,9 +16,12 @@ function appendUnique(values: string[], additions: string[]): string[] {
 
 function amountFrom(text: string, transactionType: VoicePropertyPreferences["transactionType"]): VoicePropertyPreferences["budgetRange"] {
   const million = text.match(/\b(\d+(?:[.,]\d+)?)\s*milyon(?:a|e|dan|den|luk|lük)?(?=\s|$|[.,;])/iu);
+  const thousand = text.match(/(?:^|\s)(\d+(?:[.,]\d+)?)\s*bin(?=\s|$|[.,;])/iu);
   const plain = text.match(/\b(\d{6,12})\s*(?:tl|₺|lira)?\b/iu);
   const value = million?.[1]
     ? Number(million[1].replace(",", ".")) * 1_000_000
+    : thousand?.[1]
+      ? Number(thousand[1].replace(",", ".")) * 1_000
     : plain?.[1]
       ? Number(plain[1])
       : null;
@@ -73,7 +76,8 @@ function preferencesFrom(text: string, transactionType: VoicePropertyPreferences
     areaMaxM2: areaRange?.[2] ? Number(areaRange[2]) : null,
     mustHaves: [
       /\bbahçeli\b/iu.test(text) ? "Bahçeli" : null,
-      /\botoparklı\b/iu.test(text) ? "Otoparklı" : null,
+      /\b(?:otopark|garaj)(?:lı|li|lu|lü)?\b/iu.test(text) ? "Otoparklı" : null,
+      /\bhavuz(?:lu|lü)?\b/iu.test(text) ? "Havuzlu" : null,
       /\bsakin\s+(?:bir\s+)?(?:sokak|cadde|mahalle)\b/iu.test(text) ? "Sakin sokak" : null,
       /\bdenize\s+yürüme\s+mesafesi(?:nde)?\b/iu.test(text) ? "Denize yürüme mesafesi" : null,
     ].filter((item): item is string => item !== null),
@@ -84,16 +88,18 @@ function deterministicPropertySituations(text: string): VoicePropertySituation[]
   const sentences = text.match(/[^.!?]+[.!?]?/gu)?.map((item) => item.trim()).filter(Boolean) ?? [];
   const situations: VoicePropertySituation[] = [];
   for (const sentence of sentences) {
+    const rentalSearch = /\b(?:kiralamayı|kiralamak|kiracı\s+olmayı|kiralık\b[^.!?]{0,100}\b(?:arıyor|arayışında))\b/iu.test(sentence);
     const subjectTransaction = /(?:^|\s)(?:satmaya|satmak|satışa|satılık)(?=\s|$|[.,;])/iu.test(sentence)
       ? "sell" as const
-      : /(?:^|\s)(?:kiraya\s+vermeye|kiraya\s+vermek|kiralık)(?=\s|$|[.,;])/iu.test(sentence)
+      : /(?:^|\s)(?:kiraya\s+vermeye|kiraya\s+vermek)(?=\s|$|[.,;])/iu.test(sentence)
+        || (!rentalSearch && /(?:^|\s)kiralık(?=\s|$|[.,;])/iu.test(sentence))
         ? "let" as const
         : null;
-    const searchTransaction = /(?:^|\s)(?:satın\s+almayı|almayı|almak|arıyor|arayışında)(?=\s|$|[.,;])/iu.test(sentence)
-      && !/(?:^|\s)(?:satmaya|satmak)(?=\s|$|[.,;])/iu.test(sentence)
-      ? "buy" as const
-      : /(?:^|\s)(?:kiralamayı|kiralamak|kiracı\s+olmayı)(?=\s|$|[.,;])/iu.test(sentence)
-        ? "rent" as const
+    const searchTransaction = rentalSearch
+      ? "rent" as const
+      : /(?:^|\s)(?:satın\s+almayı|almayı|almak|arıyor|arayışında)(?=\s|$|[.,;])/iu.test(sentence)
+        && !/(?:^|\s)(?:satmaya|satmak)(?=\s|$|[.,;])/iu.test(sentence)
+        ? "buy" as const
         : null;
     if (subjectTransaction) situations.push({
       propertyContext: "subject_property",
@@ -204,6 +210,8 @@ export function normalizeVoiceExtraction(
   ));
   const explicitMustHaves = [
     /\bbahçeli\b/iu.test(maskedTranscript) ? "Bahçeli" : null,
+    /\b(?:otopark|garaj)(?:lı|li|lu|lü)?\b/iu.test(maskedTranscript) ? "Otoparklı" : null,
+    /\bhavuz(?:lu|lü)?\b/iu.test(maskedTranscript) ? "Havuzlu" : null,
     /\bsakin\s+(?:bir\s+)?(?:sokak|cadde|mahalle)\b/iu.test(maskedTranscript) ? "Sakin sokak" : null,
     /\bdenize\s+yürüme\s+mesafesi(?:nde)?\b/iu.test(maskedTranscript) ? "Denize yürüme mesafesi" : null,
   ].filter((item): item is string => item !== null);

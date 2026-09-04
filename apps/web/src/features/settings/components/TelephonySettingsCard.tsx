@@ -3,15 +3,14 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiQueryKeys } from "@spherepath/shared";
-import { PhoneCall, RefreshCw } from "lucide-react";
+import { Check, Copy, PhoneCall, RefreshCw } from "lucide-react";
 import { useSession } from "@/features/auth/resources/session";
 import { SpCard } from "@/shared/ui/SpCard";
 import { SpInput } from "@/shared/ui/SpField";
-import { loadCallIntegration, configureCallIntegration, connectCallProvider } from "../resources/settings";
+import { loadCallIntegration, configureCallIntegration, connectCallProvider, loadCallRoutingWebhookAddress } from "../resources/settings";
 import { loadOfficeTeam } from "../resources/settings";
 
 const messageFrom = (error: unknown) => error instanceof Error ? error.message : "Telefon ayarları güncellenemedi.";
-const functionsOrigin = "https://europe-west8-spherepath-96ecd.cloudfunctions.net";
 
 /**
  * The switch needs two addresses and an extension per advisor before a call can
@@ -29,6 +28,7 @@ export function TelephonySettingsCard() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const integration = integrationQuery.data;
   const members = teamQuery.data?.members ?? [];
@@ -68,7 +68,7 @@ export function TelephonySettingsCard() {
       setConnected(state.connected);
       setMessage(state.connected
         ? "Verimor bu adrese bağlandı; çağrı olayları buraya düşecek."
-        : `Verimor farklı bir adres tutuyor: ${state.notificationUrl ?? "tanımsız"}`);
+        : "Verimor farklı bir olay bildirim adresi tutuyor. Bağlantı ayarını kontrol edin.");
     } catch (cause) {
       setConnected(false);
       setError(messageFrom(cause));
@@ -77,8 +77,19 @@ export function TelephonySettingsCard() {
     }
   }
 
-  const webhook = (name: string) =>
-    integration ? `${functionsOrigin}/${name}?integration=${integration.integrationId}&token=${integration.webhookToken}` : "";
+  async function copyRoutingAddress() {
+    setPending(true); setError(null); setCopied(false);
+    try {
+      const address = await loadCallRoutingWebhookAddress();
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setMessage("Güvenli yönlendirme adresi panoya kopyalandı.");
+    } catch (cause) {
+      setError(messageFrom(cause));
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
     <SpCard className="settings-card" id="telephony">
@@ -111,16 +122,15 @@ export function TelephonySettingsCard() {
 
           {integration ? (
             <>
-              {/* The switch takes this one over its API; the field is here for diagnosis. */}
-              <label>Olay bildirimi adresi<SpInput readOnly value={webhook("verimorCallWebhook")} /></label>
               <p className="privacy-hint">
                 {connected === true
-                  ? "Verimor bu adrese bağlı."
+                  ? "Olay bildirimi Verimor'a güvenli biçimde bağlı."
                   : "\u201cVerimor\u2019a bağlan\u201d bu adresi santrala kendisi yazar; elle kopyalamanız gerekmez."}
               </p>
-              {/* No API sets this one, so it does have to be pasted into the panel. */}
-              <label>Yönlendirme adresi<SpInput readOnly value={webhook("verimorRoutingWebhook")} /></label>
-              <p className="privacy-hint">Bu adresi Verimor panelinde numaranın yönlendirme (advisory webhook) alanına yazın.</p>
+              <button className="secondary-action inline-action" disabled={pending} onClick={() => void copyRoutingAddress()} type="button">
+                {copied ? <Check size={15} /> : <Copy size={15} />} {copied ? "Kopyalandı" : "Güvenli yönlendirme adresini kopyala"}
+              </button>
+              <p className="privacy-hint">Kopyalanan adresi Verimor panelinde numaranın yönlendirme alanına yazın. Anahtar sayfada veya erişilebilirlik ağacında gösterilmez.</p>
             </>
           ) : (
             <p className="privacy-hint">Kaydettiğinizde webhook adresleri üretilecek.</p>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { CalendarClock, Check, CircleSlash, PhoneOff, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { dailyTaskOutcomeSchema, dailyTaskResolutionLabels, nextActionTypeLabels, nextActionTypes, type DailyTaskOutcome, type NextActionType, type TodayTask } from "@spherepath/shared";
+import { contactRoleLabels, dailyTaskOutcomeSchema, dailyTaskResolutionLabels, nextActionTypeLabels, nextActionTypes, opportunityStageLabel, opportunityTypeLabels, type DailyTaskOutcome, type NextActionType, type TodayTask } from "@spherepath/shared";
 import { SpText } from "@/shared/ui/SpText";
 import { SpDateField } from "@/shared/ui/SpDateField";
 import { radius, space } from "@/shared/ui/tokens.generated";
@@ -15,6 +15,14 @@ function defaultFollowUp(): string {
   date.setDate(date.getDate() + 1);
   date.setHours(10, 0, 0, 0);
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+function taskContext(task: TodayTask): string[] {
+  const items: string[] = [];
+  if (task.contactRoles?.length) items.push(task.contactRoles.map((role) => contactRoleLabels[role]).join(" · "));
+  if (task.lastTouchAt) items.push(`Son temas ${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short" }).format(task.lastTouchAt)}`);
+  if (task.opportunityType && task.opportunityStage) items.push(`${opportunityTypeLabels[task.opportunityType]} · ${opportunityStageLabel(task.opportunityStage, task.opportunityType)}`);
+  return items;
 }
 
 export function taskDueLabel(value: number | null): string {
@@ -34,6 +42,7 @@ export function taskRecordRoute(task: TodayTask): string {
   // Returning a call starts on the contact, where the dial button is.
   if (task.type === "return_call") return `/contact/${encodeURIComponent(task.contactId)}`;
   if (task.type === "complete_listing") return "/(tabs)/listings";
+  if (task.dealId) return "/(tabs)/listings";
   return task.opportunityId
     ? `/(tabs)/opportunities?opportunityId=${encodeURIComponent(task.opportunityId)}`
     : `/(tabs)/capture?contactId=${encodeURIComponent(task.contactId)}`;
@@ -101,6 +110,8 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve, 
           <Pressable accessibilityLabel="Kapat" disabled={pending} onPress={close} style={[styles.icon, { borderColor: theme.line }]}><X color={theme.textSecondary} size={20} /></Pressable>
         </View>
 
+        {task && taskContext(task).length ? <View style={[styles.context, { backgroundColor: theme.sunk }]}>{taskContext(task).map((item) => <SpText key={item} variant="bodySmall" color="secondary">{item}</SpText>)}</View> : null}
+
         <View accessibilityRole="radiogroup" accessibilityLabel="Görev sonucu" style={styles.options}>
           {(["completed", "rescheduled", "skipped", "contact_opt_out"] as const).map((item) => (
             <Pressable accessibilityRole="radio" accessibilityState={{ checked: status === item }} key={item} onPress={() => { setStatus(item); setNote(""); }} style={choice(status === item)}>
@@ -144,6 +155,7 @@ const styles = StyleSheet.create({
   input: { ...textareaMetrics },
   multiline: { minHeight: 108, textAlignVertical: "top" },
   alert: { borderRadius: radius.md, padding: space.md },
+  context: { borderRadius: radius.md, padding: space.md, gap: space.xs },
   secondary: { ...buttonMetrics },
   primary: { ...largeButtonMetrics },
 });

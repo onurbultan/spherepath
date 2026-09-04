@@ -29,6 +29,9 @@ export const getFunnelOverview = onCall(
       const active = (data: FirebaseFirestore.DocumentData) => data.deletedAt === null || data.deletedAt === undefined;
       const eventDocs = events.docs.filter((doc) => (millis(doc.data().occurredAt) ?? 0) >= windowStart);
       const uniqueEvents = (entityType: string, stages: readonly string[]) => new Set(eventDocs.filter((doc) => doc.data().entityType === entityType && stages.includes(doc.data().toStage as string)).map((doc) => doc.data().entityId as string)).size;
+      const verifiedListingIds = new Set(listings.docs
+        .filter((doc) => active(doc.data()) && doc.data().authorizationType !== "unknown")
+        .map((doc) => doc.id));
       const counts = {
         newPeople: contacts.docs.filter((doc) => active(doc.data()) && (millis(doc.data().createdAt) ?? 0) >= windowStart).length,
         leads: new Set([
@@ -38,8 +41,8 @@ export const getFunnelOverview = onCall(
         appointments: uniqueEvents("opportunity", ["appointment", "valuation", "mandate_offer", "won"]),
         portfolioMeetings: uniqueEvents("opportunity", ["valuation", "mandate_offer", "won"]),
         authorizedListings: new Set([
-          ...listings.docs.filter((doc) => active(doc.data()) && (millis(doc.data().acquiredAt) ?? millis(doc.data().createdAt) ?? 0) >= windowStart).map((doc) => doc.id),
-          ...eventDocs.filter((doc) => doc.data().entityType === "listing" && ["preparing", "active"].includes(doc.data().toStage as string)).map((doc) => doc.data().entityId as string),
+          ...listings.docs.filter((doc) => verifiedListingIds.has(doc.id) && (millis(doc.data().acquiredAt) ?? millis(doc.data().createdAt) ?? 0) >= windowStart).map((doc) => doc.id),
+          ...eventDocs.filter((doc) => doc.data().entityType === "listing" && verifiedListingIds.has(doc.data().entityId as string) && ["preparing", "active"].includes(doc.data().toStage as string)).map((doc) => doc.data().entityId as string),
         ]).size,
         negotiations: uniqueEvents("deal", ["offer", "contract"]),
         closings: deals.docs.filter((doc) => active(doc.data()) && doc.data().stage === "closed" && (millis(doc.data().closedAt) ?? 0) >= windowStart).length,
@@ -84,7 +87,7 @@ export const getFunnelOverview = onCall(
         .filter((doc) => active(doc.data()) && ["active", "reserved"].includes(doc.data().status as string))
         .sort((left, right) => (millis(left.data().acquiredAt) ?? millis(left.data().createdAt) ?? 0) - (millis(right.data().acquiredAt) ?? millis(right.data().createdAt) ?? 0))[0];
       const oldestUnreadyListing = listings.docs
-        .filter((doc) => active(doc.data()) && (doc.data().status === "preparing" || !(typeof doc.data().askingPrice === "number" && doc.data().askingPrice > 0)))
+        .filter((doc) => active(doc.data()) && (doc.data().status === "preparing" || doc.data().authorizationType === "unknown" || !(typeof doc.data().askingPrice === "number" && doc.data().askingPrice > 0)))
         .sort((left, right) => (millis(left.data().acquiredAt) ?? millis(left.data().createdAt) ?? 0) - (millis(right.data().acquiredAt) ?? millis(right.data().createdAt) ?? 0))[0];
       const subjects: FunnelSubjects = {
         newestUncontactedContact: newestUncontacted

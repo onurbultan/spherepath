@@ -100,7 +100,6 @@ export async function normalizeContactPhones(session: WorkspaceSession, cursor: 
 
 export interface CallIntegrationView {
   integrationId: string;
-  webhookToken: string;
   extensionOwners: Record<string, string>;
   active: boolean;
 }
@@ -112,14 +111,13 @@ export async function loadCallIntegration(): Promise<CallIntegrationView | null>
 export async function configureCallIntegration(
   session: WorkspaceSession,
   input: { extensionOwners?: Record<string, string>; rotateToken?: boolean; outboundCallerId?: string | null; defaultRoutingTarget?: string | null },
-): Promise<{ integrationId: string; webhookToken: string }> {
-  return apiClient.command<typeof input, { integrationId: string; webhookToken: string }>(
+): Promise<{ integrationId: string }> {
+  return apiClient.command<typeof input, { integrationId: string }>(
     "configureCallIntegration", input, createCommandId(session.uid),
   );
 }
 
 export interface CallProviderConnection {
-  notificationUrl: string | null;
   events: string[];
   connected: boolean;
 }
@@ -128,4 +126,8 @@ export async function connectCallProvider(session: WorkspaceSession): Promise<Ca
   return apiClient.command<undefined, CallProviderConnection>(
     "connectCallProvider", undefined, createCommandId(session.uid),
   );
+}
+
+export async function loadCallRoutingWebhookAddress(): Promise<string> {
+  return (await apiClient.query<undefined, { address: string }>("getCallRoutingWebhookAddress", undefined)).address;
 }

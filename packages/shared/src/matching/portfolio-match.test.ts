@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PropertyPreferences } from "../domain/entities.js";
-import { portfolioItemDraftSchema, scorePortfolioItem, type PortfolioItemDraft } from "./portfolio-match.js";
+import { locationsOverlap, portfolioItemDraftSchema, scorePortfolioItem, type PortfolioItemDraft } from "./portfolio-match.js";
 
 const demand: PropertyPreferences = {
   transactionType: "buy",
@@ -50,6 +50,39 @@ describe("portfolio matching", () => {
     expect(result.reasons.find((reason) => reason.key === "must_have")?.status).toBe("match");
   });
 
+  it("matches a Karşıyaka rental demand with an eligible Bostanlı rental", () => {
+    const rentalDemand: PropertyPreferences = {
+      ...demand,
+      transactionType: "rent",
+      propertyTypes: ["apartment"],
+      preferredLocations: ["Karşıyaka"],
+      budgetRange: { min: null, max: 45_000, currency: "TRY" },
+      bedroomCountMin: 2,
+      livingRoomCountMin: 1,
+      areaMinM2: null,
+      mustHaves: [],
+      timeline: "1 Ekim",
+    };
+    const rental = {
+      ...item,
+      transactionType: "let" as const,
+      propertyType: "apartment" as const,
+      location: "Bostanlı, İzmir",
+      askingPrice: { amount: 43_000, currency: "TRY" as const },
+      bedroomCount: 2,
+      livingRoomCount: 1,
+      areaM2: null,
+      landAreaM2: null,
+      titleDeedType: "unknown" as const,
+      constructionAllowed: null,
+    };
+    expect(locationsOverlap("Karşıyaka", rental.location)).toBe(true);
+    const result = scorePortfolioItem(rentalDemand, rental);
+    expect(result.eligible).toBe(true);
+    expect(result.score).toBeGreaterThanOrEqual(60);
+    expect(result.reasons.find((reason) => reason.key === "location")?.status).toBe("match");
+  });
+
   it("marks an over-budget item as a miss without hiding it from the advisor", () => {
     const result = scorePortfolioItem(demand, { ...item, askingPrice: { amount: 5_500_000, currency: "TRY" } });
     expect(result.reasons.find((reason) => reason.key === "budget")?.status).toBe("mismatch");
@@ -96,8 +129,8 @@ describe("near misses stay visible", () => {
     expect(result.reasons.find((reason) => reason.key === "budget")?.detail).toContain("%8");
   });
 
-  it("keeps a portfolio in a neighbouring district instead of dropping it", () => {
-    const result = scorePortfolioItem({ ...demand, preferredLocations: ["Kadıköy"] }, { ...item, location: "Moda" });
+  it("keeps a portfolio in a different nearby district instead of dropping it", () => {
+    const result = scorePortfolioItem({ ...demand, preferredLocations: ["Kadıköy"] }, { ...item, location: "Beşiktaş" });
     expect(result.eligible).toBe(true);
     expect(result.softMismatchKeys).toContain("location");
   });

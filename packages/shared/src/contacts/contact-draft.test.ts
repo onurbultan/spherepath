@@ -16,6 +16,17 @@ describe("contact draft", () => {
     expect(contact.privacy.marketingConsent).toBe("unknown");
   });
 
+  it("stores the internal label separately from the customer name", () => {
+    const contact = createContact(
+      { fullName: "Ayşe Kaya", internalLabel: "Marina açık ev", phone: "", metAtPlace: "", source: "in_person", role: "buyer" },
+      { officeId: "office-a", ownerUid: "alice" },
+      1_725_000_000_000,
+    );
+    expect(contact.fullName).toBe("Ayşe Kaya");
+    expect(contact.internalLabel).toBe("Marina açık ev");
+    expect(contact.label).toBeNull();
+  });
+
   it("rejects an unusable identifier", () => {
     expect(() => contactDraftSchema.parse({
       fullName: "A",

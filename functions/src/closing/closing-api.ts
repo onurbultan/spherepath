@@ -15,7 +15,7 @@ const options = { region: "europe-west8" as const, cors: true, maxInstances: 10,
 const millis = (value: unknown): number | null => value instanceof Timestamp ? value.toMillis() : null;
 const stamp = (value: number | null): Timestamp | null => value === null ? null : Timestamp.fromMillis(value);
 function presentationRecord(id: string, data: DocumentData, contactName: string, listingAddress: string): PresentationRecord { return { ...(data as Presentation), id, contactName, listingAddress, userConfirmedSentAt: millis(data.userConfirmedSentAt), sentAt: millis(data.sentAt), deliveredAt: millis(data.deliveredAt), readAt: millis(data.readAt), repliedAt: millis(data.repliedAt), deletedAt: millis(data.deletedAt), createdAt: millis(data.createdAt) ?? 0, updatedAt: millis(data.updatedAt) ?? 0 }; }
-function dealRecord(id: string, data: DocumentData, buyerContactName: string | null, listingAddress: string): DealRecord { return { ...(data as Deal), id, buyerContactName, listingAddress, actualAmount: typeof data.actualAmount === "number" ? data.actualAmount : null, commissionAmount: typeof data.commissionAmount === "number" ? data.commissionAmount : null, closedAt: millis(data.closedAt), deletedAt: millis(data.deletedAt), createdAt: millis(data.createdAt) ?? 0, updatedAt: millis(data.updatedAt) ?? 0 }; }
+function dealRecord(id: string, data: DocumentData, buyerContactName: string | null, listingAddress: string): DealRecord { const createdAt = millis(data.createdAt) ?? 0; const updatedAt = millis(data.updatedAt) ?? 0; return { ...(data as Deal), id, buyerContactName, listingAddress, buyerOpportunityId: typeof data.buyerOpportunityId === "string" ? data.buyerOpportunityId : null, source: data.source ?? "other", sourcePresentationId: typeof data.sourcePresentationId === "string" ? data.sourcePresentationId : null, sourceNote: typeof data.sourceNote === "string" ? data.sourceNote : null, stageEnteredAt: millis(data.stageEnteredAt) ?? updatedAt ?? createdAt, lastStageNote: typeof data.lastStageNote === "string" ? data.lastStageNote : null, nextActionAt: millis(data.nextActionAt), nextActionType: data.nextActionType ?? null, actualAmount: typeof data.actualAmount === "number" ? data.actualAmount : null, commissionAmount: typeof data.commissionAmount === "number" ? data.commissionAmount : null, closedAt: millis(data.closedAt), deletedAt: millis(data.deletedAt), createdAt, updatedAt }; }
 function manageable(data: DocumentData, claims: ReturnType<typeof requireSpherepathClaims>) { return data.officeId === claims.officeId && (data.ownerUid === claims.uid || claims.role === "broker") && data.deletedAt === null; }
 
 export const getClosingOverview = onCall(options, async (request): Promise<{ presentations: PresentationRecord[]; deals: DealRecord[] }> => {
@@ -42,8 +42,122 @@ export const advancePresentation = onCall(options, async (request): Promise<{ pr
 });
 
 export const createDeal = onCall(options, async (request): Promise<{ dealId: string }> => {
-  const claims = requireSpherepathClaims(request); const envelope = readApiEnvelope<DealDraft>(request.data, { command: true }); const parsed = dealDraftSchema.safeParse(envelope.data); if (!parsed.success) throw new HttpsError("invalid-argument", "Deal input is invalid.");
-  return observeApiRequest("createDeal", envelope.requestId, async () => { const db = getFirestore(); const listingRef = db.collection("listings").doc(parsed.data.listingId); const buyerRef = parsed.data.buyerContactId ? db.collection("contacts").doc(parsed.data.buyerContactId) : null; const dealRef = db.collection("deals").doc(); const commandRef = db.collection("commands").doc(envelope.commandId!); const id = await db.runTransaction(async (transaction) => { const [receipt, listingSnapshot, buyerSnapshot] = await Promise.all([transaction.get(commandRef), transaction.get(listingRef), buyerRef ? transaction.get(buyerRef) : Promise.resolve(null)]); if (receipt.exists) return receipt.data()!.dealId as string; if (!listingSnapshot.exists || !manageable(listingSnapshot.data()!, claims)) throw new HttpsError("permission-denied", "Listing is outside your workspace."); if (buyerRef && (!buyerSnapshot?.exists || !manageable(buyerSnapshot.data()!, claims))) throw new HttpsError("permission-denied", "Buyer is outside your workspace."); const now = Date.now(); const entity = createDealEntity(parsed.data, { officeId: listingSnapshot.data()!.officeId, ownerUid: listingSnapshot.data()!.ownerUid }, now); const nowTimestamp = Timestamp.fromMillis(now); transaction.create(dealRef, { ...entity, closedAt: null, deletedAt: null, createdAt: nowTimestamp, updatedAt: nowTimestamp }); transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "createDeal", dealId: dealRef.id, createdAt: nowTimestamp }); return dealRef.id; }); return { dealId: id }; });
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<DealDraft>(request.data, { command: true });
+  const parsed = dealDraftSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Deal input is invalid.", parsed.error.flatten());
+  return observeApiRequest("createDeal", envelope.requestId, async () => {
+    const db = getFirestore();
+    const listingRef = db.collection("listings").doc(parsed.data.listingId);
+    const buyerRef = parsed.data.buyerContactId ? db.collection("contacts").doc(parsed.data.buyerContactId) : null;
+    const dealRef = db.collection("deals").doc();
+    const initialEventRef = db.collection("stageEvents").doc();
+    const commandRef = db.collection("commands").doc(envelope.commandId!);
+
+    // Preserve command idempotency before any source discovery. A replay must return
+    // the original result even if the presentation or opportunity changed meanwhile.
+    const existingReceipt = await commandRef.get();
+    if (existingReceipt.exists) {
+      const data = existingReceipt.data()!;
+      if (data.officeId !== claims.officeId || data.ownerUid !== claims.uid || data.type !== "createDeal") {
+        throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+      }
+      return { dealId: data.dealId as string };
+    }
+
+    const preflightListing = await listingRef.get();
+    const preflightOpportunity = preflightListing.exists && typeof preflightListing.data()?.opportunityId === "string"
+      ? await db.collection("opportunities").doc(preflightListing.data()!.opportunityId as string).get()
+      : null;
+    const expectedBuyerType = preflightOpportunity?.data()?.type === "landlord_listing" ? "tenant_requirement" : "buyer_requirement";
+    let buyerOpportunityRef: FirebaseFirestore.DocumentReference | null = parsed.data.buyerOpportunityId
+      ? db.collection("opportunities").doc(parsed.data.buyerOpportunityId)
+      : null;
+    if (!buyerOpportunityRef && parsed.data.buyerContactId) {
+      const candidates = await db.collection("opportunities").where("officeId", "==", claims.officeId).limit(500).get();
+      const found = candidates.docs
+        .filter((item) => {
+          const data = item.data();
+          return data.subjectContactId === parsed.data.buyerContactId && data.type === expectedBuyerType
+            && data.stage !== "won" && data.stage !== "lost" && data.deletedAt === null
+            && (data.ownerUid === claims.uid || claims.role === "broker");
+        })
+        .sort((left, right) => (millis(right.data().updatedAt) ?? 0) - (millis(left.data().updatedAt) ?? 0))[0];
+      buyerOpportunityRef = found?.ref ?? null;
+    }
+
+    let sourcePresentationRef: FirebaseFirestore.DocumentReference | null = parsed.data.sourcePresentationId
+      ? db.collection("presentations").doc(parsed.data.sourcePresentationId)
+      : null;
+    if (parsed.data.source === "presentation" && !sourcePresentationRef && parsed.data.buyerContactId) {
+      const candidates = await db.collection("presentations").where("officeId", "==", claims.officeId).limit(500).get();
+      const found = candidates.docs
+        .filter((item) => {
+          const data = item.data();
+          return data.listingId === parsed.data.listingId && data.contactId === parsed.data.buyerContactId
+            && ["sent", "delivered", "read", "replied"].includes(data.status as string)
+            && data.deletedAt === null && (data.ownerUid === claims.uid || claims.role === "broker");
+        })
+        .sort((left, right) => (millis(right.data().updatedAt) ?? 0) - (millis(left.data().updatedAt) ?? 0))[0];
+      sourcePresentationRef = found?.ref ?? null;
+    }
+    if (parsed.data.source === "presentation" && !sourcePresentationRef) {
+      throw new HttpsError("failed-precondition", "İşlem için önce bu kişiye gönderilmiş bir sunumu doğrula veya farklı işlem kaynağı seç.");
+    }
+
+    const id = await db.runTransaction(async (transaction) => {
+      const [receipt, listingSnapshot, buyerSnapshot, buyerOpportunitySnapshot, sourcePresentationSnapshot] = await Promise.all([
+        transaction.get(commandRef),
+        transaction.get(listingRef),
+        buyerRef ? transaction.get(buyerRef) : Promise.resolve(null),
+        buyerOpportunityRef ? transaction.get(buyerOpportunityRef) : Promise.resolve(null),
+        sourcePresentationRef ? transaction.get(sourcePresentationRef) : Promise.resolve(null),
+      ]);
+      if (receipt.exists) return receipt.data()!.dealId as string;
+      if (!listingSnapshot.exists || !manageable(listingSnapshot.data()!, claims)) throw new HttpsError("permission-denied", "Listing is outside your workspace.");
+      if (!["active", "reserved"].includes(listingSnapshot.data()!.status as string)) throw new HttpsError("failed-precondition", "Listing is not marketable.");
+      if (buyerRef && (!buyerSnapshot?.exists || !manageable(buyerSnapshot.data()!, claims))) throw new HttpsError("permission-denied", "Buyer is outside your workspace.");
+      if (buyerOpportunitySnapshot) {
+        const opportunity = buyerOpportunitySnapshot.data();
+        if (!buyerOpportunitySnapshot.exists || !opportunity || !manageable(opportunity, claims)
+          || opportunity.subjectContactId !== parsed.data.buyerContactId || opportunity.type !== expectedBuyerType
+          || opportunity.stage === "won" || opportunity.stage === "lost") {
+          throw new HttpsError("failed-precondition", "Linked buyer requirement is unavailable.");
+        }
+      }
+      if (parsed.data.source === "presentation") {
+        const presentation = sourcePresentationSnapshot?.data();
+        if (!sourcePresentationSnapshot?.exists || !presentation || !manageable(presentation, claims)
+          || presentation.listingId !== parsed.data.listingId || presentation.contactId !== parsed.data.buyerContactId
+          || !["sent", "delivered", "read", "replied"].includes(presentation.status as string)) {
+          throw new HttpsError("failed-precondition", "İşlem kaynağı olan sunum henüz gönderilmiş değil.");
+        }
+      }
+      const now = Date.now();
+      const entity = createDealEntity({
+        ...parsed.data,
+        buyerOpportunityId: buyerOpportunityRef?.id ?? null,
+        sourcePresentationId: sourcePresentationRef?.id ?? null,
+      }, { officeId: listingSnapshot.data()!.officeId, ownerUid: listingSnapshot.data()!.ownerUid }, now);
+      const nowTimestamp = Timestamp.fromMillis(now);
+      transaction.create(dealRef, { ...entity, stageEnteredAt: nowTimestamp, nextActionAt: Timestamp.fromMillis(parsed.data.nextActionAt), closedAt: null, deletedAt: null, createdAt: nowTimestamp, updatedAt: nowTimestamp });
+      transaction.create(initialEventRef, {
+        officeId: entity.officeId,
+        ownerUid: entity.ownerUid,
+        entityType: "deal",
+        entityId: dealRef.id,
+        fromStage: null,
+        toStage: "presentation",
+        reason: entity.lastStageNote,
+        commandId: envelope.commandId,
+        occurredAt: nowTimestamp,
+        createdAt: nowTimestamp,
+      });
+      transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "createDeal", dealId: dealRef.id, createdAt: nowTimestamp });
+      return dealRef.id;
+    });
+    return { dealId: id };
+  });
 });
 
 export const advanceDeal = onCall(options, async (request): Promise<{ dealId: string; toStage: DealStage }> => {
@@ -53,6 +167,8 @@ export const advanceDeal = onCall(options, async (request): Promise<{ dealId: st
     const dealRef = db.collection("deals").doc(parsed.data.dealId);
     const commandRef = db.collection("commands").doc(envelope.commandId!);
     const listingEventRef = db.collection("stageEvents").doc();
+    const dealEventRef = db.collection("stageEvents").doc();
+    const buyerOpportunityEventRef = db.collection("stageEvents").doc();
 
     return db.runTransaction(async (transaction) => {
       const [receipt, dealSnapshot] = await Promise.all([transaction.get(commandRef), transaction.get(dealRef)]);
@@ -71,6 +187,9 @@ export const advanceDeal = onCall(options, async (request): Promise<{ dealId: st
       let listing: DocumentData | null = null;
       let listingStatus: ListingStatus | null = null;
       let ownerContactRef: FirebaseFirestore.DocumentReference | null = null;
+      let buyerContactRef: FirebaseFirestore.DocumentReference | null = null;
+      let buyerOpportunityRef: FirebaseFirestore.DocumentReference | null = null;
+      let buyerOpportunity: DocumentData | null = null;
       const terminalDeal = parsed.data.toStage === "closed" || parsed.data.toStage === "lost";
       if (terminalDeal) {
         listingRef = db.collection("listings").doc(deal.listingId as string);
@@ -101,18 +220,54 @@ export const advanceDeal = onCall(options, async (request): Promise<{ dealId: st
           try { assertListingTransition(listing.status as ListingStatus, listingStatus); }
           catch { throw new HttpsError("failed-precondition", `Listing cannot close from ${listing.status}.`); }
         }
+        if (parsed.data.toStage === "closed" && typeof deal.buyerOpportunityId === "string" && deal.buyerOpportunityId) {
+          buyerOpportunityRef = db.collection("opportunities").doc(deal.buyerOpportunityId as string);
+          const buyerOpportunitySnapshot = await transaction.get(buyerOpportunityRef);
+          const candidate = buyerOpportunitySnapshot.data();
+          if (buyerOpportunitySnapshot.exists && candidate && manageable(candidate, claims)
+            && candidate.subjectContactId === deal.buyerContactId
+            && (candidate.type === "buyer_requirement" || candidate.type === "tenant_requirement")) {
+            buyerOpportunity = candidate;
+          } else {
+            buyerOpportunityRef = null;
+          }
+        }
+        if (parsed.data.toStage === "closed" && typeof deal.buyerContactId === "string" && deal.buyerContactId) {
+          const candidateRef = db.collection("contacts").doc(deal.buyerContactId as string);
+          const buyerContactSnapshot = await transaction.get(candidateRef);
+          const buyerContact = buyerContactSnapshot.data();
+          if (buyerContactSnapshot.exists && buyerContact && manageable(buyerContact, claims)) buyerContactRef = candidateRef;
+        }
       }
 
       const now = Timestamp.now();
+      const eventAt = Timestamp.fromMillis(parsed.data.occurredAt);
+      const nextActionAt = terminalDeal || parsed.data.nextActionAt === null ? null : Timestamp.fromMillis(parsed.data.nextActionAt);
       transaction.update(dealRef, {
         stage: parsed.data.toStage,
+        stageEnteredAt: eventAt,
+        lastStageNote: parsed.data.evidenceNote,
+        nextActionAt,
+        nextActionType: terminalDeal ? null : parsed.data.nextActionType,
         offerAmount: parsed.data.offerAmount ?? deal.offerAmount ?? null,
         actualAmount: parsed.data.toStage === "closed" ? parsed.data.actualAmount : deal.actualAmount ?? null,
         commissionAmount: parsed.data.toStage === "closed" ? parsed.data.commissionAmount : deal.commissionAmount ?? null,
         currency: parsed.data.currency ?? deal.currency ?? null,
         lostReason: parsed.data.toStage === "lost" ? parsed.data.lostReason : null,
-        closedAt: parsed.data.toStage === "closed" ? now : null,
+        closedAt: parsed.data.toStage === "closed" ? eventAt : null,
         updatedAt: now,
+      });
+      transaction.create(dealEventRef, {
+        officeId: deal.officeId,
+        ownerUid: deal.ownerUid,
+        entityType: "deal",
+        entityId: dealRef.id,
+        fromStage: deal.stage,
+        toStage: parsed.data.toStage,
+        reason: parsed.data.evidenceNote,
+        commandId: envelope.commandId,
+        occurredAt: eventAt,
+        createdAt: now,
       });
       if (listingRef && listing && listingStatus && listing.status !== listingStatus) {
         transaction.update(listingRef, { status: listingStatus, updatedAt: now });
@@ -125,12 +280,38 @@ export const advanceDeal = onCall(options, async (request): Promise<{ dealId: st
           toStage: listingStatus,
           reason: "Deal closed",
           commandId: envelope.commandId,
-          occurredAt: now,
+          occurredAt: eventAt,
           createdAt: now,
         });
       }
       if (ownerContactRef && terminalDeal) {
         transaction.update(ownerContactRef, { "relationship.nextActionAt": null, "relationship.nextActionType": null, updatedAt: now });
+      }
+      if (buyerOpportunityRef && buyerOpportunity && buyerOpportunity.stage !== "won") {
+        transaction.update(buyerOpportunityRef, {
+          stage: "won",
+          stageEnteredAt: eventAt,
+          nextActionAt: null,
+          nextActionType: null,
+          closedAt: eventAt,
+          lostReason: null,
+          updatedAt: now,
+        });
+        transaction.create(buyerOpportunityEventRef, {
+          officeId: buyerOpportunity.officeId,
+          ownerUid: buyerOpportunity.ownerUid,
+          entityType: "opportunity",
+          entityId: buyerOpportunityRef.id,
+          fromStage: buyerOpportunity.stage,
+          toStage: "won",
+          reason: "Bağlı işlem kapandı",
+          commandId: envelope.commandId,
+          occurredAt: eventAt,
+          createdAt: now,
+        });
+      }
+      if (buyerContactRef && buyerContactRef.path !== ownerContactRef?.path) {
+        transaction.update(buyerContactRef, { "relationship.nextActionAt": null, "relationship.nextActionType": null, updatedAt: now });
       }
       transaction.create(commandRef, {
         officeId: claims.officeId,

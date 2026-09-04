@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Bell, Download, FileText, Lock, MessageCircleMore, Save, ShieldCheck, UserRoundCog, Users } from "lucide-react";
+import { Bell, Download, Lock, MessageCircleMore, Save, ShieldCheck, UserRoundCog, Users } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   apiQueryKeys,
@@ -23,7 +23,6 @@ import { listContacts, type ContactRecord } from "@/features/contacts/resources/
 import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
 import { ContactCombobox } from "@/shared/ui/ContactCombobox";
-import { useActiveAnchor } from "@/shared/ui/useActiveAnchor";
 import { WhatsAppGroupSettingsCard } from "../components/WhatsAppGroupSettingsCard";
 import { PhoneNormalizationCard } from "../components/PhoneNormalizationCard";
 import { TelephonySettingsCard } from "../components/TelephonySettingsCard";
@@ -38,7 +37,7 @@ import {
 import { PhoneField } from "@/shared/ui/MaskedFields";
 import { SpInput, SpSelect, SpTextarea } from "@/shared/ui/SpField";
 
-const settingsSections = ["advisor-profile", "reminders", "whatsapp-group", "data-controller", "voice-privacy", "data-requests"] as const;
+type SettingsArea = "start" | "communication" | "office" | "compliance";
 
 function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Ayarlar güncellenemedi.";
@@ -47,6 +46,7 @@ function messageFrom(error: unknown) {
 function contactDraft(contact: ContactRecord): ContactDraft {
   return {
     fullName: contact.fullName ?? contact.label ?? "İsimsiz kişi",
+    internalLabel: contact.internalLabel ?? (contact.fullName ? contact.label ?? "" : ""),
     phone: contact.phone ?? "",
     metAtPlace: contact.metAtPlace ?? "",
     source: contact.source,
@@ -87,7 +87,7 @@ export function SettingsView() {
   const settingsQuery = useQuery({ queryKey: apiQueryKeys.workspaceSettings, queryFn: loadWorkspaceSettings });
   const requestsQuery = useQuery({ queryKey: apiQueryKeys.dataSubjectRequests, queryFn: listDataSubjectRequests });
   const contactsQuery = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts });
-  const activeSection = useActiveAnchor(settingsSections, 96, Boolean(settingsQuery.data));
+  const [settingsArea, setSettingsArea] = useState<SettingsArea>("start");
   const [editedDraft, setDraft] = useState<WorkspaceSettingsDraft | null>(null);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -170,28 +170,21 @@ export function SettingsView() {
   const noticeVersion = contacts.map((contact) => contact.privacy.noticeVersion).find(Boolean) ?? "—";
 
   return <AppShell>
-    <header className="page-header settings-header"><div><p className="eyebrow">ÇALIŞMA ALANI</p><h1>Ayarlar ve uyum</h1><p className="context-sentence">Profil, ofis yükümlülükleri, hatırlatmalar ve veri sahibi talepleri.</p></div><div className="header-actions">{editedDraft ? <span className="unsaved-label">Kaydedilmemiş değişiklikler</span> : null}<button className="secondary-action inline-action" disabled={!editedDraft || pending} type="button" onClick={() => setDraft(null)}>Vazgeç</button><button className="primary-action inline-action" disabled={!editedDraft || pending} form="workspace-settings-form" type="submit"><Save size={16} /> {pending ? "Kaydediliyor…" : "Kaydet"}</button></div></header>
+    <header className="page-header settings-header"><div><p className="eyebrow">ÇALIŞMA ALANI</p><h1>Ayarlar ve uyum</h1><p className="context-sentence">Profil, ofis yükümlülükleri, hatırlatmalar ve veri sahibi talepleri.</p></div><div className="header-actions">{editedDraft ? <span className="unsaved-label">Kaydedilmemiş değişiklikler</span> : null}<button className="secondary-action inline-action" disabled={!editedDraft || pending} type="button" onClick={() => setDraft(null)}>Vazgeç</button><button className="primary-action inline-action" disabled={!editedDraft || pending} form="workspace-settings-form" type="submit"><Save size={16} /> {pending ? "Kaydediliyor…" : "Profil ve uyumu kaydet"}</button></div></header>
     {message ? <p className="success-notice">{message}</p> : null}{error ? <p className="form-error notice">{error}</p> : null}
     <div className="settings-workspace">
       <nav className="settings-subnav" aria-label="Ayar bölümleri">
-        <div><span>Hesap</span>
-          <a aria-current={activeSection === "advisor-profile" ? "true" : undefined} className={activeSection === "advisor-profile" ? "active" : ""} href="#advisor-profile"><UserRoundCog size={16} /> Danışman profili</a>
-          <a aria-current={activeSection === "reminders" ? "true" : undefined} className={activeSection === "reminders" ? "active" : ""} href="#reminders"><Bell size={16} /> Hatırlatmalar</a>
-        </div>
-        <div><span>Ofis</span>
-          <a href="/team"><Users size={16} /> Ekip ve davetler</a>
-          <a aria-current={activeSection === "whatsapp-group" ? "true" : undefined} className={activeSection === "whatsapp-group" ? "active" : ""} href="#whatsapp-group"><MessageCircleMore size={16} /> WhatsApp grubu</a>
-          <a aria-current={activeSection === "data-controller" ? "true" : undefined} className={activeSection === "data-controller" ? "active" : ""} href="#data-controller"><ShieldCheck size={16} /> Veri sorumlusu</a>
-        </div>
-        <div><span>Uyum</span>
-          <a aria-current={activeSection === "data-requests" ? "true" : undefined} className={activeSection === "data-requests" ? "active" : ""} href="#data-requests"><FileText size={16} /> Veri sahibi talepleri <em>{pendingRequests.length}</em></a>
-          <a aria-current={activeSection === "voice-privacy" ? "true" : undefined} className={activeSection === "voice-privacy" ? "active" : ""} href="#voice-privacy"><Lock size={16} /> Ses ve gizlilik</a>
-          <a href="#data-requests"><Download size={16} /> Veri dışa aktarma</a>
+        <div><span>Çalışma alanı</span>
+          <button aria-current={settingsArea === "start" ? "page" : undefined} className={settingsArea === "start" ? "active" : ""} onClick={() => setSettingsArea("start")} type="button"><UserRoundCog size={16} /> Başlangıç</button>
+          <button aria-current={settingsArea === "communication" ? "page" : undefined} className={settingsArea === "communication" ? "active" : ""} onClick={() => setSettingsArea("communication")} type="button"><MessageCircleMore size={16} /> İletişim</button>
+          <button aria-current={settingsArea === "office" ? "page" : undefined} className={settingsArea === "office" ? "active" : ""} onClick={() => setSettingsArea("office")} type="button"><Users size={16} /> Ofis</button>
+          <button aria-current={settingsArea === "compliance" ? "page" : undefined} className={settingsArea === "compliance" ? "active" : ""} onClick={() => setSettingsArea("compliance")} type="button"><ShieldCheck size={16} /> Uyum <em>{pendingRequests.length}</em></button>
         </div>
       </nav>
       <div className="settings-main">
         <div className="settings-summary"><SpCard><span>VERBİS</span><strong className="good-text">{verbisStatusLabels[draft.verbisStatus]}</strong><small>{draft.dataControllerName || "Veri sorumlusu belirtilmedi"}</small></SpCard><SpCard><span>Aydınlatma metni</span><strong>{noticeVersion}</strong><small>Kişi kayıtlarında kullanılan sürüm</small></SpCard><SpCard><span>İYS onaylı</span><strong>{iysApprovedCount} / {contacts.length}</strong><div><span style={{ width: `${contacts.length ? Math.round((iysApprovedCount / contacts.length) * 100) : 0}%` }} /></div></SpCard><SpCard><span>Açık talep</span><strong className={pendingRequests.length ? "warm-text" : "good-text"}>{pendingRequests.length} bekliyor</strong><small>{pendingRequests.length ? "Kimlik doğrulama ve yanıt bekliyor" : "Bekleyen talep yok"}</small></SpCard></div>
     <form className="settings-sections" id="workspace-settings-form" onSubmit={save}>
+      {settingsArea === "start" ? <>
       <SpCard className="settings-card" id="advisor-profile">
         <div className="settings-title"><UserRoundCog size={20} /><div><p className="eyebrow">PROFİL</p><h2>Danışman ayarları</h2></div></div>
         <div className="form-row"><label>Ad soyad<SpInput value={draft.displayName} onChange={(event) => setDraft({ ...draft, displayName: event.target.value })} /></label><label>Telefon<PhoneField value={draft.phone} onChange={(phone) => setDraft({ ...draft, phone })} /></label></div>
@@ -205,21 +198,26 @@ export function SettingsView() {
         <div className="form-row"><label>Saat<SpInput type="number" min="0" max="23" disabled={!draft.dailyPlanReminderEnabled} value={draft.dailyPlanReminderHour} onChange={(event) => setDraft({ ...draft, dailyPlanReminderHour: Number(event.target.value) })} /></label><label>Dakika<SpInput type="number" min="0" max="59" disabled={!draft.dailyPlanReminderEnabled} value={draft.dailyPlanReminderMinute} onChange={(event) => setDraft({ ...draft, dailyPlanReminderMinute: Number(event.target.value) })} /></label></div>
         <p className="privacy-hint">Hatırlatma cihaz saatine göre gönderilir ve yalnız o günün planı hazırsa görünür.</p>
       </SpCard>
+      </> : null}
 
-      {session?.role === "broker" ? <TelephonySettingsCard /> : null}
-      <PhoneNormalizationCard />
+      {settingsArea === "communication" ? <>{session?.role === "broker" ? <TelephonySettingsCard /> : <SpCard className="settings-card"><h2>Ofis telefon altyapısı</h2><p className="privacy-copy">Santral ve gelen arama eşleştirme ayarlarını ofis yöneticisi yönetir.</p></SpCard>}<PhoneNormalizationCard /></> : null}
+      {settingsArea === "office" ? <>
       <SpCard className="settings-card" id="data-controller">
         <div className="settings-title"><ShieldCheck size={20} /><div><p className="eyebrow">VERİ SORUMLUSU</p><h2>Ofis uyum bilgileri</h2></div></div>
         <div className="form-row"><label>Ülke<SpSelect value={draft.country} onChange={(event) => setDraft({ ...draft, country: event.target.value as WorkspaceSettingsDraft["country"] })}>{Object.entries(countryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SpSelect></label><label>Veri sorumlusu adı<SpInput value={draft.dataControllerName} onChange={(event) => setDraft({ ...draft, dataControllerName: event.target.value })} /></label><label>VERBİS durumu<SpSelect value={draft.verbisStatus} onChange={(event) => setDraft({ ...draft, verbisStatus: event.target.value as WorkspaceSettingsDraft["verbisStatus"] })}>{verbisStatuses.map((item) => <option key={item} value={item}>{verbisStatusLabels[item]}</option>)}</SpSelect></label></div>
         {draft.country === "TRNC" ? <div className="trnc-gate"><strong>KKTC zorunlu doğrulama kapısı</strong><p>Firebase verisi KKTC dışına çıktığı için çalışma başlamadan önce hem dosyalama bildirimi hem aktarım ruhsatı gerekir.</p><label className="check-label"><SpInput type="checkbox" checked={draft.trncFilingConfirmed} onChange={(event) => setDraft({ ...draft, trncFilingConfirmed: event.target.checked })} /> m.8 dosyalama bildirimi tamamlandı</label><label className="check-label"><SpInput type="checkbox" checked={draft.trncTransferLicenseConfirmed} onChange={(event) => setDraft({ ...draft, trncTransferLicenseConfirmed: event.target.checked })} /> Yurt dışı aktarım ruhsatı alındı</label></div> : null}
         <p className="privacy-hint">Bu ekran hukuki danışmanlık yerine geçmez. Üretim öncesi yerel hukukçu doğrulaması gerekir.</p>
       </SpCard>
+      <SpCard className="settings-card"><div className="settings-title"><Users size={20} /><div><p className="eyebrow">OFİS</p><h2>Ekip ve davetler</h2></div></div><p className="privacy-copy">Danışmanları davet et, rolleri ve ofis erişimini ayrı çalışma alanında yönet.</p><a className="secondary-action inline-link" href="/team">Ekip yönetimini aç</a></SpCard>
+      </> : null}
 
-      <div className="settings-sections-footer"><button className="primary-action inline-action" disabled={!editedDraft || pending} type="submit"><Save size={18} /> {pending ? "Kaydediliyor…" : "Ayarları kaydet"}</button></div>
+      {settingsArea === "start" || settingsArea === "office" ? <div className="settings-sections-footer"><button className="primary-action inline-action" disabled={!editedDraft || pending} type="submit"><Save size={18} /> {pending ? "Kaydediliyor…" : "Değişiklikleri kaydet"}</button></div> : null}
     </form>
-    <WhatsAppGroupSettingsCard />
-    <section className="office-team-section" id="voice-privacy"><div className="section-heading"><div><p className="eyebrow">SES VE GİZLİLİK</p><h2>Görüşme sonrası güvenli not</h2><p>Sesli not yalnız danışmanın görüşme bittikten sonra verdiği özettir; karşı taraf kaydedilmez.</p></div></div><div className="settings-grid"><SpCard className="settings-card"><div className="settings-title"><Lock size={20} /><div><p className="eyebrow">KALICI KORUMALAR</p><h2>Değiştirilemeyen güvenlik sınırları</h2></div></div><ul className="privacy-policy-list"><li>Aktif görüşme sırasında kayıt başlatılmaz; yalnız olduğunuzu ayrıca onaylamanız gerekir.</li><li>Ham ses ve maskelenmemiş döküm kalıcı olarak saklanmaz.</li><li>Hassas veri kategorileri inceleme öncesinde maskelenir.</li><li>Çıkarılan taslak, danışman onayı olmadan kişi veya fırsat kaydına dönüşmez.</li></ul><a className="secondary-action inline-link" href="/capture">Sesli not akışını aç</a></SpCard><SpCard className="settings-card"><div className="settings-title"><ShieldCheck size={20} /><div><p className="eyebrow">VERİ HAKLARI</p><h2>Dışa aktarma ve silme</h2></div></div><p className="privacy-copy">Kişi bazlı JSON dışa aktarımı ve silme talebi aşağıdaki veri sahibi talepleri bölümünden kimlik doğrulamasıyla yürütülür.</p><a className="secondary-action inline-link" href="#data-requests">Veri sahibi taleplerine git</a></SpCard></div></section>
+    {settingsArea === "communication" ? <WhatsAppGroupSettingsCard /> : null}
+    {settingsArea === "compliance" ? <>
+    <section className="office-team-section" id="voice-privacy"><div className="section-heading"><div><p className="eyebrow">SES VE GİZLİLİK</p><h2>Görüşme sonrası güvenli not</h2><p>Sesli not yalnız danışmanın görüşme bittikten sonra verdiği özettir; karşı taraf kaydedilmez.</p></div></div><div className="settings-grid"><SpCard className="settings-card"><div className="settings-title"><Lock size={20} /><div><p className="eyebrow">KALICI KORUMALAR</p><h2>Değiştirilemeyen güvenlik sınırları</h2></div></div><ul className="privacy-policy-list"><li>Aktif görüşme sırasında kayıt başlatılmaz; yalnız olduğunuzu ayrıca onaylamanız gerekir.</li><li>Ham ses ve maskelenmemiş döküm kalıcı olarak saklanmaz.</li><li>Hassas veri kategorileri inceleme öncesinde maskelenir.</li><li>Çıkarılan taslak, danışman onayı olmadan kişi veya fırsat kaydına dönüşmez.</li></ul><a className="secondary-action inline-link" href="/capture">Sesli not akışını aç</a></SpCard><SpCard className="settings-card"><div className="settings-title"><ShieldCheck size={20} /><div><p className="eyebrow">VERİ HAKLARI</p><h2>Dışa aktarma ve silme</h2></div></div><p className="privacy-copy">Kişi bazlı JSON dışa aktarımı ve silme talebi aşağıdaki veri sahibi talepleri bölümünden kimlik doğrulamasıyla yürütülür.</p></SpCard></div></section>
     <section className="privacy-requests" id="data-requests"><div className="section-heading"><div><p className="eyebrow">VERİ SAHİBİ HAKLARI</p><h2>Talep ve yanıt takibi</h2></div></div><div className="settings-grid"><SpCard className="settings-card"><h2>Yeni talep</h2><form className="form-stack" onSubmit={createRequest}><ContactCombobox contacts={contacts} label="Kişi" value={selectedContactId} onChange={setContactId} placeholder="Kişi ara ve seç" /><label>Talep türü<SpSelect value={requestType} onChange={(event) => setRequestType(event.target.value as DataSubjectRequestType)}>{dataSubjectRequestTypes.map((item) => <option key={item} value={item}>{dataSubjectRequestTypeLabels[item]}</option>)}</SpSelect></label><label>Kimlik / başvuru referansı <span className="optional">isteğe bağlı</span><SpInput value={requesterReference} onChange={(event) => setRequesterReference(event.target.value)} /></label><label>Açıklama<SpTextarea value={details} onChange={(event) => setDetails(event.target.value)} /></label><button className="secondary-action" disabled={pending || !selectedContactId} type="submit">Talebi kaydet</button></form></SpCard><div className="request-list">{(requestsQuery.data ?? []).map((item) => <SpCard className="request-card" key={item.id}><div><strong>{item.contactName}</strong><span>{dataSubjectRequestTypeLabels[item.type]} · {dataSubjectRequestStatusLabels[item.status]}</span><small>Son yanıt: {new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium" }).format(item.dueAt)}</small></div><div className="request-actions">{item.type === "access" && (item.status === "approved" || item.status === "completed") ? <button type="button" onClick={() => void exportContact(item.id, item.contactId)}><Download size={15} /> JSON indir</button> : null}{item.status === "pending_verification" ? <><button type="button" onClick={() => void resolve(item.id, "approved", item.type, item.contactId)}>Kimliği doğrula ve onayla</button><button type="button" onClick={() => void resolve(item.id, "rejected", item.type, item.contactId)}>Reddet</button></> : null}</div></SpCard>)}{requestsQuery.data?.length === 0 ? <SpCard><p>Henüz veri sahibi talebi yok.</p></SpCard> : null}</div></div></section>
+    </> : null}
       </div>
     </div>
   </AppShell>;

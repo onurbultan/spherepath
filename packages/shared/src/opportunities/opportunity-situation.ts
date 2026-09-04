@@ -1,4 +1,28 @@
-import type { ContactMemory, ContactPropertySituation, ContactRole, OpportunityType } from "../domain/entities.js";
+import { z } from "zod";
+import type { ContactMemory, ContactPropertySituation, ContactRole, OpportunityType, PropertyTransactionType } from "../domain/entities.js";
+import { voicePropertyPreferencesSchema, type VoicePropertyPreferences } from "../voice/voice-note.js";
+
+export const opportunityCriteriaUpdateSchema = z.object({
+  opportunityId: z.string().trim().min(1).max(160),
+  preferences: voicePropertyPreferencesSchema,
+}).strict();
+export type OpportunityCriteriaUpdate = z.infer<typeof opportunityCriteriaUpdateSchema>;
+
+export function opportunityTransactionType(type: OpportunityType): PropertyTransactionType {
+  switch (type) {
+    case "seller_listing": return "sell";
+    case "landlord_listing": return "let";
+    case "buyer_requirement": return "buy";
+    case "tenant_requirement": return "rent";
+  }
+}
+
+export function opportunityCriteriaSummary(type: OpportunityType, preferences: VoicePropertyPreferences): string {
+  const location = preferences.preferredLocations.join(", ") || "Bölge bekleniyor";
+  const rooms = preferences.bedroomCountMin === null ? null : `${preferences.bedroomCountMin}+${preferences.livingRoomCountMin ?? 0}`;
+  const purpose = type === "seller_listing" ? "satılık mülk" : type === "landlord_listing" ? "kiralık mülk" : type === "buyer_requirement" ? "satın alma talebi" : "kiralama talebi";
+  return [location, rooms, purpose].filter(Boolean).join(" · ").slice(0, 240);
+}
 
 /** A seller or landlord opportunity is about a property the contact already owns. */
 export function isOwnerOpportunity(type: OpportunityType): boolean {

@@ -105,6 +105,18 @@ describe("today overview", () => {
     expect(overview.tasks[0]).toMatchObject({ opportunityId: "opportunity-1", title: "Deniz Aral" });
   });
 
+  it("turns an open deal next action into actionable closing work", () => {
+    const now = Date.now();
+    const overview = buildTodayOverview(
+      [{ id: "contact-1", name: "Deniz Aral", createdAt: now, meaningfulTouchCount: 2, nextActionAt: null, nextActionType: null }],
+      [],
+      now,
+      [],
+      [{ id: "deal-1", stage: "offer", buyerContactId: "contact-1", buyerContactName: "Deniz Aral", nextActionAt: now - 60_000, nextActionType: "call" }],
+    );
+    expect(overview.tasks[0]).toMatchObject({ id: "deal-action-deal-1", dealId: "deal-1", contactId: "contact-1", title: "Deniz Aral" });
+  });
+
   it("shows only today's interactions in reverse chronological order", () => {
     const now = Date.UTC(2026, 7, 29, 12);
     const overview = buildTodayOverview([], [], now, [], [], new Set(), [
