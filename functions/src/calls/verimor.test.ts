@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { parseVerimorEvent } from "./verimor.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createVerimorSource, parseVerimorEvent } from "./verimor.js";
 import { parseProviderDurationMs, parseProviderInstant } from "./provider.js";
 
 const hangup = {
@@ -20,6 +20,8 @@ const hangup = {
   hangup_cause: "NORMAL_CLEARING",
 };
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe("parseVerimorEvent", () => {
   it("reads a completed inbound call", () => {
     const event = parseVerimorEvent(hangup)!;
@@ -28,7 +30,6 @@ describe("parseVerimorEvent", () => {
     expect(event.direction).toBe("inbound");
     expect(event.fromNumber).toBe("05321234567");
     expect(event.answered).toBe(true);
-    expect(event.recordingPresent).toBe(true);
     // Talk time runs from answer to hangup, not from the first ring.
     expect(event.talkDurationMs).toBe(508_000);
     expect(event.durationMs).toBe(516_000);
@@ -56,7 +57,6 @@ describe("parseVerimorEvent", () => {
     })!;
     expect(event.answered).toBe(false);
     expect(event.talkDurationMs).toBe(0);
-    expect(event.recordingPresent).toBe(false);
   });
 
   it("falls back to the reported duration when no answer stamp arrives", () => {
@@ -89,5 +89,22 @@ describe("provider value parsing", () => {
     expect(parseProviderDurationMs("516")).toBe(516_000);
     expect(parseProviderDurationMs(516_000)).toBe(516_000);
     expect(parseProviderDurationMs("")).toBe(0);
+  });
+});
+
+describe("outbound call privacy", () => {
+  it("explicitly disables provider recording", async () => {
+    const fetchMock = vi.fn(async () => new Response("provider-call-1", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createVerimorSource(() => "secret").startCall({
+      source: "905551112233",
+      destination: "905559998877",
+      callerId: null,
+    });
+
+    const requestedUrl = String(fetchMock.mock.calls[0]?.[0]);
+    expect(new URL(requestedUrl).searchParams.get("recording_enabled")).toBe("false");
+    expect(requestedUrl).not.toContain("announcement");
   });
 });

@@ -5,16 +5,13 @@ import {
   parseProviderDurationMs,
   parseProviderInstant,
   parseProviderNumber,
-  type CallRecordingSource,
-  type FetchedRecording,
+  type CallProviderSource,
   type ParsedCallEvent,
 } from "./provider.js";
 
 const apiBase = "https://api.bulutsantralim.com";
-const recordingUrlEndpoint = `${apiBase}/recording_url/`;
 const bridgeEndpoint = `${apiBase}/bridge`;
 const crmIntegrationEndpoint = `${apiBase}/crm_integrations`;
-const announcementsEndpoint = `${apiBase}/announcements`;
 /** The switch caps ring time at a minute; long enough for an advisor to reach the handset. */
 // Verimor allows 10-60s of ringing. An advisor carrying their own phone needs
 // longer than a desk handset: it may be in a pocket or a coat.
@@ -68,45 +65,14 @@ export function parseVerimorEvent(body: Record<string, unknown>): ParsedCallEven
       ? endedAt - answeredAt
       : answered ? durationMs : 0,
     queueWaitMs: parseProviderDurationMs(body.queue_wait_duration),
-    recordingPresent: parseProviderBoolean(body.recording_present),
     hangupCause: parseProviderNumber(body.hangup_cause) ?? parseProviderNumber(body.failure_phrase),
   };
 }
 
-/**
- * Fetching is two calls: the switch mints a link that lives an hour, then the
- * audio is downloaded from it. The link is never persisted, because it expires
- * long before anyone would reuse it.
- */
-export function createVerimorSource(apiKey: () => string): CallRecordingSource {
+export function createVerimorSource(apiKey: () => string): CallProviderSource {
   return {
     provider: "verimor",
     parseEvent: parseVerimorEvent,
-    async fetchRecording(providerCallId: string): Promise<FetchedRecording | null> {
-      const key = apiKey();
-      if (!key) throw new Error("verimor_api_key_missing");
-      const urlResponse = await fetch(recordingUrlEndpoint, {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ key, call_uuid: providerCallId }),
-      });
-      if (urlResponse.status === 404) return null;
-      if (!urlResponse.ok) throw new Error(`verimor_recording_url_failed_${urlResponse.status}`);
-      const mediaUrl = (await urlResponse.text()).trim();
-      if (!/^https:\/\//u.test(mediaUrl)) throw new Error("verimor_recording_url_invalid");
-
-      const media = await fetch(mediaUrl);
-      if (!media.ok) throw new Error(`verimor_recording_download_failed_${media.status}`);
-      const contentType = media.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "audio/wav";
-      const bytes = Buffer.from(await media.arrayBuffer());
-      if (!bytes.length) throw new Error("verimor_recording_empty");
-      logger.info("Call recording downloaded", { providerCallId, contentType, byteLength: bytes.length });
-      return {
-        bytes,
-        contentType,
-        extension: contentType.includes("mpeg") || contentType.includes("mp3") ? "mp3" : "wav",
-      };
-    },
     async startCall(request): Promise<string> {
       const key = apiKey();
       if (!key) throw new Error("verimor_api_key_missing");
@@ -116,13 +82,12 @@ export function createVerimorSource(apiKey: () => string): CallRecordingSource {
         key,
         source: request.source,
         destination: request.destination,
-        recording_enabled: "true",
+        // Permanent product boundary: the switch may bridge the two legs, but
+        // neither Spherepath nor the provider may record the counterparty.
+        recording_enabled: "false",
         timeout: String(originateTimeoutSeconds),
       });
       if (request.callerId) query.set("caller_id", request.callerId);
-      // Played to the customer once they pick up, which is where the recording
-      // notice belongs.
-      if (request.announcementId !== null) query.set("announcement_to_callee", String(request.announcementId));
 
       const response = await fetch(`${bridgeEndpoint}?${query.toString()}`);
       if (!response.ok) {
@@ -144,14 +109,6 @@ export function createVerimorSource(apiKey: () => string): CallRecordingSource {
       const response = await fetch(`${crmIntegrationEndpoint}?${query.toString()}`, { method: "POST" });
       if (!response.ok) throw new Error(`verimor_connect_failed_${response.status}`);
       logger.info("Call provider pointed at the event endpoint", { notificationUrl });
-    },
-    async listAnnouncements() {
-      const key = apiKey();
-      if (!key) throw new Error("verimor_api_key_missing");
-      const response = await fetch(`${announcementsEndpoint}?${new URLSearchParams({ key }).toString()}`);
-      if (!response.ok) throw new Error(`verimor_announcements_failed_${response.status}`);
-      const body = await response.json() as Array<{ id: number; name: string }>;
-      return body.map((item) => ({ id: Number(item.id), name: String(item.name) })).filter((item) => Number.isFinite(item.id));
     },
     async readEventConnection() {
       const key = apiKey();

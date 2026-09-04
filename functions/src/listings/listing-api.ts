@@ -5,11 +5,14 @@ import {
   createPropertyAndListing,
   existingListingDraftSchema,
   listingDraftSchema,
+  listingPriceUpdateSchema,
   listingTransitionSchema,
+  terminalLifecycleClearsOwnerAction,
   type Listing,
   type ListingDraft,
   type ExistingListingDraft,
   type ListingStatus,
+  type ListingPriceUpdate,
 } from "../../../packages/shared/src/index";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 import { requireSpherepathClaims } from "../auth/claims.js";
@@ -223,11 +226,59 @@ export const advanceListing = onCall(callableOptions, async (request): Promise<{
       if (!canManage) throw new HttpsError("permission-denied", "Listing is outside your workspace.");
       try { assertListingTransition(listing.status as ListingStatus, parsed.data.toStatus); }
       catch { throw new HttpsError("failed-precondition", `Listing cannot move from ${listing.status} to ${parsed.data.toStatus}.`); }
+      if (parsed.data.toStatus === "active" && !(typeof listing.askingPrice === "number" && listing.askingPrice > 0)) {
+        throw new HttpsError("failed-precondition", "Portföyü yayına almadan önce liste fiyatını tamamla.");
+      }
+      let ownerContactRef: FirebaseFirestore.DocumentReference | null = null;
+      if (terminalLifecycleClearsOwnerAction("listing", parsed.data.toStatus) && typeof listing.opportunityId === "string") {
+        const opportunitySnapshot = await transaction.get(firestore.collection("opportunities").doc(listing.opportunityId));
+        const opportunity = opportunitySnapshot.data();
+        const validOpportunity = opportunitySnapshot.exists && opportunity?.officeId === listing.officeId &&
+          opportunity?.ownerUid === listing.ownerUid && opportunity?.deletedAt === null;
+        const ownerContactId = validOpportunity ? opportunity?.subjectContactId : null;
+        if (typeof ownerContactId === "string") {
+          const candidateRef = firestore.collection("contacts").doc(ownerContactId);
+          const contactSnapshot = await transaction.get(candidateRef);
+          const contact = contactSnapshot.data();
+          if (contactSnapshot.exists && contact?.officeId === listing.officeId && contact?.ownerUid === listing.ownerUid && contact?.deletedAt === null) {
+            ownerContactRef = candidateRef;
+          }
+        }
+      }
       const now = Timestamp.now();
       transaction.update(listingRef, { status: parsed.data.toStatus, updatedAt: now });
+      if (ownerContactRef) transaction.update(ownerContactRef, { "relationship.nextActionAt": null, "relationship.nextActionType": null, updatedAt: now });
       transaction.create(eventRef, { officeId: listing.officeId, ownerUid: listing.ownerUid, entityType: "listing", entityId: listingRef.id, fromStage: listing.status, toStage: parsed.data.toStatus, reason: parsed.data.reason, commandId: envelope.commandId, occurredAt: now, createdAt: now });
       transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "advanceListing", listingId: listingRef.id, toStatus: parsed.data.toStatus, eventId: eventRef.id, createdAt: now });
       return { listingId: listingRef.id, toStatus: parsed.data.toStatus, eventId: eventRef.id };
     });
+  });
+});
+
+export const updateListingPrice = onCall(callableOptions, async (request): Promise<{ listingId: string }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<ListingPriceUpdate>(request.data, { command: true });
+  const parsed = listingPriceUpdateSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Listing price is invalid.", parsed.error.flatten());
+  return observeApiRequest("updateListingPrice", envelope.requestId, async () => {
+    const db = getFirestore();
+    const listingRef = db.collection("listings").doc(parsed.data.listingId);
+    const commandRef = db.collection("commands").doc(envelope.commandId!);
+    await db.runTransaction(async (transaction) => {
+      const [listingSnapshot, receipt] = await Promise.all([transaction.get(listingRef), transaction.get(commandRef)]);
+      if (receipt.exists) {
+        const data = receipt.data()!;
+        if (data.officeId !== claims.officeId || data.ownerUid !== claims.uid || data.type !== "updateListingPrice") throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+        return;
+      }
+      if (!listingSnapshot.exists) throw new HttpsError("not-found", "Listing was not found.");
+      const listing = listingSnapshot.data()!;
+      if (listing.officeId !== claims.officeId || (listing.ownerUid !== claims.uid && claims.role !== "broker") || listing.deletedAt !== null) throw new HttpsError("permission-denied", "Listing is outside your workspace.");
+      if (["sold", "rented", "removed"].includes(listing.status as string)) throw new HttpsError("failed-precondition", "A closed listing cannot be repriced.");
+      const now = Timestamp.now();
+      transaction.update(listingRef, { askingPrice: parsed.data.askingPrice, currency: parsed.data.currency, updatedAt: now });
+      transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "updateListingPrice", listingId: listingRef.id, createdAt: now });
+    });
+    return { listingId: listingRef.id };
   });
 });

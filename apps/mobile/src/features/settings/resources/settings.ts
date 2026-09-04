@@ -1,6 +1,7 @@
 import {
   createCommandId,
   type ContactDataExport,
+  type ContactDataExportInput,
   type CreateDataSubjectRequestInput,
   type DataSubjectRequestView,
   type JoinOfficeInput,
@@ -89,16 +90,15 @@ export async function resolveDataSubjectRequest(session: WorkspaceSession, input
   );
 }
 
-export async function getContactDataExport(contactId: string): Promise<ContactDataExport> {
-  return (await apiClient.query<{ contactId: string }, { export: ContactDataExport }>("getContactDataExport", { contactId })).export;
+export async function getContactDataExport(requestId: string): Promise<ContactDataExport> {
+  const input: ContactDataExportInput = { requestId };
+  return (await apiClient.query<ContactDataExportInput, { export: ContactDataExport }>("getContactDataExport", input)).export;
 }
 
 export interface CallIntegrationView {
   integrationId: string;
   webhookToken: string;
   extensionOwners: Record<string, string>;
-  /** The announcement played to the counterparty before recording starts. */
-  recordingNoticeAnnouncementId: number | null;
   active: boolean;
 }
 
@@ -108,7 +108,7 @@ export async function loadCallIntegration(): Promise<CallIntegrationView | null>
 
 export async function configureCallIntegration(
   session: WorkspaceSession,
-  input: { extensionOwners?: Record<string, string>; rotateToken?: boolean; outboundCallerId?: string | null; defaultRoutingTarget?: string | null; recordingNoticeAnnouncementId?: number | null },
+  input: { extensionOwners?: Record<string, string>; rotateToken?: boolean; outboundCallerId?: string | null; defaultRoutingTarget?: string | null },
 ): Promise<{ integrationId: string; webhookToken: string }> {
   return apiClient.command<typeof input, { integrationId: string; webhookToken: string }>(
     "configureCallIntegration", input, createCommandId(session.uid),
@@ -126,11 +126,3 @@ export async function connectCallProvider(session: WorkspaceSession): Promise<Ca
     "connectCallProvider", undefined, createCommandId(session.uid),
   );
 }
-
-export interface CallAnnouncement { id: number; name: string }
-
-export async function listCallAnnouncements(): Promise<CallAnnouncement[]> {
-  return (await apiClient.query<undefined, { announcements: CallAnnouncement[] }>("listCallAnnouncements", undefined)).announcements;
-}
-
-

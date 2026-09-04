@@ -43,6 +43,39 @@ function callableNames(root) {
 
 const problems = [];
 
+// Behavioural promises a callable-name comparison cannot see. Keep this list
+// small and high-value: these are differences that have broken real workflows.
+const behaviourContracts = [
+  {
+    name: "capture keeps quick contact creation in the current flow",
+    webFile: "apps/web/src/features/interactions/views/CaptureView.tsx",
+    mobileFile: "apps/mobile/src/features/interactions/views/CaptureView.tsx",
+    web: ["createQuickContact", "Kişiyi ekle ve görüşmeye dön"],
+    mobile: ["createQuickContact", "Kişiyi ekle ve devam et"],
+  },
+  {
+    name: "match score uses the shared 0-100 formatter",
+    webFile: "apps/web/src/features/matching/views/OfficePortfolioSection.tsx",
+    mobileFile: "apps/mobile/src/features/matching/views/OfficePortfolioSection.tsx",
+    web: ["formatMatchScore(match.score)"],
+    mobile: ["formatMatchScore(match.score)"],
+  },
+  {
+    name: "external sharing is described as a draft and share surface",
+    webFile: "apps/web/src/features/matching/views/OfficePortfolioSection.tsx",
+    mobileFile: "apps/mobile/src/features/matching/views/OfficePortfolioSection.tsx",
+    web: ["Mesaj taslağı"],
+    mobile: ["Mesaj taslağı hazırla", "Paylaşım sayfasını aç"],
+  },
+];
+
+for (const contract of behaviourContracts) {
+  const webSource = readFileSync(contract.webFile, "utf8");
+  const mobileSource = readFileSync(contract.mobileFile, "utf8");
+  for (const snippet of contract.web) if (!webSource.includes(snippet)) problems.push(`${contract.name}: web sözleşmesi eksik (${snippet})`);
+  for (const snippet of contract.mobile) if (!mobileSource.includes(snippet)) problems.push(`${contract.name}: mobil sözleşmesi eksik (${snippet})`);
+}
+
 // 1. Every server capability one platform reaches, the other reaches too.
 const web = callableNames("apps/web/src");
 const mobile = callableNames("apps/mobile/src");

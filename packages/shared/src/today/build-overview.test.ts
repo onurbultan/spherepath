@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTodayOverview, dailyTaskOutcomeSchema, todayOverviewQuerySchema } from "./build-overview.js";
+import { buildTodayOverview, dailyTaskOutcomeSchema, todayOverviewQuerySchema, todayTaskBucket } from "./build-overview.js";
 
 describe("today overview", () => {
   it("keeps a one-off skip separate from a permanent communication preference", () => {
@@ -45,10 +45,25 @@ describe("today overview", () => {
     expect(overview.tasks[0]?.contactId).toBe("contact-6");
   });
 
-  it("keeps separate contact and opportunity actions visible", () => {
+  it("shows one decision per contact when contact and opportunity actions overlap", () => {
     const now = 2_000;
     const overview = buildTodayOverview([{ id: "contact-1", name: "Ayşe", createdAt: 1_000, meaningfulTouchCount: 1, nextActionAt: 3_000, nextActionType: "call" }], [{ id: "opportunity-1", subjectContactId: "contact-1", subjectContactName: "Ayşe", stage: "first_contact", createdAt: 1_000, nextActionAt: 4_000, nextActionType: "appointment" }], now);
-    expect(overview.tasks.map((item) => item.id).sort()).toEqual(["next-action-contact-1", "opportunity-action-opportunity-1"]);
+    expect(overview.tasks.map((item) => item.id)).toEqual(["opportunity-action-opportunity-1"]);
+  });
+
+  it("keeps tomorrow out of today's work using the Istanbul calendar", () => {
+    const now = Date.parse("2026-09-04T20:30:00Z"); // 23:30 in Istanbul
+    const laterToday = Date.parse("2026-09-04T20:45:00Z");
+    const tomorrow = Date.parse("2026-09-04T21:15:00Z");
+    expect(todayTaskBucket({ dueAt: laterToday }, now)).toBe("today");
+    expect(todayTaskBucket({ dueAt: tomorrow }, now)).toBe("upcoming");
+
+    const overview = buildTodayOverview([
+      { id: "today", name: "Bugün", createdAt: now, meaningfulTouchCount: 1, nextActionAt: laterToday, nextActionType: "call" },
+      { id: "tomorrow", name: "Yarın", createdAt: now, meaningfulTouchCount: 1, nextActionAt: tomorrow, nextActionType: "call" },
+    ], [], now);
+    expect(overview.tasks.map((item) => item.contactId)).toEqual(["today"]);
+    expect(overview.upcomingTasks.map((item) => item.contactId)).toEqual(["tomorrow"]);
   });
 
   it("ranks a broken promise above an on-time opportunity action", () => {

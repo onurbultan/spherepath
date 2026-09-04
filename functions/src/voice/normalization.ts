@@ -14,7 +14,7 @@ function appendUnique(values: string[], additions: string[]): string[] {
   return result.slice(0, 20);
 }
 
-function amountFrom(text: string): VoicePropertyPreferences["budgetRange"] {
+function amountFrom(text: string, transactionType: VoicePropertyPreferences["transactionType"]): VoicePropertyPreferences["budgetRange"] {
   const million = text.match(/\b(\d+(?:[.,]\d+)?)\s*milyon(?:a|e|dan|den|luk|lük)?(?=\s|$|[.,;])/iu);
   const plain = text.match(/\b(\d{6,12})\s*(?:tl|₺|lira)?\b/iu);
   const value = million?.[1]
@@ -25,9 +25,10 @@ function amountFrom(text: string): VoicePropertyPreferences["budgetRange"] {
   if (!value || !Number.isFinite(value)) return null;
   const upperBound = /\b(?:kadar|en fazla|üst sınır)\b/iu.test(text);
   const lowerBound = /\b(?:en az|alt sınır)\b/iu.test(text);
+  const exactPropertyPrice = transactionType === "sell" || transactionType === "let";
   return {
-    min: upperBound ? null : value,
-    max: lowerBound ? null : value,
+    min: exactPropertyPrice ? value : lowerBound ? value : null,
+    max: exactPropertyPrice ? value : upperBound || !lowerBound ? value : null,
     currency: "TRY",
   };
 }
@@ -65,7 +66,7 @@ function preferencesFrom(text: string, transactionType: VoicePropertyPreferences
     transactionType,
     propertyTypes: propertyTypesFrom(text),
     preferredLocations: locationsFrom(text),
-    budgetRange: amountFrom(text),
+    budgetRange: amountFrom(text, transactionType),
     bedroomCountMin: room?.[1] ? Number(room[1]) : null,
     livingRoomCountMin: room?.[2] ? Number(room[2]) : null,
     areaMinM2: areaRange?.[1] ? Number(areaRange[1]) : null,
@@ -127,6 +128,7 @@ function normalizeSituation(situation: VoicePropertySituation): VoicePropertySit
 export function normalizeVoiceExtraction(
   extraction: VoiceExtraction,
   maskedTranscript: string,
+  knownContactName: string | null = null,
 ): VoiceExtraction {
   const inferredSituations = deterministicPropertySituations(maskedTranscript);
   const propertySituations = (extraction.insights.propertySituations.length
@@ -216,6 +218,26 @@ export function normalizeVoiceExtraction(
       ? "inbound"
       : "mutual";
 
+  const nameTokens = new Set((knownContactName ?? "")
+    .toLocaleLowerCase("tr-TR")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((token) => token.length > 1));
+  const cleanLocations = (locations: string[]) => locations.flatMap((location) => {
+    if (!nameTokens.size) return [location];
+    const cleaned = location.split(/\s+/u)
+      .filter((token) => !nameTokens.has(token.replace(/[^\p{L}\p{N}]/gu, "").toLocaleLowerCase("tr-TR")))
+      .join(" ")
+      .trim();
+    return cleaned.length >= 2 ? [cleaned] : [];
+  });
+  const normalizedSituations = propertySituations.map((situation) => ({
+    ...situation,
+    propertyPreferences: {
+      ...situation.propertyPreferences,
+      preferredLocations: cleanLocations(situation.propertyPreferences.preferredLocations),
+    },
+  }));
+
   return voiceExtractionSchema.parse({
     ...extraction,
     interaction: {
@@ -230,9 +252,10 @@ export function normalizeVoiceExtraction(
         ? appendUnique(keyThingsToRemember, propertySituations.map((item) => item.summary)).slice(0, 8)
         : keyThingsToRemember,
       propertyContext,
-      propertySituations,
+      propertySituations: normalizedSituations,
       propertyPreferences: {
         ...preferences,
+        preferredLocations: cleanLocations(preferences.preferredLocations),
         propertyTypes,
         bedroomCountMin: primarySituation ? preferences.bedroomCountMin : roomConfiguration?.[1] ? Number(roomConfiguration[1]) : preferences.bedroomCountMin,
         livingRoomCountMin: primarySituation ? preferences.livingRoomCountMin : roomConfiguration?.[2] ? Number(roomConfiguration[2]) : preferences.livingRoomCountMin,

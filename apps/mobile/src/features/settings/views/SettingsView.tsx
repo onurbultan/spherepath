@@ -8,6 +8,7 @@ import {
   countryLabels,
   createDataSubjectRequestSchema,
   dataSubjectRequestTypeLabels,
+  dataSubjectRequestStatusLabels,
   dataSubjectRequestTypes,
   verbisStatusLabels,
   verbisStatuses,
@@ -122,10 +123,10 @@ export default function SettingsView() {
     finally { setPending(false); }
   }
 
-  async function shareExport(targetContactId: string) {
+  async function shareExport(requestId: string) {
     setPending(true); setError(null);
     try {
-      const value = await getContactDataExport(targetContactId);
+      const value = await getContactDataExport(requestId);
       await Share.share({ title: "Spherepath kişi veri kopyası", message: JSON.stringify(value, null, 2) });
     } catch (nextError) { setError(messageFrom(nextError)); }
     finally { setPending(false); }
@@ -153,7 +154,7 @@ export default function SettingsView() {
     {session?.role === "broker" ? <TelephonySettingsCard /> : null}
     {session?.role === "broker" ? <PhoneNormalizationCard /> : null}
     <SpCard style={styles.card}><SpText variant="eyebrow" color="deed">VERİ SAHİBİ HAKLARI</SpText><SpText variant="title">Yeni talep</SpText><ContactPicker contacts={contacts} value={selectedContactId} onChange={setContactId} placeholder="Kişi ara ve seç" /><View style={styles.row}>{dataSubjectRequestTypes.map((type) => <Pressable key={type} onPress={() => setRequestType(type)} style={[styles.choice, { borderColor: requestType === type ? theme.deed : theme.line }]}><SpText variant="bodySmall" color={requestType === type ? "deed" : "secondary"}>{dataSubjectRequestTypeLabels[type]}</SpText></Pressable>)}</View><TextInput multiline placeholder="Talebin açıklaması" placeholderTextColor={theme.textTertiary} style={[...inputStyle, styles.textarea]} value={requestDetails} onChangeText={setRequestDetails} /><Pressable disabled={pending || !selectedContactId} onPress={() => void createRequest()} style={[styles.secondary, { borderColor: theme.line }]}><SpText color="deed">Talebi kaydet</SpText></Pressable></SpCard>
-    {(requestsQuery.data ?? []).map((item) => <SpCard key={item.id} style={styles.request}><SpText variant="title">{item.contactName}</SpText><SpText variant="bodySmall" color="secondary">{dataSubjectRequestTypeLabels[item.type]} · {item.status}</SpText><View style={styles.row}>{item.type === "access" ? <Pressable onPress={() => void shareExport(item.contactId)} style={[styles.smallAction, { borderColor: theme.line }]}><Download color={theme.deed} size={15} /><SpText variant="bodySmall" color="deed">Paylaş</SpText></Pressable> : null}{item.status === "pending_verification" ? <Pressable onPress={() => void approve(item.id, item.type)} style={[styles.smallAction, { borderColor: theme.line }]}><SpText variant="bodySmall" color="deed">Onayla</SpText></Pressable> : null}</View></SpCard>)}
+    {(requestsQuery.data ?? []).map((item) => <SpCard key={item.id} style={styles.request}><SpText variant="title">{item.contactName}</SpText><SpText variant="bodySmall" color="secondary">{dataSubjectRequestTypeLabels[item.type]} · {dataSubjectRequestStatusLabels[item.status]}</SpText><View style={styles.row}>{item.type === "access" && (item.status === "approved" || item.status === "completed") ? <Pressable onPress={() => void shareExport(item.id)} style={[styles.smallAction, { borderColor: theme.line }]}><Download color={theme.deed} size={15} /><SpText variant="bodySmall" color="deed">Veri kopyasını paylaş</SpText></Pressable> : null}{item.status === "pending_verification" ? <Pressable onPress={() => void approve(item.id, item.type)} style={[styles.smallAction, { borderColor: theme.line }]}><SpText variant="bodySmall" color="deed">Kimliği doğrula ve onayla</SpText></Pressable> : null}</View></SpCard>)}
     <Pressable onPress={() => void signOut()} style={[styles.secondary, { borderColor: theme.line }]}><LogOut color={theme.textSecondary} size={18} /><SpText color="secondary">Oturumu kapat</SpText></Pressable>
   </ScrollView></SafeAreaView>;
 }

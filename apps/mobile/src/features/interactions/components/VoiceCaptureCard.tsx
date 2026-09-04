@@ -70,6 +70,7 @@ let voiceSafetyConfirmedForSession = false;
 interface Props {
   session: WorkspaceSession;
   contacts: ContactRecord[];
+  initialContactId?: string;
   onSaved: () => Promise<void>;
 }
 
@@ -180,7 +181,7 @@ function formatBudget(insights: VoiceInsights): string | null {
   return budget.max !== null ? `${formatter.format(budget.max)} ve altı` : null;
 }
 
-export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
+export function VoiceCaptureCard({ session, contacts, initialContactId = "", onSaved }: Props) {
   const theme = useSpTheme();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 250);
@@ -188,7 +189,7 @@ export function VoiceCaptureCard({ session, contacts, onSaved }: Props) {
   const [confirmedAlone, setConfirmedAlone] = useState(
     voiceSafetyConfirmedForSession,
   );
-  const [contactId, setContactId] = useState("");
+  const [contactId, setContactId] = useState(initialContactId);
   const [writtenOpen, setWrittenOpen] = useState(false);
   const [writtenText, setWrittenText] = useState("");
   const [error, setError] = useState<string | null>(null);

@@ -1,37 +1,760 @@
 import { useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
 import { Handshake, MessageSquareText, X } from "lucide-react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { apiQueryKeys, canMarketOnChannel, contactPrivacyDraftSchema, currencyCodes, dealDraftSchema, dealStageLabels, dealTransitionSchema, marketingChannelLabels, marketingChannels, nextDealStages, nextPresentationStatuses, presentationDraftSchema, presentationStatusLabels, type CurrencyCode, type DealStage, type MarketingChannel, parseMoneyInput } from "@spherepath/shared";
+import {
+  apiQueryKeys,
+  canMarketOnChannel,
+  contactPrivacyDraftSchema,
+  currencyCodes,
+  dealDraftSchema,
+  dealStageLabels,
+  dealTransitionSchema,
+  marketingChannelLabels,
+  marketingChannels,
+  nextDealStages,
+  nextPresentationStatuses,
+  presentationDraftSchema,
+  presentationStatusLabels,
+  type CurrencyCode,
+  type DealStage,
+  type MarketingChannel,
+  parseMoneyInput,
+} from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
-import { listContacts, saveContactPrivacy } from "@/features/contacts/resources/contacts";
+import {
+  listContacts,
+  saveContactPrivacy,
+} from "@/features/contacts/resources/contacts";
+import { ListingPriceCompletionCard } from "@/features/listings/components/ListingPriceCompletionCard";
 import type { ListingRecord } from "@/features/listings/resources/listings";
 import { SpCard } from "@/shared/ui/SpCard";
 import { SpText } from "@/shared/ui/SpText";
 import { ContactPicker } from "@/shared/ui/ContactPicker";
 import { radius, space } from "@/shared/ui/tokens.generated";
 import { useSpTheme } from "@/shared/ui/theme";
-import { getClosingOverview, moveDeal, movePresentation, saveDeal, savePresentation, type DealRecord } from "../resources/closing";
+import {
+  getClosingOverview,
+  moveDeal,
+  movePresentation,
+  saveDeal,
+  savePresentation,
+  type DealRecord,
+} from "../resources/closing";
 import { MoneyInput } from "@/shared/ui/MaskedInputs";
-import { buttonMetrics, choiceMetrics, controlMetrics, largeButtonMetrics } from "@/shared/ui/SpField";
+import {
+  buttonMetrics,
+  choiceMetrics,
+  controlMetrics,
+  largeButtonMetrics,
+} from "@/shared/ui/SpField";
 
-const messageFrom = (error: unknown) => error instanceof Error ? error.message : "Kapama işlemi tamamlanamadı.";
+const messageFrom = (error: unknown) =>
+  error instanceof Error ? error.message : "Kapama işlemi tamamlanamadı.";
 export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
-  const theme = useSpTheme(); const { session } = useSession(); const queryClient = useQueryClient(); const query = useQuery({ queryKey: apiQueryKeys.closing, queryFn: getClosingOverview }); const contactsQuery = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts }); const contacts = contactsQuery.data ?? []; const available = listings.filter((item) => item.status === "active" || item.status === "reserved");
-  const [mode, setMode] = useState<"presentation" | "deal" | null>(null); const [listingId, setListingId] = useState(""); const [contactId, setContactId] = useState(""); const [channel, setChannel] = useState<MarketingChannel>("whatsapp"); const [message, setMessage] = useState(""); const [pending, setPending] = useState(false); const [error, setError] = useState<string | null>(null); const selectedListing = listingId || available[0]?.id || ""; const selectedContact = contactId;
-  const [noticeConfirmed, setNoticeConfirmed] = useState(false); const [consentConfirmed, setConsentConfirmed] = useState(false); const [iysChoice, setIysChoice] = useState<"approved" | "exempt">("approved");
-  const [movingDeal, setMovingDeal] = useState<DealRecord | null>(null); const [dealStage, setDealStage] = useState<DealStage>("viewing"); const [offerAmount, setOfferAmount] = useState(""); const [actualAmount, setActualAmount] = useState(""); const [commissionAmount, setCommissionAmount] = useState(""); const [currency, setCurrency] = useState<CurrencyCode>("TRY"); const [lostReason, setLostReason] = useState("");
-  const choice = (selected: boolean) => [styles.choice, { backgroundColor: selected ? theme.deedBg : theme.background, borderColor: selected ? theme.deed : theme.line }]; const inputStyle = [styles.input, { color: theme.textPrimary, backgroundColor: theme.background, borderColor: theme.line }];
-  const selectedContactRecord = contacts.find((item) => item.id === selectedContact); const marketingEligibility = selectedContactRecord ? canMarketOnChannel(selectedContactRecord.privacy, channel) : { allowed: false, reason: "İlgili kişi seçilmedi." };
-  async function refresh() { await Promise.all([queryClient.invalidateQueries({ queryKey: apiQueryKeys.closing }), queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview })]); }
-  async function create() { if (!session || !mode) return; setPending(true); setError(null); try { if (mode === "presentation") { const parsed = presentationDraftSchema.safeParse({ listingId: selectedListing, contactId: selectedContact, channel, message }); if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Sunum bilgilerini kontrol et."); await savePresentation(session, parsed.data); } else { const parsed = dealDraftSchema.safeParse({ listingId: selectedListing, buyerContactId: selectedContact || null }); if (!parsed.success) throw new Error("İşlem bilgilerini kontrol et."); await saveDeal(session, parsed.data); } setMode(null); setMessage(""); await refresh(); } catch (nextError) { setError(messageFrom(nextError)); } finally { setPending(false); } }
-  async function quickCompletePrivacy() { if (!session || !selectedContactRecord) return; const parsed = contactPrivacyDraftSchema.safeParse({ contactId: selectedContactRecord.id, coreCrmLegalBasis: selectedContactRecord.privacy.purposes?.core_crm?.legalBasis ?? "legitimate_interest", noticeStatus: "completed", noticeMethod: "verbal", noticeVersion: "v1", marketingConsent: "granted", marketingChannels: Array.from(new Set([...selectedContactRecord.privacy.marketingChannels, channel])), iysStatus: iysChoice, profilingObjection: selectedContactRecord.privacy.profilingObjection }); if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "İzin bilgilerini kontrol et."); setPending(true); setError(null); try { await saveContactPrivacy(session, parsed.data); await queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }); setNoticeConfirmed(false); setConsentConfirmed(false); } catch (nextError) { setError(messageFrom(nextError)); } finally { setPending(false); } }
-  async function advancePresentation(id: string, status: Parameters<typeof nextPresentationStatuses>[0]) { if (!session) return; const next = nextPresentationStatuses(status)[0]; if (!next) return; setPending(true); try { await movePresentation(session, { presentationId: id, toStatus: next }); await refresh(); } catch (nextError) { setError(messageFrom(nextError)); } finally { setPending(false); } }
-  function openDealMove(deal: DealRecord) { const next = nextDealStages(deal.stage)[0]; if (!next) return; setMovingDeal(deal); setDealStage(next); setOfferAmount(deal.offerAmount ? String(deal.offerAmount) : ""); setActualAmount(deal.actualAmount ? String(deal.actualAmount) : deal.offerAmount ? String(deal.offerAmount) : ""); setCommissionAmount(deal.commissionAmount !== null ? String(deal.commissionAmount) : ""); setCurrency(deal.currency ?? "TRY"); setLostReason(deal.lostReason ?? ""); setError(null); }
-  async function advanceDeal() { if (!session || !movingDeal) return; const parsed = dealTransitionSchema.safeParse({ dealId: movingDeal.id, toStage: dealStage, offerAmount: dealStage === "offer" ? parseMoneyInput(offerAmount) : null, actualAmount: dealStage === "closed" ? parseMoneyInput(actualAmount) : null, commissionAmount: dealStage === "closed" ? parseMoneyInput(commissionAmount) : null, currency: dealStage === "offer" || dealStage === "closed" ? currency : null, lostReason: dealStage === "lost" ? lostReason : null }); if (!parsed.success) { setError(parsed.error.issues[0]?.message ?? "İşlem aşamasını kontrol et."); return; } setPending(true); setError(null); try { await moveDeal(session, parsed.data); setMovingDeal(null); await refresh(); } catch (nextError) { setError(messageFrom(nextError)); } finally { setPending(false); } }
-  return <View style={styles.section}><View style={styles.heading}><SpText variant="eyebrow" color="deed">PAZARLAMA VE KAPAMA</SpText><SpText variant="title">Sunumlar ve işlemler</SpText></View><View style={styles.actions}><Pressable disabled={!available.length || !contacts.length} onPress={() => setMode("presentation")} style={[styles.action, { borderColor: theme.line }]}><MessageSquareText color={theme.textSecondary} size={17} /><SpText variant="bodySmall">Sunum</SpText></Pressable><Pressable disabled={!available.length} onPress={() => setMode("deal")} style={[styles.action, { borderColor: theme.line }]}><Handshake color={theme.textSecondary} size={17} /><SpText variant="bodySmall">İşlem</SpText></Pressable></View>{error && !mode && !movingDeal ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText color="ask">{error}</SpText></View> : null}{query.data?.presentations.map((item) => <SpCard key={item.id} style={styles.card}><SpText variant="title">{item.contactName}</SpText><SpText color="secondary">{item.listingAddress} · {presentationStatusLabels[item.status]}</SpText>{nextPresentationStatuses(item.status).length ? <Pressable disabled={pending} onPress={() => void advancePresentation(item.id, item.status)} style={[styles.action, { borderColor: theme.line }]}><SpText variant="bodySmall">{presentationStatusLabels[nextPresentationStatuses(item.status)[0]!]}</SpText></Pressable> : null}</SpCard>)}{query.data?.deals.map((item) => <SpCard key={item.id} style={styles.card}><SpText variant="title">{item.buyerContactName ?? "Alıcı daha sonra"}</SpText><SpText color="secondary">{item.listingAddress} · {dealStageLabels[item.stage]}</SpText>{item.offerAmount && item.currency ? <SpText variant="bodySmall" color="deed">Teklif: {new Intl.NumberFormat("tr-TR", { style: "currency", currency: item.currency, maximumFractionDigits: 0 }).format(item.offerAmount)}</SpText> : null}{item.actualAmount !== null && item.currency ? <SpText variant="bodySmall" color="deed">Gerçekleşen: {new Intl.NumberFormat("tr-TR", { style: "currency", currency: item.currency, maximumFractionDigits: 0 }).format(item.actualAmount)} · Komisyon: {new Intl.NumberFormat("tr-TR", { style: "currency", currency: item.currency, maximumFractionDigits: 0 }).format(item.commissionAmount ?? 0)}</SpText> : null}{nextDealStages(item.stage).length ? <Pressable onPress={() => openDealMove(item)} style={[styles.action, { borderColor: theme.line }]}><SpText variant="bodySmall">Aşamayı ilerlet</SpText></Pressable> : null}</SpCard>)}
-  <Modal animationType="slide" presentationStyle="pageSheet" visible={Boolean(mode)} onRequestClose={() => setMode(null)}><SafeAreaView style={[styles.safe, { backgroundColor: theme.card }]}><ScrollView contentContainerStyle={styles.form}><View style={styles.sheetHeader}><View><SpText variant="eyebrow" color="deed">KAPAMA AKIŞI</SpText><SpText variant="hero">{mode === "presentation" ? "Sunum taslağı" : "İşlem başlat"}</SpText></View><Pressable onPress={() => setMode(null)} style={[styles.icon, { borderColor: theme.line }]}><X color={theme.textSecondary} size={20} /></Pressable></View><SpText variant="title">Portföy</SpText><View style={styles.choices}>{available.map((item) => <Pressable key={item.id} onPress={() => setListingId(item.id)} style={choice(selectedListing === item.id)}><SpText variant="bodySmall" color={selectedListing === item.id ? "deed" : "secondary"}>{item.propertySummary.address}</SpText></Pressable>)}</View><SpText variant="title">İlgili kişi</SpText><ContactPicker contacts={contacts} value={contactId} onChange={(value) => { setContactId(value); setNoticeConfirmed(false); setConsentConfirmed(false); }} placeholder={mode === "presentation" ? "Kişi ara ve seç" : "Alıcıyı şimdi veya sonra seç"} />{mode === "presentation" ? <><SpText variant="title">Kanal</SpText><View style={styles.choices}>{marketingChannels.map((item) => <Pressable key={item} onPress={() => { setChannel(item); setConsentConfirmed(false); }} style={choice(channel === item)}><SpText variant="bodySmall" color={channel === item ? "deed" : "secondary"}>{marketingChannelLabels[item]}</SpText></Pressable>)}</View><SpText variant="title">Mesaj</SpText><TextInput multiline style={[inputStyle, styles.multiline]} value={message} onChangeText={setMessage} />{marketingEligibility.allowed ? <View style={[styles.hint, { backgroundColor: theme.deedBg }]}><SpText color="deed" variant="bodySmall">Gönderim dış uygulamadan sonra ayrıca onaylanır.</SpText></View> : selectedContactRecord ? <View style={[styles.compliance, { backgroundColor: theme.askBg }]}><SpText color="ask" variant="bodySmall">{marketingEligibility.reason}</SpText><Pressable onPress={() => setNoticeConfirmed((current) => !current)} style={styles.complianceRow}><SpText color={noticeConfirmed ? "deed" : "secondary"}>{noticeConfirmed ? "✓" : "○"} Aydınlatmayı sözlü tamamladım</SpText></Pressable><Pressable onPress={() => setConsentConfirmed((current) => !current)} style={styles.complianceRow}><SpText color={consentConfirmed ? "deed" : "secondary"}>{consentConfirmed ? "✓" : "○"} {marketingChannelLabels[channel]} pazarlama izni verildi</SpText></Pressable><View style={styles.choices}>{(["approved", "exempt"] as const).map((item) => <Pressable key={item} onPress={() => setIysChoice(item)} style={choice(iysChoice === item)}><SpText variant="bodySmall" color={iysChoice === item ? "deed" : "secondary"}>{item === "approved" ? "İYS onaylı" : "İYS muaf"}</SpText></Pressable>)}</View><Pressable disabled={pending || !noticeConfirmed || !consentConfirmed} onPress={() => void quickCompletePrivacy()} style={[styles.secondary, { borderColor: theme.line, opacity: pending || !noticeConfirmed || !consentConfirmed ? .5 : 1 }]}><SpText variant="bodySmall">İzni kaydet ve devam et</SpText></Pressable></View> : null}</> : null}{error ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText color="ask">{error}</SpText></View> : null}<Pressable disabled={pending || (mode === "presentation" && !marketingEligibility.allowed)} onPress={() => void create()} style={[styles.primary, { backgroundColor: theme.ask, opacity: pending || (mode === "presentation" && !marketingEligibility.allowed) ? .5 : 1 }]}><SpText style={{ color: theme.onAsk }}>{pending ? "Kaydediliyor…" : "Kaydet"}</SpText></Pressable></ScrollView></SafeAreaView></Modal>
-  <Modal animationType="slide" presentationStyle="pageSheet" visible={Boolean(movingDeal)} onRequestClose={() => setMovingDeal(null)}><SafeAreaView style={[styles.safe, { backgroundColor: theme.card }]}><ScrollView contentContainerStyle={styles.form}><View style={styles.sheetHeader}><View><SpText variant="eyebrow" color="deed">İŞLEM AŞAMASI</SpText><SpText variant="hero">{movingDeal?.listingAddress}</SpText></View><Pressable accessibilityLabel="Kapat" onPress={() => setMovingDeal(null)} style={[styles.icon, { borderColor: theme.line }]}><X color={theme.textSecondary} size={20} /></Pressable></View><SpText variant="title">Yeni aşama</SpText><View accessibilityLabel="Yeni aşama" accessibilityRole="radiogroup" style={styles.choices}>{movingDeal ? nextDealStages(movingDeal.stage).map((stage) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: dealStage === stage }} key={stage} onPress={() => { setDealStage(stage); setError(null); }} style={choice(dealStage === stage)}><SpText variant="bodySmall" color={dealStage === stage ? "deed" : "secondary"}>{dealStageLabels[stage]}</SpText></Pressable>) : null}</View>{dealStage === "offer" ? <><SpText variant="title">Teklif tutarı</SpText><MoneyInput accessibilityLabel="Teklif tutarı" currency={currency} style={inputStyle} value={offerAmount} onChangeText={setOfferAmount} /><SpText variant="title">Para birimi</SpText><View accessibilityLabel="Para birimi" accessibilityRole="radiogroup" style={styles.choices}>{currencyCodes.map((item) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: currency === item }} key={item} onPress={() => setCurrency(item)} style={choice(currency === item)}><SpText variant="bodySmall" color={currency === item ? "deed" : "secondary"}>{item}</SpText></Pressable>)}</View></> : null}{dealStage === "closed" ? <><SpText variant="title">Gerçekleşen bedel</SpText><MoneyInput accessibilityLabel="Gerçekleşen bedel" currency={currency} style={inputStyle} value={actualAmount} onChangeText={setActualAmount} /><SpText variant="title">Komisyon</SpText><MoneyInput accessibilityLabel="Komisyon" currency={currency} style={inputStyle} value={commissionAmount} onChangeText={setCommissionAmount} /><SpText variant="title">Para birimi</SpText><View accessibilityLabel="Para birimi" accessibilityRole="radiogroup" style={styles.choices}>{currencyCodes.map((item) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: currency === item }} key={item} onPress={() => setCurrency(item)} style={choice(currency === item)}><SpText variant="bodySmall" color={currency === item ? "deed" : "secondary"}>{item}</SpText></Pressable>)}</View></> : null}{dealStage === "lost" ? <><SpText variant="title">Kayıp nedeni</SpText><TextInput accessibilityLabel="Kayıp nedeni" multiline style={[inputStyle, styles.multiline]} value={lostReason} onChangeText={setLostReason} /></> : null}{error ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText color="ask">{error}</SpText></View> : null}<Pressable disabled={pending} onPress={() => void advanceDeal()} style={[styles.primary, { backgroundColor: theme.ask }]}><SpText style={{ color: theme.onAsk }}>{pending ? "Kaydediliyor…" : "Aşamayı kaydet"}</SpText></Pressable></ScrollView></SafeAreaView></Modal></View>;
+  const theme = useSpTheme();
+  const { session } = useSession();
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: apiQueryKeys.closing,
+    queryFn: getClosingOverview,
+  });
+  const contactsQuery = useQuery({
+    queryKey: apiQueryKeys.contacts,
+    queryFn: listContacts,
+  });
+  const contacts = contactsQuery.data ?? [];
+  const available = listings.filter(
+    (item) => item.status === "active" || item.status === "reserved",
+  );
+  const firstUnpricedListing = listings.find(
+    (item) => item.status === "preparing" && item.askingPrice === null,
+  );
+  const [mode, setMode] = useState<"presentation" | "deal" | null>(null);
+  const [listingId, setListingId] = useState("");
+  const [contactId, setContactId] = useState("");
+  const [channel, setChannel] = useState<MarketingChannel>("whatsapp");
+  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const selectedListing = listingId || available[0]?.id || "";
+  const selectedContact = contactId;
+  const [noticeConfirmed, setNoticeConfirmed] = useState(false);
+  const [consentConfirmed, setConsentConfirmed] = useState(false);
+  const [iysChoice, setIysChoice] = useState<"approved" | "exempt">("approved");
+  const [movingDeal, setMovingDeal] = useState<DealRecord | null>(null);
+  const [dealStage, setDealStage] = useState<DealStage>("viewing");
+  const [offerAmount, setOfferAmount] = useState("");
+  const [actualAmount, setActualAmount] = useState("");
+  const [commissionAmount, setCommissionAmount] = useState("");
+  const [currency, setCurrency] = useState<CurrencyCode>("TRY");
+  const [lostReason, setLostReason] = useState("");
+  const choice = (selected: boolean) => [
+    styles.choice,
+    {
+      backgroundColor: selected ? theme.deedBg : theme.background,
+      borderColor: selected ? theme.deed : theme.line,
+    },
+  ];
+  const inputStyle = [
+    styles.input,
+    {
+      color: theme.textPrimary,
+      backgroundColor: theme.background,
+      borderColor: theme.line,
+    },
+  ];
+  const selectedContactRecord = contacts.find(
+    (item) => item.id === selectedContact,
+  );
+  const marketingEligibility = selectedContactRecord
+    ? canMarketOnChannel(selectedContactRecord.privacy, channel)
+    : { allowed: false, reason: "İlgili kişi seçilmedi." };
+  async function refresh() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: apiQueryKeys.closing }),
+      queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
+    ]);
+  }
+  async function create() {
+    if (!session || !mode) return;
+    setPending(true);
+    setError(null);
+    try {
+      if (mode === "presentation") {
+        const parsed = presentationDraftSchema.safeParse({
+          listingId: selectedListing,
+          contactId: selectedContact,
+          channel,
+          message,
+        });
+        if (!parsed.success)
+          throw new Error(
+            parsed.error.issues[0]?.message ?? "Sunum bilgilerini kontrol et.",
+          );
+        await savePresentation(session, parsed.data);
+      } else {
+        const parsed = dealDraftSchema.safeParse({
+          listingId: selectedListing,
+          buyerContactId: selectedContact || null,
+        });
+        if (!parsed.success) throw new Error("İşlem bilgilerini kontrol et.");
+        await saveDeal(session, parsed.data);
+      }
+      setMode(null);
+      setMessage("");
+      await refresh();
+    } catch (nextError) {
+      setError(messageFrom(nextError));
+    } finally {
+      setPending(false);
+    }
+  }
+  async function quickCompletePrivacy() {
+    if (!session || !selectedContactRecord) return;
+    const parsed = contactPrivacyDraftSchema.safeParse({
+      contactId: selectedContactRecord.id,
+      coreCrmLegalBasis:
+        selectedContactRecord.privacy.purposes?.core_crm?.legalBasis ??
+        "legitimate_interest",
+      noticeStatus: "completed",
+      noticeMethod: "verbal",
+      noticeVersion: "v1",
+      marketingConsent: "granted",
+      marketingChannels: Array.from(
+        new Set([...selectedContactRecord.privacy.marketingChannels, channel]),
+      ),
+      iysStatus: iysChoice,
+      profilingObjection: selectedContactRecord.privacy.profilingObjection,
+    });
+    if (!parsed.success)
+      return setError(
+        parsed.error.issues[0]?.message ?? "İzin bilgilerini kontrol et.",
+      );
+    setPending(true);
+    setError(null);
+    try {
+      await saveContactPrivacy(session, parsed.data);
+      await queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts });
+      setNoticeConfirmed(false);
+      setConsentConfirmed(false);
+    } catch (nextError) {
+      setError(messageFrom(nextError));
+    } finally {
+      setPending(false);
+    }
+  }
+  async function advancePresentation(
+    id: string,
+    status: Parameters<typeof nextPresentationStatuses>[0],
+  ) {
+    if (!session) return;
+    const next = nextPresentationStatuses(status)[0];
+    if (!next) return;
+    setPending(true);
+    try {
+      await movePresentation(session, { presentationId: id, toStatus: next });
+      await refresh();
+    } catch (nextError) {
+      setError(messageFrom(nextError));
+    } finally {
+      setPending(false);
+    }
+  }
+  function openDealMove(deal: DealRecord) {
+    const next = nextDealStages(deal.stage)[0];
+    if (!next) return;
+    setMovingDeal(deal);
+    setDealStage(next);
+    setOfferAmount(deal.offerAmount ? String(deal.offerAmount) : "");
+    setActualAmount(
+      deal.actualAmount
+        ? String(deal.actualAmount)
+        : deal.offerAmount
+          ? String(deal.offerAmount)
+          : "",
+    );
+    setCommissionAmount(
+      deal.commissionAmount !== null ? String(deal.commissionAmount) : "",
+    );
+    setCurrency(deal.currency ?? "TRY");
+    setLostReason(deal.lostReason ?? "");
+    setError(null);
+  }
+  async function advanceDeal() {
+    if (!session || !movingDeal) return;
+    const parsed = dealTransitionSchema.safeParse({
+      dealId: movingDeal.id,
+      toStage: dealStage,
+      offerAmount: dealStage === "offer" ? parseMoneyInput(offerAmount) : null,
+      actualAmount:
+        dealStage === "closed" ? parseMoneyInput(actualAmount) : null,
+      commissionAmount:
+        dealStage === "closed" ? parseMoneyInput(commissionAmount) : null,
+      currency:
+        dealStage === "offer" || dealStage === "closed" ? currency : null,
+      lostReason: dealStage === "lost" ? lostReason : null,
+    });
+    if (!parsed.success) {
+      setError(
+        parsed.error.issues[0]?.message ?? "İşlem aşamasını kontrol et.",
+      );
+      return;
+    }
+    setPending(true);
+    setError(null);
+    try {
+      await moveDeal(session, parsed.data);
+      setMovingDeal(null);
+      await refresh();
+    } catch (nextError) {
+      setError(messageFrom(nextError));
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <View style={styles.section}>
+      <View style={styles.heading}>
+        <SpText variant="eyebrow" color="deed">
+          PAZARLAMA VE KAPAMA
+        </SpText>
+        <SpText variant="title">Sunumlar ve işlemler</SpText>
+      </View>
+      {firstUnpricedListing ? <ListingPriceCompletionCard listing={firstUnpricedListing} /> : null}
+      <View style={styles.actions}>
+        <Pressable
+          disabled={!available.length || !contacts.length}
+          onPress={() => setMode("presentation")}
+          style={[styles.action, { borderColor: theme.line }]}
+        >
+          <MessageSquareText color={theme.textSecondary} size={17} />
+          <SpText variant="bodySmall">Sunum</SpText>
+        </Pressable>
+        <Pressable
+          disabled={!available.length}
+          onPress={() => setMode("deal")}
+          style={[styles.action, { borderColor: theme.line }]}
+        >
+          <Handshake color={theme.textSecondary} size={17} />
+          <SpText variant="bodySmall">İşlem</SpText>
+        </Pressable>
+      </View>
+      {error && !mode && !movingDeal ? (
+        <View style={[styles.error, { backgroundColor: theme.askBg }]}>
+          <SpText color="ask">{error}</SpText>
+        </View>
+      ) : null}
+      {query.data?.presentations.map((item) => (
+        <SpCard key={item.id} style={styles.card}>
+          <SpText variant="title">{item.contactName}</SpText>
+          <SpText color="secondary">
+            {item.listingAddress} · {presentationStatusLabels[item.status]}
+          </SpText>
+          {nextPresentationStatuses(item.status).length ? (
+            <Pressable
+              disabled={pending}
+              onPress={() => void advancePresentation(item.id, item.status)}
+              style={[styles.action, { borderColor: theme.line }]}
+            >
+              <SpText variant="bodySmall">
+                {
+                  presentationStatusLabels[
+                    nextPresentationStatuses(item.status)[0]!
+                  ]
+                }
+              </SpText>
+            </Pressable>
+          ) : null}
+        </SpCard>
+      ))}
+      {query.data?.deals.map((item) => (
+        <SpCard key={item.id} style={styles.card}>
+          <SpText variant="title">
+            {item.buyerContactName ?? "Alıcı daha sonra"}
+          </SpText>
+          <SpText color="secondary">
+            {item.listingAddress} · {dealStageLabels[item.stage]}
+          </SpText>
+          {item.offerAmount && item.currency ? (
+            <SpText variant="bodySmall" color="deed">
+              Teklif:{" "}
+              {new Intl.NumberFormat("tr-TR", {
+                style: "currency",
+                currency: item.currency,
+                maximumFractionDigits: 0,
+              }).format(item.offerAmount)}
+            </SpText>
+          ) : null}
+          {item.actualAmount !== null && item.currency ? (
+            <SpText variant="bodySmall" color="deed">
+              Gerçekleşen:{" "}
+              {new Intl.NumberFormat("tr-TR", {
+                style: "currency",
+                currency: item.currency,
+                maximumFractionDigits: 0,
+              }).format(item.actualAmount)}{" "}
+              · Komisyon:{" "}
+              {new Intl.NumberFormat("tr-TR", {
+                style: "currency",
+                currency: item.currency,
+                maximumFractionDigits: 0,
+              }).format(item.commissionAmount ?? 0)}
+            </SpText>
+          ) : null}
+          {nextDealStages(item.stage).length ? (
+            <Pressable
+              onPress={() => openDealMove(item)}
+              style={[styles.action, { borderColor: theme.line }]}
+            >
+              <SpText variant="bodySmall">Aşamayı ilerlet</SpText>
+            </Pressable>
+          ) : null}
+        </SpCard>
+      ))}
+      <Modal
+        animationType="slide"
+        presentationStyle="pageSheet"
+        visible={Boolean(mode)}
+        onRequestClose={() => setMode(null)}
+      >
+        <SafeAreaView style={[styles.safe, { backgroundColor: theme.card }]}>
+          <ScrollView contentContainerStyle={styles.form}>
+            <View style={styles.sheetHeader}>
+              <View>
+                <SpText variant="eyebrow" color="deed">
+                  KAPAMA AKIŞI
+                </SpText>
+                <SpText variant="hero">
+                  {mode === "presentation" ? "Sunum taslağı" : "İşlem başlat"}
+                </SpText>
+              </View>
+              <Pressable
+                onPress={() => setMode(null)}
+                style={[styles.icon, { borderColor: theme.line }]}
+              >
+                <X color={theme.textSecondary} size={20} />
+              </Pressable>
+            </View>
+            <SpText variant="title">Portföy</SpText>
+            <View style={styles.choices}>
+              {available.map((item) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() => setListingId(item.id)}
+                  style={choice(selectedListing === item.id)}
+                >
+                  <SpText
+                    variant="bodySmall"
+                    color={selectedListing === item.id ? "deed" : "secondary"}
+                  >
+                    {item.propertySummary.address}
+                  </SpText>
+                </Pressable>
+              ))}
+            </View>
+            <SpText variant="title">İlgili kişi</SpText>
+            <ContactPicker
+              contacts={contacts}
+              value={contactId}
+              onChange={(value) => {
+                setContactId(value);
+                setNoticeConfirmed(false);
+                setConsentConfirmed(false);
+              }}
+              placeholder={
+                mode === "presentation"
+                  ? "Kişi ara ve seç"
+                  : "Alıcıyı şimdi veya sonra seç"
+              }
+            />
+            {mode === "presentation" ? (
+              <>
+                <SpText variant="title">Kanal</SpText>
+                <View style={styles.choices}>
+                  {marketingChannels.map((item) => (
+                    <Pressable
+                      key={item}
+                      onPress={() => {
+                        setChannel(item);
+                        setConsentConfirmed(false);
+                      }}
+                      style={choice(channel === item)}
+                    >
+                      <SpText
+                        variant="bodySmall"
+                        color={channel === item ? "deed" : "secondary"}
+                      >
+                        {marketingChannelLabels[item]}
+                      </SpText>
+                    </Pressable>
+                  ))}
+                </View>
+                <SpText variant="title">Mesaj</SpText>
+                <TextInput
+                  multiline
+                  style={[inputStyle, styles.multiline]}
+                  value={message}
+                  onChangeText={setMessage}
+                />
+                {marketingEligibility.allowed ? (
+                  <View
+                    style={[styles.hint, { backgroundColor: theme.deedBg }]}
+                  >
+                    <SpText color="deed" variant="bodySmall">
+                      Gönderim dış uygulamadan sonra ayrıca onaylanır.
+                    </SpText>
+                  </View>
+                ) : selectedContactRecord ? (
+                  <View
+                    style={[
+                      styles.compliance,
+                      { backgroundColor: theme.askBg },
+                    ]}
+                  >
+                    <SpText color="ask" variant="bodySmall">
+                      {marketingEligibility.reason}
+                    </SpText>
+                    <Pressable
+                      onPress={() => setNoticeConfirmed((current) => !current)}
+                      style={styles.complianceRow}
+                    >
+                      <SpText color={noticeConfirmed ? "deed" : "secondary"}>
+                        {noticeConfirmed ? "✓" : "○"} Aydınlatmayı sözlü
+                        tamamladım
+                      </SpText>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setConsentConfirmed((current) => !current)}
+                      style={styles.complianceRow}
+                    >
+                      <SpText color={consentConfirmed ? "deed" : "secondary"}>
+                        {consentConfirmed ? "✓" : "○"}{" "}
+                        {marketingChannelLabels[channel]} pazarlama izni verildi
+                      </SpText>
+                    </Pressable>
+                    <View style={styles.choices}>
+                      {(["approved", "exempt"] as const).map((item) => (
+                        <Pressable
+                          key={item}
+                          onPress={() => setIysChoice(item)}
+                          style={choice(iysChoice === item)}
+                        >
+                          <SpText
+                            variant="bodySmall"
+                            color={iysChoice === item ? "deed" : "secondary"}
+                          >
+                            {item === "approved" ? "İYS onaylı" : "İYS muaf"}
+                          </SpText>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <Pressable
+                      disabled={
+                        pending || !noticeConfirmed || !consentConfirmed
+                      }
+                      onPress={() => void quickCompletePrivacy()}
+                      style={[
+                        styles.secondary,
+                        {
+                          borderColor: theme.line,
+                          opacity:
+                            pending || !noticeConfirmed || !consentConfirmed
+                              ? 0.5
+                              : 1,
+                        },
+                      ]}
+                    >
+                      <SpText variant="bodySmall">
+                        İzni kaydet ve devam et
+                      </SpText>
+                    </Pressable>
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+            {error ? (
+              <View style={[styles.error, { backgroundColor: theme.askBg }]}>
+                <SpText color="ask">{error}</SpText>
+              </View>
+            ) : null}
+            <Pressable
+              disabled={
+                pending ||
+                (mode === "presentation" && !marketingEligibility.allowed)
+              }
+              onPress={() => void create()}
+              style={[
+                styles.primary,
+                {
+                  backgroundColor: theme.ask,
+                  opacity:
+                    pending ||
+                    (mode === "presentation" && !marketingEligibility.allowed)
+                      ? 0.5
+                      : 1,
+                },
+              ]}
+            >
+              <SpText style={{ color: theme.onAsk }}>
+                {pending ? "Kaydediliyor…" : "Kaydet"}
+              </SpText>
+            </Pressable>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+      <Modal
+        animationType="slide"
+        presentationStyle="pageSheet"
+        visible={Boolean(movingDeal)}
+        onRequestClose={() => setMovingDeal(null)}
+      >
+        <SafeAreaView style={[styles.safe, { backgroundColor: theme.card }]}>
+          <ScrollView contentContainerStyle={styles.form}>
+            <View style={styles.sheetHeader}>
+              <View>
+                <SpText variant="eyebrow" color="deed">
+                  İŞLEM AŞAMASI
+                </SpText>
+                <SpText variant="hero">{movingDeal?.listingAddress}</SpText>
+              </View>
+              <Pressable
+                accessibilityLabel="Kapat"
+                onPress={() => setMovingDeal(null)}
+                style={[styles.icon, { borderColor: theme.line }]}
+              >
+                <X color={theme.textSecondary} size={20} />
+              </Pressable>
+            </View>
+            <SpText variant="title">Yeni aşama</SpText>
+            <View
+              accessibilityLabel="Yeni aşama"
+              accessibilityRole="radiogroup"
+              style={styles.choices}
+            >
+              {movingDeal
+                ? nextDealStages(movingDeal.stage).map((stage) => (
+                    <Pressable
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: dealStage === stage }}
+                      key={stage}
+                      onPress={() => {
+                        setDealStage(stage);
+                        setError(null);
+                      }}
+                      style={choice(dealStage === stage)}
+                    >
+                      <SpText
+                        variant="bodySmall"
+                        color={dealStage === stage ? "deed" : "secondary"}
+                      >
+                        {dealStageLabels[stage]}
+                      </SpText>
+                    </Pressable>
+                  ))
+                : null}
+            </View>
+            {dealStage === "offer" ? (
+              <>
+                <SpText variant="title">Teklif tutarı</SpText>
+                <MoneyInput
+                  accessibilityLabel="Teklif tutarı"
+                  currency={currency}
+                  style={inputStyle}
+                  value={offerAmount}
+                  onChangeText={setOfferAmount}
+                />
+                <SpText variant="title">Para birimi</SpText>
+                <View
+                  accessibilityLabel="Para birimi"
+                  accessibilityRole="radiogroup"
+                  style={styles.choices}
+                >
+                  {currencyCodes.map((item) => (
+                    <Pressable
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: currency === item }}
+                      key={item}
+                      onPress={() => setCurrency(item)}
+                      style={choice(currency === item)}
+                    >
+                      <SpText
+                        variant="bodySmall"
+                        color={currency === item ? "deed" : "secondary"}
+                      >
+                        {item}
+                      </SpText>
+                    </Pressable>
+                  ))}
+                </View>
+              </>
+            ) : null}
+            {dealStage === "closed" ? (
+              <>
+                <SpText variant="title">Gerçekleşen bedel</SpText>
+                <MoneyInput
+                  accessibilityLabel="Gerçekleşen bedel"
+                  currency={currency}
+                  style={inputStyle}
+                  value={actualAmount}
+                  onChangeText={setActualAmount}
+                />
+                <SpText variant="title">Komisyon</SpText>
+                <MoneyInput
+                  accessibilityLabel="Komisyon"
+                  currency={currency}
+                  style={inputStyle}
+                  value={commissionAmount}
+                  onChangeText={setCommissionAmount}
+                />
+                <SpText variant="title">Para birimi</SpText>
+                <View
+                  accessibilityLabel="Para birimi"
+                  accessibilityRole="radiogroup"
+                  style={styles.choices}
+                >
+                  {currencyCodes.map((item) => (
+                    <Pressable
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: currency === item }}
+                      key={item}
+                      onPress={() => setCurrency(item)}
+                      style={choice(currency === item)}
+                    >
+                      <SpText
+                        variant="bodySmall"
+                        color={currency === item ? "deed" : "secondary"}
+                      >
+                        {item}
+                      </SpText>
+                    </Pressable>
+                  ))}
+                </View>
+              </>
+            ) : null}
+            {dealStage === "lost" ? (
+              <>
+                <SpText variant="title">Kayıp nedeni</SpText>
+                <TextInput
+                  accessibilityLabel="Kayıp nedeni"
+                  multiline
+                  style={[inputStyle, styles.multiline]}
+                  value={lostReason}
+                  onChangeText={setLostReason}
+                />
+              </>
+            ) : null}
+            {error ? (
+              <View style={[styles.error, { backgroundColor: theme.askBg }]}>
+                <SpText color="ask">{error}</SpText>
+              </View>
+            ) : null}
+            <Pressable
+              disabled={pending}
+              onPress={() => void advanceDeal()}
+              style={[styles.primary, { backgroundColor: theme.ask }]}
+            >
+              <SpText style={{ color: theme.onAsk }}>
+                {pending ? "Kaydediliyor…" : "Aşamayı kaydet"}
+              </SpText>
+            </Pressable>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    </View>
+  );
 }
-const styles = StyleSheet.create({ safe: { flex: 1 }, section: { gap: space.md, paddingTop: space.xl, borderTopWidth: StyleSheet.hairlineWidth }, heading: { gap: space.xs }, actions: { flexDirection: "row", gap: space.sm }, action: { minHeight: 42, flex: 1, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: space.sm, paddingHorizontal: space.sm }, card: { gap: space.sm }, error: { padding: space.md, borderRadius: radius.md }, form: { padding: space.xl, paddingBottom: space["5xl"], gap: space.md }, sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }, icon: { width: 44, height: 44, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" }, choices: { flexDirection: "row", flexWrap: "wrap", gap: space.sm }, choice: { ...choiceMetrics }, input: { ...controlMetrics }, multiline: { minHeight: 100, textAlignVertical: "top" }, hint: { padding: space.md, borderRadius: radius.md }, compliance: { gap: space.md, padding: space.md, borderRadius: radius.md }, complianceRow: { minHeight: 40, justifyContent: "center" }, primary: { ...largeButtonMetrics }, secondary: { ...buttonMetrics } });
+const styles = StyleSheet.create({
+  safe: { flex: 1 },
+  section: {
+    gap: space.md,
+    paddingTop: space.xl,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  heading: { gap: space.xs },
+  actions: { flexDirection: "row", gap: space.sm },
+  action: {
+    minHeight: 42,
+    flex: 1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.md,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: space.sm,
+    paddingHorizontal: space.sm,
+  },
+  card: { gap: space.sm },
+  error: { padding: space.md, borderRadius: radius.md },
+  form: { padding: space.xl, paddingBottom: space["5xl"], gap: space.md },
+  sheetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+  icon: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  choices: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
+  choice: { ...choiceMetrics },
+  input: { ...controlMetrics },
+  multiline: { minHeight: 100, textAlignVertical: "top" },
+  hint: { padding: space.md, borderRadius: radius.md },
+  compliance: { gap: space.md, padding: space.md, borderRadius: radius.md },
+  complianceRow: { minHeight: 40, justifyContent: "center" },
+  primary: { ...largeButtonMetrics },
+  secondary: { ...buttonMetrics },
+});

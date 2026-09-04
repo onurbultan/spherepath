@@ -96,7 +96,7 @@ describe("callable API vertical slice", () => {
       reason: "Initial call completed",
       lostReason: null,
       nextActionType: "appointment",
-      nextActionAt: Date.now() + 172_800_000,
+      nextActionAt: Date.now() + 3_600_000,
     }, "request-advance-opportunity", "command-advance-opportunity"));
 
     const listOpportunities = httpsCallable(functions, "listOpportunities");
@@ -163,7 +163,7 @@ describe("callable API vertical slice", () => {
       areaM2: 120,
       features: ["parking"],
       authorizationType: "exclusive",
-      askingPrice: 10_000_000,
+      askingPrice: null,
       currency: "TRY",
       expiresAt: null,
     }, "request-listing-1", "command-create-listing");
@@ -173,10 +173,13 @@ describe("callable API vertical slice", () => {
     expect(listingReplay.listing.id).toBe(listing.listing.id);
 
     const advanceListing = httpsCallable(functions, "advanceListing");
+    await expect(advanceListing(envelope({ listingId: listing.listing.id, toStatus: "active", reason: "Missing valuation" }, "request-listing-advance-missing-price", "command-listing-advance-missing-price"))).rejects.toThrow();
+    const updateListingPrice = httpsCallable(functions, "updateListingPrice");
+    await updateListingPrice(envelope({ listingId: listing.listing.id, askingPrice: 11_000_000, currency: "TRY" }, "request-listing-price", "command-listing-price"));
     await advanceListing(envelope({ listingId: listing.listing.id, toStatus: "active", reason: "Ready to market" }, "request-listing-advance", "command-listing-advance"));
     const listListings = httpsCallable(functions, "listListings");
-    const listedListings = (await listListings(envelope(undefined, "request-list-listings"))).data as { listings: Array<{ id: string; status: string }> };
-    expect(listedListings.listings).toEqual([expect.objectContaining({ id: listing.listing.id, status: "active" })]);
+    const listedListings = (await listListings(envelope(undefined, "request-list-listings"))).data as { listings: Array<{ id: string; status: string; askingPrice: number }> };
+    expect(listedListings.listings).toEqual([expect.objectContaining({ id: listing.listing.id, status: "active", askingPrice: 11_000_000 })]);
 
     const updateContactPrivacy = httpsCallable(functions, "updateContactPrivacy");
     await updateContactPrivacy(envelope({ contactId: created.contact.id, coreCrmLegalBasis: "legitimate_interest", noticeStatus: "completed", noticeMethod: "verbal", noticeVersion: "v1", marketingConsent: "granted", marketingChannels: ["whatsapp"], iysStatus: "approved", profilingObjection: false }, "request-privacy", "command-privacy"));
@@ -494,14 +497,14 @@ describe("callable API vertical slice", () => {
     }, "request-data-access", "command-data-access"))).data as { request: { id: string; status: string } };
     expect(accessRequest.request.status).toBe("pending_verification");
     const getContactDataExport = httpsCallable(functions, "getContactDataExport");
-    const contactExport = (await getContactDataExport(envelope({ contactId: created.contact.id }, "request-contact-export"))).data as { export: { contact: { id: string; memory: { propertyPreferences: { preferredLocations: string[]; budgetRange: { max: number } | null } } }; interactions: unknown[]; opportunities: unknown[] } };
+    await expect(getContactDataExport(envelope({ requestId: accessRequest.request.id }, "request-contact-export-before-approval"))).rejects.toThrow();
+    const resolveDataSubjectRequest = httpsCallable(functions, "resolveDataSubjectRequest");
+    await resolveDataSubjectRequest(envelope({ requestId: accessRequest.request.id, decision: "approved", resolutionNote: "Identity verified.", correctedContact: null }, "request-data-access-resolve", "command-data-access-resolve"));
+    const contactExport = (await getContactDataExport(envelope({ requestId: accessRequest.request.id }, "request-contact-export"))).data as { export: { contact: { id: string; memory: { propertyPreferences: { preferredLocations: string[]; budgetRange: { max: number } | null } } }; interactions: unknown[]; opportunities: unknown[] } };
     expect(contactExport.export.contact.id).toBe(created.contact.id);
     expect(contactExport.export.interactions.length).toBeGreaterThan(0);
     expect(contactExport.export.opportunities.length).toBeGreaterThan(0);
     expect(contactExport.export.contact.memory.propertyPreferences).toMatchObject({ preferredLocations: ["Urla"], budgetRange: { max: 60_000 } });
-    const resolveDataSubjectRequest = httpsCallable(functions, "resolveDataSubjectRequest");
-    await resolveDataSubjectRequest(envelope({ requestId: accessRequest.request.id, decision: "approved", resolutionNote: "Identity verified.", correctedContact: null }, "request-data-access-resolve", "command-data-access-resolve"));
-
     const deletionContact = (await createContact(envelope({
       fullName: "Deletion Integration Contact",
       phone: "+90 555 111 22 33",

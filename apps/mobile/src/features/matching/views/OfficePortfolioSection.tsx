@@ -6,6 +6,7 @@ import { Network, Plus, Send, Sparkles, X } from "lucide-react-native";
 import {
   apiQueryKeys,
   buildMatchMessageFallback,
+  formatMatchScore,
   currencyCodes,
   moneyInputValue,
   parseMoneyInput,
@@ -108,7 +109,7 @@ function MatchCard({ match, nearMiss }: { match: PortfolioMatchRecord; nearMiss?
           <SpText variant="bodySmall" color="secondary">{item.headline}</SpText>
         </View>
         <View style={[styles.score, { backgroundColor: nearMiss ? theme.sunk : theme.deedBg }]}>
-          <SpText variant="bodySmall" color={nearMiss ? "secondary" : "deed"}>%{Math.round(match.score * 100)}</SpText>
+          <SpText variant="bodySmall" color={nearMiss ? "secondary" : "deed"}>{formatMatchScore(match.score)}</SpText>
         </View>
       </View>
       <SpText variant="bodySmall" color="secondary">
@@ -128,7 +129,7 @@ function MatchCard({ match, nearMiss }: { match: PortfolioMatchRecord; nearMiss?
         <SpButton
           disabled={sending}
           icon={<Send color={theme.onDeed} size={16} />}
-          label={sending ? "Hazırlanıyor…" : "Mesajı gönder"}
+          label={sending ? "Hazırlanıyor…" : "Mesaj taslağı hazırla"}
           onPress={() => void shareMessage()}
         />
       ) : (
@@ -138,7 +139,7 @@ function MatchCard({ match, nearMiss }: { match: PortfolioMatchRecord; nearMiss?
           </SpField>
           <SpButton
             icon={<Send color={theme.onDeed} size={16} />}
-            label="Paylaş"
+            label="Paylaşım sayfasını aç"
             onPress={() => void Share.share({ message: draftText })}
           />
           <SpButton label="Kapat" onPress={() => setDraftText(null)} tone="secondary" />

@@ -7,7 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   moneyInputValue,
   parseMoneyInput,
-  apiQueryKeys, buildMatchMessageFallback, currencyCodes, portfolioAuthorizationLabels, portfolioAuthorizationTypes, portfolioItemDraftSchema,
+  apiQueryKeys, buildMatchMessageFallback, currencyCodes, formatMatchScore, portfolioAuthorizationLabels, portfolioAuthorizationTypes, portfolioItemDraftSchema,
   portfolioSourceLabels, propertyTypeLabels, propertyTypes, titleDeedTypeLabels, titleDeedTypes,
   type CurrencyCode, type PortfolioAuthorizationType, type PortfolioItemDraft, type PortfolioSource,
   type MatchMessageDraft, type PortfolioMatchRecord, type PropertyType, type TitleDeedType,
@@ -98,7 +98,7 @@ function PortfolioMatchCard({ match, nearMiss = false }: { match: PortfolioMatch
     : match.reasons.filter((reason) => reason.status !== "mismatch").slice(0, 3);
 
   return <SpCard className={nearMiss ? "match-card is-near-miss" : "match-card"}>
-    <div className="match-score"><strong>%{match.score}</strong><span>uyum</span><div className="match-progress" aria-label={`Eşleşme puanı yüzde ${match.score}`}><i style={{ width: `${match.score}%` }} /></div><em>%{match.coverage} veri</em></div>
+    <div className="match-score"><strong>{formatMatchScore(match.score)}</strong><span>uyum</span><div className="match-progress" aria-label={`Eşleşme puanı yüzde ${match.score}`}><i style={{ width: `${match.score}%` }} /></div><em>%{match.coverage} veri</em></div>
     <h3>{match.contactName} ↔ {match.portfolioItem.headline}</h3>
     {match.situationSummary ? <p className="match-situation">Bu talebi için: {match.situationSummary}</p> : null}
     <ul>{shownReasons.map((reason) => <li className={`match-reason-${reason.status}`} key={reason.key}>{reason.status === "unknown" ? "Doğrulanmalı: " : ""}{reason.detail}</li>)}</ul>

@@ -1,6 +1,7 @@
 import type { EarningsSummary } from "../closing/earnings.js";
 import type { FunnelMetrics } from "./funnel-metrics.js";
 import type { ReportingPeriod } from "../today/build-overview.js";
+import type { OpportunityType } from "../domain/entities.js";
 
 export interface FunnelCounts {
   newPeople: number;
@@ -19,6 +20,8 @@ export interface FunnelCoachingSubject {
   name: string;
   /** Why this record was picked, e.g. "24 gündür randevu aşamasında". */
   detail: string;
+  opportunityType?: OpportunityType;
+  introduced?: boolean;
 }
 
 /**
@@ -29,6 +32,7 @@ export interface FunnelSubjects {
   newestUncontactedContact: FunnelCoachingSubject | null;
   oldestOpportunityWithoutAppointment: FunnelCoachingSubject | null;
   oldestAppointmentWithoutMandate: FunnelCoachingSubject | null;
+  oldestUnreadyListing: FunnelCoachingSubject | null;
   oldestActiveListing: FunnelCoachingSubject | null;
 }
 
@@ -36,6 +40,7 @@ export const emptyFunnelSubjects: FunnelSubjects = {
   newestUncontactedContact: null,
   oldestOpportunityWithoutAppointment: null,
   oldestAppointmentWithoutMandate: null,
+  oldestUnreadyListing: null,
   oldestActiveListing: null,
 };
 
@@ -93,11 +98,19 @@ export function buildFunnelCoaching(counts: FunnelCounts, subjects: FunnelSubjec
   }
   if (counts.leads > 0 && counts.appointments === 0) {
     const subject = subjects.oldestOpportunityWithoutAppointment;
-    return { title: "Talebi randevuya taşı", explanation: `${counts.leads} talep var; randevu yok. ${named(subject, "En eski talep için")} tanıştırma veya doğrudan görüşme izni iste.`, script: "Beni kendisiyle tanıştırabilir misin? Kısa bir görüşme yapmam ikimiz için de çok faydalı olur.", target: "opportunities", subject };
+    const introduced = subject?.introduced === true;
+    const requirement = subject?.opportunityType === "buyer_requirement" || subject?.opportunityType === "tenant_requirement";
+    return introduced
+      ? { title: "Talebi randevuya taşı", explanation: `${counts.leads} talep var; randevu yok. ${named(subject, "En eski talep için")} tanıştırma iznini netleştir.`, script: "Beni kendisiyle tanıştırabilir misin? Kısa bir görüşme yapmam ikimiz için de çok faydalı olur.", target: "opportunities", subject }
+      : { title: requirement ? "İhtiyaç görüşmesini planla" : "Portföy görüşmesini planla", explanation: `${counts.leads} talep var; randevu yok. ${named(subject, "En eski talep için")} doğrudan görüşme zamanını belirle.`, script: requirement ? "İhtiyacınızı netleştirmek için ne zaman 15 dakikalık bir görüşme yapabiliriz?" : "Mülkünüzü ve doğru pazarlama planını konuşmak için ne zaman görüşebiliriz?", target: "opportunities", subject };
   }
   if (counts.appointments > 0 && counts.authorizedListings === 0) {
     const subject = subjects.oldestAppointmentWithoutMandate;
     return { title: "Randevuda değer ve yetkiyi netleştir", explanation: `${counts.appointments} randevuya rağmen yetkili portföy oluşmamış. ${named(subject, "Randevu aşamasındaki kayıt için")} değerleme ve çalışma biçimini açıkça konuş.`, script: "Doğru fiyat ve pazarlama planını birlikte netleştirelim; yetkiyle çalışırsak süreci tek elden yönetebilirim.", target: "opportunities", subject };
+  }
+  if (counts.authorizedListings > 0 && subjects.oldestUnreadyListing) {
+    const subject = subjects.oldestUnreadyListing;
+    return { title: "Portföyü pazara hazırla", explanation: `${named(subject, "Yetkili portföy için")} eksik fiyat veya hazırlık bilgisini tamamla. Hazır olmayan portföy eşleşmeye ve sunuma taşınamaz.`, script: "Değerleme sonucunu netleştirip liste fiyatını bugün kaydedelim.", target: "listings", subject };
   }
   if (counts.authorizedListings > 0 && counts.closings === 0) {
     const subject = subjects.oldestActiveListing;

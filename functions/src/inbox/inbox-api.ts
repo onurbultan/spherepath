@@ -47,13 +47,13 @@ function actionAtFrom(daysFromNow: number | null, actionTime: string | null, now
   return Date.UTC(part("year"), part("month") - 1, part("day") + daysFromNow, (hour ?? 10) - 3, minute ?? 0);
 }
 
-async function analyzeText(text: string): Promise<InboxItemAnalysis> {
+async function analyzeText(text: string, knownContactName: string | null = null): Promise<InboxItemAnalysis> {
   const now = new Date();
   let extraction = extractVoiceDraft(text);
   if (process.env.FUNCTIONS_EMULATOR !== "true") {
     try { extraction = sanitizeVoiceExtraction(await extractVoiceDraftWithVertex(text, now)); } catch { /* Rules remain a safe fallback. */ }
   }
-  extraction = normalizeVoiceExtraction(extraction, text);
+  extraction = normalizeVoiceExtraction(extraction, text, knownContactName);
   extraction = normalizeVoiceActionTiming(extraction, text, now);
   const transaction = extraction.insights.propertyPreferences.transactionType;
   return {
@@ -273,7 +273,12 @@ export const analyzeInboxNote = onDocumentCreated(
     if (!data || data.analysisStatus !== "pending") return;
     const reference = event.data!.ref;
     try {
-      const analysis = await analyzeText(data.safeText as string);
+      const linkedContactId = typeof data.linkedContactId === "string" ? data.linkedContactId : null;
+      const linkedContact = linkedContactId ? await getFirestore().collection("contacts").doc(linkedContactId).get() : null;
+      const knownContactName = linkedContact?.exists
+        ? String(linkedContact.data()?.fullName ?? linkedContact.data()?.label ?? "").trim() || null
+        : null;
+      const analysis = await analyzeText(data.safeText as string, knownContactName);
       // Nothing stops the advisor pressing the button while this is still
       // running. When they do, the contact is created before the reading
       // exists and no later pass would ever carry it over, so hand it to
@@ -314,9 +319,15 @@ export const analyzeInboxItem = onCall(callableOptions, async (request): Promise
   const parsed = analyzeInboxItemSchema.safeParse(envelope.data);
   if (!parsed.success) throw new HttpsError("invalid-argument", "Inbox analysis input is invalid.", parsed.error.flatten());
   return observeApiRequest("analyzeInboxItem", envelope.requestId, async () => {
-    const snapshot = await getFirestore().collection("inboxItems").doc(parsed.data.inboxItemId).get();
+    const db = getFirestore();
+    const snapshot = await db.collection("inboxItems").doc(parsed.data.inboxItemId).get();
     if (!snapshot.exists || !canManage(snapshot.data()!, claims)) throw new HttpsError("not-found", "Inbox item was not found.");
-    return { analysis: await analyzeText(snapshot.data()!.safeText as string) };
+    const linkedContactId = typeof snapshot.data()!.linkedContactId === "string" ? snapshot.data()!.linkedContactId as string : null;
+    const contactSnapshot = linkedContactId ? await db.collection("contacts").doc(linkedContactId).get() : null;
+    const knownContactName = contactSnapshot?.exists
+      ? String(contactSnapshot.data()?.fullName ?? contactSnapshot.data()?.label ?? "").trim() || null
+      : null;
+    return { analysis: await analyzeText(snapshot.data()!.safeText as string, knownContactName) };
   });
 });
 

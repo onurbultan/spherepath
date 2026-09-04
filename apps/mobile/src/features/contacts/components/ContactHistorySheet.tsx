@@ -1,13 +1,10 @@
-import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { MessageSquareText, PhoneIncoming, PhoneMissed, PhoneOutgoing, Sparkles, X } from "lucide-react-native";
+import { MessageSquareText, PhoneIncoming, PhoneMissed, PhoneOutgoing, X } from "lucide-react-native";
 import {
   apiQueryKeys,
   askOutcomeLabels,
-  callRecordingStatusLabels,
-  callSummaryLabel,
   interactionChannelLabels,
   interactionObjectiveLabels,
   type CallRecordView,
@@ -45,7 +42,6 @@ type Entry =
  * confirmed conversation, and only the order makes either legible.
  */
 export function ContactHistorySheet({ contactId, contactName, onClose }: { contactId: string | null; contactName: string; onClose: () => void }) {
-  const router = useRouter();
   const theme = useSpTheme();
   const enabled = Boolean(contactId);
   const callsQuery = useQuery({ queryKey: apiQueryKeys.contactCalls(contactId ?? "none"), queryFn: () => listContactCalls(contactId!), enabled });
@@ -95,19 +91,7 @@ export function ContactHistorySheet({ contactId, contactName, onClose }: { conta
                     {call.answered ? `${spokenFor(call.talkDurationMs)} görüşüldü.` : "Görüşme gerçekleşmedi; geri dönülmeyi bekliyor."}
                   </SpText>
                   <View style={styles.chips}>
-                    {call.answered ? <View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="caption" color="secondary">{callRecordingStatusLabels[call.recordingStatus]}</SpText></View> : null}
-                    {callSummaryLabel(call) ? (
-                      // Saying a summary is waiting without a way to reach it
-                      // leaves the advisor hunting for the capture screen.
-                      <Pressable
-                        disabled={call.noteStatus !== "needs_review" || !call.contactId}
-                        onPress={() => router.push(`/capture?contactId=${encodeURIComponent(call.contactId!)}`)}
-                        style={[styles.chip, { backgroundColor: theme.deedBg }]}
-                      >
-                        <Sparkles color={theme.deed} size={12} />
-                        <SpText variant="caption" color="deed">{callSummaryLabel(call)}</SpText>
-                      </Pressable>
-                    ) : null}
+                    {call.answered ? <View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="caption" color="secondary">Yalnız arama bilgisi</SpText></View> : null}
                     {call.contactCreatedFromCall ? <View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="caption" color="secondary">Bu aramayla eklendi</SpText></View> : null}
                   </View>
                 </SpCard>

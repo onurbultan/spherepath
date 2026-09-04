@@ -18,26 +18,13 @@ export interface ParsedCallEvent {
   answeredAt: number | null;
   endedAt: number | null;
   durationMs: number;
-  /** Time on the call once answered, which is what decides whether a recording is worth transcribing. */
+  /** Time on the call once answered. Only this metadata is stored. */
   talkDurationMs: number;
   queueWaitMs: number;
-  recordingPresent: boolean;
   /** Why the call ended, kept so a run of failures can be diagnosed without the switch's panel. */
   hangupCause: string | null;
 }
 
-export interface FetchedRecording {
-  bytes: Buffer;
-  contentType: string;
-  /** Storage object suffix, so the transcription step can decode without sniffing. */
-  extension: "wav" | "mp3";
-}
-
-/**
- * Outbound calls ring the advisor's own extension first and only then dial the
- * customer, so the conversation belongs to the switch from its first second and
- * is recorded like any inbound one.
- */
 export interface OriginateRequest {
   /**
    * The advisor's own phone, dialled first. Verimor's `originate` needs a
@@ -48,16 +35,12 @@ export interface OriginateRequest {
   /** Digits with country code, no plus. */
   destination: string;
   callerId: string | null;
-  /** Audio file id the switch plays to the called party, used for the recording notice. */
-  announcementId: number | null;
 }
 
-export interface CallRecordingSource {
+export interface CallProviderSource {
   readonly provider: CallProvider;
   /** Returns null for payloads that are well-formed but carry no event we act on. */
   parseEvent(body: Record<string, unknown>): ParsedCallEvent | null;
-  /** Returns null when the switch has no recording for the call. */
-  fetchRecording(providerCallId: string): Promise<FetchedRecording | null>;
   /** Resolves to the switch's id for the new call. */
   startCall(request: OriginateRequest): Promise<string>;
   /**
@@ -68,8 +51,6 @@ export interface CallRecordingSource {
   connectEvents(notificationUrl: string): Promise<void>;
   /** What the switch currently believes, so the app can show it rather than assume. */
   readEventConnection(): Promise<{ notificationUrl: string | null; events: string[] }>;
-  /** The recorded announcements the switch can play, for the recording notice. */
-  listAnnouncements(): Promise<Array<{ id: number; name: string }>>;
 }
 
 const secondsInDay = 86_400;

@@ -96,6 +96,13 @@ export interface PortfolioMatchScore {
   softMismatchKeys: MatchReasonKey[];
 }
 
+/** Match scores are whole percentages on the wire, never 0–1 ratios. */
+export const matchScoreSchema = z.number().int().min(0).max(100);
+
+export function formatMatchScore(score: number): string {
+  return `%${matchScoreSchema.parse(score)}`;
+}
+
 export interface PortfolioMatchRecord extends PortfolioMatchScore {
   contactId: string;
   contactName: string;

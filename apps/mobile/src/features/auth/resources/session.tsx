@@ -19,6 +19,7 @@ import {
   updateProfile,
   type User as FirebaseUser,
 } from "@react-native-firebase/auth";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { authErrorMessage, createCommandId } from "@spherepath/shared";
 import { apiClient } from "@/shared/api/client";
 import { firebaseServices } from "@/shared/firebase/client";
@@ -142,7 +143,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    await firebaseSignOut(firebaseServices().auth);
+    const { auth } = firebaseServices();
+    setSession(null);
+    setError(null);
+    setStatus("signedOut");
+    await Promise.all([
+      "spherepath.query-cache.v1",
+      "spherepath.capture-queue.v1",
+      "spherepath.inbox-queue.v1",
+    ].map((key) => AsyncStorage.removeItem(key)));
+    if (!auth.currentUser) return;
+    try {
+      await firebaseSignOut(auth);
+    } catch (nextError) {
+      const code = typeof nextError === "object" && nextError !== null && "code" in nextError
+        ? String(nextError.code)
+        : "";
+      if (!code.endsWith("no-current-user")) throw nextError;
+    }
   }, []);
 
   const resetPassword = useCallback(async (email: string) => {

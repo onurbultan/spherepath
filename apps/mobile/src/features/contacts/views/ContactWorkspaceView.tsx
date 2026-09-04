@@ -3,13 +3,11 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "reac
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, BriefcaseBusiness, MessageSquareText, PhoneIncoming, PhoneMissed, PhoneOutgoing, ShieldCheck, Sparkles } from "lucide-react-native";
+import { ArrowLeft, BriefcaseBusiness, MessageSquareText, PhoneIncoming, PhoneMissed, PhoneOutgoing, ShieldCheck } from "lucide-react-native";
 import {
   apiQueryKeys,
   askOutcomeLabels,
   buildMemoryHighlights,
-  callRecordingStatusLabels,
-  callSummaryLabel,
   contactRoleLabels,
   contactSourceLabels,
   interactionChannelLabels,
@@ -186,19 +184,7 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
                     {call.answered ? `${spokenFor(call.talkDurationMs)} görüşüldü.` : "Görüşme gerçekleşmedi; geri dönülmeyi bekliyor."}
                   </SpText>
                   <View style={styles.chips}>
-                    {call.answered ? <View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="caption" color="secondary">{callRecordingStatusLabels[call.recordingStatus]}</SpText></View> : null}
-                    {callSummaryLabel(call) ? (
-                      // Saying a summary is waiting without a way to reach it
-                      // leaves the advisor hunting for the capture screen.
-                      <Pressable
-                        disabled={call.noteStatus !== "needs_review" || !call.contactId}
-                        onPress={() => router.push(`/capture?contactId=${encodeURIComponent(call.contactId!)}`)}
-                        style={[styles.chip, { backgroundColor: theme.deedBg }]}
-                      >
-                        <Sparkles color={theme.deed} size={12} />
-                        <SpText variant="caption" color="deed">{callSummaryLabel(call)}</SpText>
-                      </Pressable>
-                    ) : null}
+                    {call.answered ? <View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="caption" color="secondary">Yalnız arama bilgisi</SpText></View> : null}
                     {call.contactCreatedFromCall ? <View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="caption" color="secondary">Bu aramayla eklendi</SpText></View> : null}
                   </View>
                 </SpCard>
@@ -271,6 +257,13 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
                   ? "Kişi iletişim istemedi; pazarlama izni geri çekildi."
                   : "Pazarlama izni bilinmiyor."}
             </SpText>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push({ pathname: "/(tabs)/contacts", params: { contactId: contact.id, action: "privacy" } })}
+              style={[styles.privacyAction, { backgroundColor: theme.ask }]}
+            >
+              <SpText style={{ color: theme.onAsk }}>İzinleri düzenle</SpText>
+            </Pressable>
           </SpCard>
         ) : null}
       </ScrollView>
@@ -287,6 +280,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1, gap: 2 },
   summary: { flexDirection: "row", gap: space.sm },
   summaryCard: { flex: 1, gap: space.xs },
+  privacyAction: { alignItems: "center", alignSelf: "flex-start", borderRadius: radius.md, paddingHorizontal: space.lg, paddingVertical: space.sm },
   tabs: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginTop: space.sm },
   entry: { gap: space.sm },
   entryTop: { flexDirection: "row", alignItems: "center", gap: space.md },

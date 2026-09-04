@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Opportunity, OpportunityStage, OpportunityType, TenantOwned } from "../domain/entities.js";
+import type { ContactRole, Opportunity, OpportunityStage, OpportunityType, TenantOwned } from "../domain/entities.js";
 import { nextActionTypes } from "../interactions/manual-interaction.js";
 
 export const opportunityTypes = ["seller_listing", "landlord_listing", "buyer_requirement", "tenant_requirement"] as const satisfies readonly OpportunityType[];
@@ -11,6 +11,23 @@ export const opportunityTypeLabels: Record<OpportunityType, string> = {
   buyer_requirement: "Alıcı talebi",
   tenant_requirement: "Kiracı talebi",
 };
+
+const opportunityTypeByContactRole: Partial<Record<ContactRole, OpportunityType>> = {
+  buyer: "buyer_requirement",
+  investor: "buyer_requirement",
+  tenant: "tenant_requirement",
+  seller: "seller_listing",
+  landlord: "landlord_listing",
+};
+
+/** Preselect the likely journey without preventing the advisor from changing it. */
+export function suggestOpportunityTypeForRoles(roles: readonly ContactRole[]): OpportunityType | null {
+  for (const role of roles) {
+    const suggestion = opportunityTypeByContactRole[role];
+    if (suggestion) return suggestion;
+  }
+  return null;
+}
 
 export const opportunityStageLabels: Record<OpportunityStage, string> = {
   new_lead: "Yeni talep",
@@ -24,12 +41,25 @@ export const opportunityStageLabels: Record<OpportunityStage, string> = {
 
 /** Owner opportunities acquire a mandate; buyer and tenant opportunities acquire a client. */
 export function opportunityStageLabel(stage: OpportunityStage, type: OpportunityType): string {
-  if (type === "buyer_requirement" || type === "tenant_requirement") {
+  const requirement = type === "buyer_requirement" || type === "tenant_requirement";
+  if (requirement) {
+    if (stage === "appointment") return "İhtiyaç görüşmesi";
     if (stage === "valuation") return "Talep netleşti";
     if (stage === "mandate_offer") return "Hizmet konuşuluyor";
     if (stage === "won") return "Müşteri kazanıldı";
+  } else if (stage === "new_lead") {
+    return "Yeni portföy adayı";
   }
   return opportunityStageLabels[stage];
+}
+
+export interface OpportunityPathStep {
+  stage: OpportunityStage;
+  label: string;
+}
+
+export function opportunityPath(type: OpportunityType): readonly OpportunityPathStep[] {
+  return opportunityStages.map((stage) => ({ stage, label: opportunityStageLabel(stage, type) }));
 }
 
 export const opportunityDraftSchema = z.object({

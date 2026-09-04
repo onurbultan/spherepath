@@ -1,6 +1,6 @@
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { buildEarningsSummary, buildFunnelCoaching, buildFunnelMetrics, buildFunnelTargetProgress, opportunityStageLabels, reportingPeriodSchema, type ContactSource, type CurrencyCode, type DealStage, type EarningsDeal, type FunnelClosedDeal, type FunnelCoachingSubject, type FunnelInteraction, type FunnelOverview, type FunnelStageEvent, type FunnelSubjects, type OpportunityStage, type ReportingPeriod } from "../../../packages/shared/src/index.js";
+import { buildEarningsSummary, buildFunnelCoaching, buildFunnelMetrics, buildFunnelTargetProgress, opportunityStageLabel, reportingPeriodSchema, type ContactSource, type CurrencyCode, type DealStage, type EarningsDeal, type FunnelClosedDeal, type FunnelCoachingSubject, type FunnelInteraction, type FunnelOverview, type FunnelStageEvent, type FunnelSubjects, type OpportunityStage, type OpportunityType, type ReportingPeriod } from "../../../packages/shared/src/index.js";
 import { requireSpherepathClaims } from "../auth/claims.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 
@@ -67,10 +67,13 @@ export const getFunnelOverview = onCall(
         const found = activeOpportunities.find((doc) => stages.includes(doc.data().stage as string));
         if (!found) return null;
         const stage = found.data().stage as OpportunityStage;
+        const type = found.data().type as OpportunityType;
         return {
           kind: "opportunity", id: found.id,
           name: contactNames.get(found.data().subjectContactId as string) ?? "İsimsiz kişi",
-          detail: `${daysSince(millis(found.data().stageEnteredAt))} gündür ${opportunityStageLabels[stage].toLocaleLowerCase("tr-TR")} aşamasında`,
+          detail: `${daysSince(millis(found.data().stageEnteredAt))} gündür ${opportunityStageLabel(stage, type).toLocaleLowerCase("tr-TR")} aşamasında`,
+          opportunityType: type,
+          introduced: typeof found.data().sourceContactId === "string" || typeof found.data().referralId === "string",
         };
       };
       const contactsWithOpportunity = new Set(activeOpportunities.map((doc) => doc.data().subjectContactId as string));
@@ -80,12 +83,18 @@ export const getFunnelOverview = onCall(
       const oldestListing = listings.docs
         .filter((doc) => active(doc.data()) && ["active", "reserved"].includes(doc.data().status as string))
         .sort((left, right) => (millis(left.data().acquiredAt) ?? millis(left.data().createdAt) ?? 0) - (millis(right.data().acquiredAt) ?? millis(right.data().createdAt) ?? 0))[0];
+      const oldestUnreadyListing = listings.docs
+        .filter((doc) => active(doc.data()) && (doc.data().status === "preparing" || !(typeof doc.data().askingPrice === "number" && doc.data().askingPrice > 0)))
+        .sort((left, right) => (millis(left.data().acquiredAt) ?? millis(left.data().createdAt) ?? 0) - (millis(right.data().acquiredAt) ?? millis(right.data().createdAt) ?? 0))[0];
       const subjects: FunnelSubjects = {
         newestUncontactedContact: newestUncontacted
           ? { kind: "contact", id: newestUncontacted.id, name: contactName(newestUncontacted), detail: `${daysSince(millis(newestUncontacted.data().createdAt))} gündür talebi yok` }
           : null,
         oldestOpportunityWithoutAppointment: opportunitySubject(["new_lead", "first_contact"]),
         oldestAppointmentWithoutMandate: opportunitySubject(["appointment", "valuation"]),
+        oldestUnreadyListing: oldestUnreadyListing
+          ? { kind: "listing", id: oldestUnreadyListing.id, name: (oldestUnreadyListing.data().propertySummary?.address as string) ?? "Portföy", detail: typeof oldestUnreadyListing.data().askingPrice === "number" ? "hazırlanıyor" : "fiyat bekliyor" }
+          : null,
         oldestActiveListing: oldestListing
           ? { kind: "listing", id: oldestListing.id, name: (oldestListing.data().propertySummary?.address as string) ?? "Portföy", detail: `${daysSince(millis(oldestListing.data().acquiredAt) ?? millis(oldestListing.data().createdAt))} gündür portföyde` }
           : null,

@@ -59,6 +59,16 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve }
 
   useSheetDismiss(true, () => { if (!pending) onClose(); });
 
+  if (task.type === "complete_listing") {
+    return <div className="sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
+      <section className="form-sheet task-resolution-sheet" role="dialog" aria-modal="true" aria-labelledby="task-resolution-title">
+        <div className="sheet-heading"><div><p className="eyebrow">PORTFÖYÜ TAMAMLA</p><h2 id="task-resolution-title">{task.title}</h2><span className="sheet-subtitle">{task.reason}</span></div><button className="icon-action" aria-label="Kapat" onClick={onClose} type="button"><X size={20} /></button></div>
+        <p>Bu iş, fiyat ve yayın hazırlığı gerçekten tamamlandığında kapanır. Portföy kaydını açıp eksik bilgiyi gir.</p>
+        <Link className="primary-action inline-link" href={taskRecordHref(task)}>Portföyü tamamla</Link>
+      </section>
+    </div>;
+  }
+
   function submit() {
     const parsed = dailyTaskOutcomeSchema.safeParse({
       taskId: task.id,
@@ -93,7 +103,7 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve }
         : <label>{status === "contact_opt_out" ? "İletişim neden kapatılıyor?" : status === "skipped" ? "Neden atlanıyor?" : "Kısa sonuç"} <span className="optional">{status === "completed" ? "isteğe bağlı" : ""}</span><SpTextarea required={status === "skipped" || status === "contact_opt_out"} value={note} onChange={(event) => setNote(event.target.value)} placeholder={status === "contact_opt_out" ? "Örn. Kişi telefon ve WhatsApp üzerinden iletişim kurulmasını istemiyor." : status === "skipped" ? "Örn. Bugün uygun değil; bu görevi kapatıyorum." : "Örn. Görüşüldü, teklif cuma günü paylaşılacak."} /></label>}
       {localError ?? error ? <p className="form-error" role="alert">{localError ?? error}</p> : null}
       <div className="task-resolution-actions">
-        <Link className="secondary-action inline-link" href={taskRecordHref(task)}>Teması ayrıntılı kaydet</Link>
+        <Link className="secondary-action inline-link" href={taskRecordHref(task)}>{task.type === "return_call" ? "Kişiyi aç ve ara" : "Teması ayrıntılı kaydet"}</Link>
         <button className="primary-action inline-action" disabled={pending} type="submit">{pending ? "Kaydediliyor…" : status === "rescheduled" ? "Yeni tarihe ertele" : status === "contact_opt_out" ? "İletişimi kapat" : "Sonucu kaydet"}</button>
       </div>
     </form>

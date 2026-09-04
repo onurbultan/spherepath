@@ -1,29 +1,24 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { FieldPath, getFirestore, Timestamp } from "firebase-admin/firestore";
-import { getStorage } from "firebase-admin/storage";
 import { logger } from "firebase-functions";
 import { defineSecret } from "firebase-functions/params";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 import {
   createContact as createContactEntity,
   listCallsSchema,
   joinPhone,
   normalizePhone,
-  shouldIngestRecording,
   splitPhone,
   startContactCallSchema,
   toDialableNumber,
   type CallRecordView,
-  type CallRecordingStatus,
-  type VoiceNoteStatus,
 } from "../../../packages/shared/src/index";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 import { requireSpherepathClaims } from "../auth/claims.js";
 import { contactPhoneFields, phoneLookupHash } from "../contacts/phone-index.js";
 import { toStoredContact } from "../contacts/contact-store.js";
 import { createVerimorSource } from "./verimor.js";
-import type { CallRecordingSource, ParsedCallEvent } from "./provider.js";
+import type { CallProviderSource, ParsedCallEvent } from "./provider.js";
 
 export const verimorApiKey = defineSecret("VERIMOR_API_KEY");
 
@@ -41,7 +36,7 @@ function secretValue(secret: { value(): string }, environmentName: string): stri
   return localRuntime ? process.env[environmentName] ?? "" : secret.value();
 }
 
-const sources: Record<string, () => CallRecordingSource> = {
+const sources: Record<string, () => CallProviderSource> = {
   verimor: () => createVerimorSource(() => secretValue(verimorApiKey, "VERIMOR_API_KEY")),
 };
 
@@ -72,10 +67,6 @@ function callView(id: string, data: FirebaseFirestore.DocumentData): CallRecordV
     talkDurationMs: typeof data.talkDurationMs === "number" ? data.talkDurationMs : 0,
     queueWaitMs: typeof data.queueWaitMs === "number" ? data.queueWaitMs : 0,
     hangupCause: data.hangupCause ?? null,
-    recordingStatus: data.recordingStatus,
-    noteStatus: null,
-    voiceNoteId: data.voiceNoteId ?? null,
-    errorCode: data.errorCode ?? null,
     createdAt: millis(data.createdAt) ?? 0,
     updatedAt: millis(data.updatedAt) ?? 0,
   };
@@ -112,11 +103,8 @@ async function resolveContact(officeId: string, phone: string | null) {
 }
 
 /**
- * A stranger calling the office line is a lead, and the whole point of the switch
- * is that the advisor does not have to write anything down. Giving that call a
- * contact immediately lets the recording run through the same transcription and
- * review path as any other; the record starts named by its number and the advisor
- * renames it when confirming what the transcript found.
+ * A stranger calling the office line is a lead. The record starts named by its
+ * number and the advisor enriches it after the conversation with their own note.
  *
  * The lookup is repeated inside the transaction so two calls arriving from the
  * same number at once cannot produce two contacts.
@@ -195,18 +183,16 @@ async function storeCallEvent(
   if (!ownerUid) throw new Error("call_owner_unresolved");
 
   const now = Timestamp.now();
-  const ingest = shouldIngestRecording(event.answered, event.talkDurationMs);
-  // A stranger who called in and talked long enough is a lead worth keeping, so
-  // the record is opened now and the transcript arrives against it.
+  // An answered inbound call from a stranger is a lead worth keeping. No audio
+  // or transcript is required to create the relationship record.
   let leadCreated = false;
-  if (!contact && ingest && event.direction === "inbound" && counterparty) {
+  if (!contact && event.answered && event.direction === "inbound" && counterparty) {
     const lead = await createLeadContact(officeId, ownerUid, counterparty, now.toMillis());
     if (lead) {
       contact = { id: lead.id, ownerUid: lead.ownerUid };
       leadCreated = lead.created;
     }
   }
-  const recordingStatus: CallRecordingStatus = ingest && contact ? "pending" : "none";
   // The switch's call id is the document id, so a redelivered event lands on the
   // same record instead of creating a second one.
   const callRef = firestore.collection(callCollection).doc(`${provider}_${event.providerCallId}`);
@@ -232,92 +218,11 @@ async function storeCallEvent(
       talkDurationMs: event.talkDurationMs,
       queueWaitMs: event.queueWaitMs,
       hangupCause: event.hangupCause,
-      recordingPresent: event.recordingPresent,
-      recordingStatus,
-      voiceNoteId: null,
-      attempts: 0,
-      errorCode: ingest && !contact ? "contact_unresolved" : null,
       createdAt: now,
       updatedAt: now,
     });
   });
 }
-
-// ------------------------------------------------------- recording worker
-
-export const processCallRecording = onDocumentCreated(
-  { document: "calls/{callId}", region: "europe-west8", retry: true, memory: "512MiB", timeoutSeconds: 300, secrets: [verimorApiKey] },
-  async (event) => {
-    const callId = event.params.callId;
-    const firestore = getFirestore();
-    const callRef = firestore.collection(callCollection).doc(callId);
-    const snapshot = await callRef.get();
-    const call = snapshot.data();
-    if (!call || call.recordingStatus !== "pending" || !call.contactId) return;
-
-    const source = sources[call.provider as string]?.();
-    if (!source) return;
-
-    try {
-      const recording = await source.fetchRecording(call.providerCallId as string);
-      if (!recording) {
-        await callRef.update({ recordingStatus: "none", errorCode: "recording_unavailable", updatedAt: Timestamp.now() });
-        return;
-      }
-      const storagePath = `offices/${call.officeId}/calls/${callId}.${recording.extension}`;
-      await getStorage().bucket().file(storagePath).save(recording.bytes, { contentType: recording.contentType });
-
-      const noteRef = firestore.collection("voiceNotes").doc();
-      const now = Timestamp.now();
-      // The note is queued exactly as an in-app recording is, so transcription,
-      // masking, extraction and review run through one pipeline.
-      await noteRef.set({
-        officeId: call.officeId,
-        ownerUid: call.ownerUid,
-        contactId: call.contactId,
-        storagePath,
-        durationMs: call.talkDurationMs,
-        mimeType: recording.contentType,
-        inputMode: "call",
-        // The switch knows who dialled. Without it the model reads a greeting
-        // and guesses, and "mutual" is the answer it settles on.
-        callDirection: call.direction,
-        callId,
-        conversationEndedConfirmed: true,
-        status: "queued",
-        attempts: 0,
-        processingEventId: null,
-        maskedTranscript: null,
-        maskedCategories: [],
-        maskedRanges: [],
-        transcriptionModel: null,
-        transcriptionLocation: null,
-        transcriptionWarning: null,
-        transcriptionWordCount: null,
-        extraction: null,
-        corrections: [],
-        interactionId: null,
-        sourceAudioDeletedAt: null,
-        errorCode: null,
-        createdAt: now,
-        updatedAt: now,
-      });
-      await callRef.update({ recordingStatus: "stored", voiceNoteId: noteRef.id, errorCode: null, updatedAt: now });
-      logger.info("Call recording queued for transcription", { callId, voiceNoteId: noteRef.id, byteLength: recording.bytes.length });
-    } catch (error) {
-      const attempts = Number(call.attempts ?? 0) + 1;
-      logger.error("Call recording ingestion failed", { callId, attempts, error });
-      // The switch finishes writing the file a minute or two after the call
-      // ends, so the first attempts are expected to miss. With the trigger's
-      // exponential backoff this spans several minutes before giving up.
-      if (attempts < 6) {
-        await callRef.update({ attempts, updatedAt: Timestamp.now() });
-        throw error;
-      }
-      await callRef.update({ attempts, recordingStatus: "failed", errorCode: "recording_ingest_failed", updatedAt: Timestamp.now() });
-    }
-  },
-);
 
 // ------------------------------------------------------------- callables
 
@@ -329,7 +234,6 @@ export const configureCallIntegration = onCall(callableOptions, async (request):
     rotateToken?: unknown;
     outboundCallerId?: unknown;
     defaultRoutingTarget?: unknown;
-    recordingNoticeAnnouncementId?: unknown;
   }>(request.data, { command: true });
   const extensionOwners = envelope.data?.extensionOwners;
   if (extensionOwners !== undefined && (typeof extensionOwners !== "object" || extensionOwners === null || Array.isArray(extensionOwners))) {
@@ -358,9 +262,9 @@ export const configureCallIntegration = onCall(callableOptions, async (request):
       extensionOwners: (extensionOwners as Record<string, string> | undefined) ?? existing.data()?.extensionOwners ?? {},
       outboundCallerId: (envelope.data?.outboundCallerId as string | undefined) ?? existing.data()?.outboundCallerId ?? null,
       defaultRoutingTarget: (routingTarget as string | undefined) ?? existing.data()?.defaultRoutingTarget ?? null,
-      recordingNoticeAnnouncementId: typeof envelope.data?.recordingNoticeAnnouncementId === "number"
-        ? envelope.data.recordingNoticeAnnouncementId
-        : existing.data()?.recordingNoticeAnnouncementId ?? null,
+      // Explicitly overwrite legacy recording configuration. Call audio is not
+      // a configurable feature of Spherepath.
+      recordingNoticeAnnouncementId: null,
       active: true,
       createdAt: existing.data()?.createdAt ?? now,
       updatedAt: now,
@@ -369,35 +273,7 @@ export const configureCallIntegration = onCall(callableOptions, async (request):
   });
 });
 
-/**
- * The announcements the switch can play. Recording a customer without telling
- * them is the one thing that has to be settled before this is sold to an
- * office, and the file usually already exists on the account -- it just has
- * never been selectable from here.
- */
-export const listCallAnnouncements = onCall(
-  { ...callableOptions, secrets: [verimorApiKey] },
-  async (request): Promise<{ announcements: Array<{ id: number; name: string }> }> => {
-    const claims = requireSpherepathClaims(request);
-    if (claims.role !== "broker") throw new HttpsError("permission-denied", "Only a broker can read telephony settings.");
-    const envelope = readApiEnvelope<unknown>(request.data);
-    return observeApiRequest("listCallAnnouncements", envelope.requestId, async () => {
-      const snapshot = await getFirestore().collection(integrationCollection).doc(claims.officeId).get();
-      const integration = snapshot.data();
-      if (!integration) return { announcements: [] };
-      const source = sources[integration.provider as string]?.();
-      if (!source) return { announcements: [] };
-      try {
-        return { announcements: await source.listAnnouncements() };
-      } catch (error) {
-        logger.warn("Announcements could not be listed", { officeId: claims.officeId, error });
-        return { announcements: [] };
-      }
-    });
-  },
-);
-
-export const getCallIntegration = onCall(callableOptions, async (request): Promise<{ integrationId: string; webhookToken: string; extensionOwners: Record<string, string>; recordingNoticeAnnouncementId: number | null; active: boolean } | null> => {
+export const getCallIntegration = onCall(callableOptions, async (request): Promise<{ integrationId: string; webhookToken: string; extensionOwners: Record<string, string>; active: boolean } | null> => {
   const claims = requireSpherepathClaims(request);
   if (claims.role !== "broker") throw new HttpsError("permission-denied", "Only a broker can read telephony settings.");
   const envelope = readApiEnvelope<unknown>(request.data);
@@ -409,7 +285,6 @@ export const getCallIntegration = onCall(callableOptions, async (request): Promi
       integrationId: snapshot.id,
       webhookToken: data.webhookToken as string,
       extensionOwners: (data.extensionOwners ?? {}) as Record<string, string>,
-      recordingNoticeAnnouncementId: typeof data.recordingNoticeAnnouncementId === "number" ? data.recordingNoticeAnnouncementId : null,
       active: data.active === true,
     };
   });
@@ -469,9 +344,8 @@ function extensionFor(integration: FirebaseFirestore.DocumentData, uid: string):
 }
 
 /**
- * Dialling starts with the advisor's own extension ringing, so the switch owns
- * both legs and records the conversation. The advisor never sees the customer's
- * number leave the app.
+ * Dialling starts with the advisor's own phone and bridges to the customer. The
+ * provider is explicitly instructed not to record either leg.
  */
 export const startContactCall = onCall({ ...callableOptions, secrets: [verimorApiKey] }, async (request): Promise<{ providerCallId: string }> => {
   const claims = requireSpherepathClaims(request);
@@ -505,7 +379,6 @@ export const startContactCall = onCall({ ...callableOptions, secrets: [verimorAp
       source,
       destination,
       callerId: (integration.outboundCallerId as string | undefined) ?? null,
-      announcementId: typeof integration.recordingNoticeAnnouncementId === "number" ? integration.recordingNoticeAnnouncementId : null,
     });
     logger.info("Outbound call started", { officeId: claims.officeId, providerCallId });
     // The call record itself arrives on the hangup event, which carries the
@@ -625,18 +498,6 @@ export const listCalls = onCall(callableOptions, async (request): Promise<{ call
     const snapshot = await query.orderBy("createdAt", "desc").limit(parsed.data.limit).get();
     const calls = snapshot.docs.map((document) => callView(document.id, document.data()));
 
-    // One batched read for the page of calls: a note id proves work began, not
-    // that a summary exists, and the difference is what the list shows.
-    const noteIds = [...new Set(calls.map((call) => call.voiceNoteId).filter((id): id is string => Boolean(id)))];
-    if (noteIds.length) {
-      const notes = await getFirestore().getAll(
-        ...noteIds.map((id) => getFirestore().collection("voiceNotes").doc(id)),
-      );
-      const statuses = new Map(notes.filter((note) => note.exists).map((note) => [note.id, note.data()!.status as VoiceNoteStatus]));
-      for (const call of calls) {
-        if (call.voiceNoteId) call.noteStatus = statuses.get(call.voiceNoteId) ?? null;
-      }
-    }
     return { calls };
   });
 });

@@ -41,7 +41,7 @@ function defaultFollowUp(): string {
 const kindLabels: Record<InboxItemKind, string> = { note: "Not", person: "Kişi", property: "Mülk", requirement: "Talep", follow_up: "Takip" };
 const messageFrom = (error: unknown) => error instanceof Error ? error.message : "Not işlenemedi.";
 
-export function NoteProcessingSheet({ item, contacts, onClose, onChanged }: { item: InboxItemRecord; contacts: readonly ContactRecord[]; onClose(): void; onChanged(): Promise<void> | void }) {
+export function NoteProcessingSheet({ item, contacts, onClose, onChanged }: { item: InboxItemRecord; contacts: readonly ContactRecord[]; onClose(): void; onChanged(updatedItem?: InboxItemRecord): Promise<void> | void }) {
   const theme = useSpTheme(); const { session } = useSession();
   const inferred = classifyInboxText(item.safeText);
   const [text, setText] = useState(item.safeText); const [kind, setKind] = useState<InboxItemKind>(item.kind); const [contactId, setContactId] = useState(item.linkedContactId ?? "");
@@ -55,7 +55,7 @@ export function NoteProcessingSheet({ item, contacts, onClose, onChanged }: { it
   const processed = expectedAction !== null && activeItem.appliedActions.some((action) => action.type === expectedAction && action.undoneAt === null);
   const inputStyle = [styles.input, { borderColor: theme.line, backgroundColor: theme.background, color: theme.textPrimary }];
   const choice = (selected: boolean) => [styles.choice, { borderColor: selected ? theme.deed : theme.line, backgroundColor: selected ? theme.deedBg : theme.card }];
-  async function saveEdits() { if (!session) return; await changeInboxItem(session, { inboxItemId: activeItem.id, text, kind, linkedContactId: contactId || null }); await onChanged(); }
+  async function saveEdits() { if (!session) return null; const updatedItem = await changeInboxItem(session, { inboxItemId: activeItem.id, text, kind, linkedContactId: contactId || null }); await onChanged(updatedItem); return updatedItem; }
   async function save() { setPending("save"); setError(null); try { await saveEdits(); onClose(); } catch (next) { setError(messageFrom(next)); } finally { setPending(null); } }
   async function analyze() { if (text.trim().length < 10) return setError("Mülkü çözümlemek için biraz daha bilgi yaz."); setPending("analyze"); setError(null); try { await saveEdits(); setPortfolio(await analyzePortfolioText(text.trim())); } catch (next) { setError(messageFrom(next)); } finally { setPending(null); } }
   async function analyzeRequirement() { if (text.trim().length < 10) return setError("Talebi çözümlemek için biraz daha bilgi yaz."); setPending("analyze"); setError(null); try { await saveEdits(); const result = await analyzeInboxItem({ inboxItemId: activeItem.id }); setAnalysis(result); setOpportunityType(result.opportunityType); if (result.nextActionType) setActionType(result.nextActionType); if (result.nextActionAt) setActionAt(new Date(result.nextActionAt - new Date(result.nextActionAt).getTimezoneOffset() * 60_000).toISOString().slice(0, 16)); } catch (next) { setError(messageFrom(next)); } finally { setPending(null); } }
@@ -63,11 +63,12 @@ export function NoteProcessingSheet({ item, contacts, onClose, onChanged }: { it
     if (!session) return; setPending("process"); setError(null);
     try {
       await saveEdits(); const nextActionAt = new Date(actionAt).getTime();
-      if (kind === "person") await processItem(session, { inboxItemId: activeItem.id, action: "person", contact: contactDraftSchema.parse({ fullName: personName, phone: personPhone, metAtPlace: "Akış notu", source: "other", role: "unknown" }) });
-      else if (kind === "requirement") { if (!contactId) throw new Error("Talebi oluşturmak için kişiyi seç."); if (!analysis) throw new Error("Önce talep bilgilerini çıkarıp kontrol et."); await processItem(session, { inboxItemId: activeItem.id, action: "requirement", contactId, opportunityType, nextActionType: actionType, nextActionAt, approvedInsights: analysis.insights }); }
-      else if (kind === "follow_up") { if (!contactId) throw new Error("Takibi oluşturmak için kişiyi seç."); await processItem(session, { inboxItemId: activeItem.id, action: "follow_up", contactId, nextActionType: actionType, nextActionAt }); }
-      else if (kind === "property") { if (!portfolio) throw new Error("Önce mülk bilgilerini çıkar."); await processItem(session, { inboxItemId: activeItem.id, action: "portfolio", contactId: contactId || null, portfolio }); }
-      await onChanged(); onClose();
+      let processedItem: InboxItemRecord | null = null;
+      if (kind === "person") processedItem = (await processItem(session, { inboxItemId: activeItem.id, action: "person", contact: contactDraftSchema.parse({ fullName: personName, phone: personPhone, metAtPlace: "Akış notu", source: "other", role: "unknown" }) })).item;
+      else if (kind === "requirement") { if (!contactId) throw new Error("Talebi oluşturmak için kişiyi seç."); if (!analysis) throw new Error("Önce talep bilgilerini çıkarıp kontrol et."); processedItem = (await processItem(session, { inboxItemId: activeItem.id, action: "requirement", contactId, opportunityType, nextActionType: actionType, nextActionAt, approvedInsights: analysis.insights })).item; }
+      else if (kind === "follow_up") { if (!contactId) throw new Error("Takibi oluşturmak için kişiyi seç."); processedItem = (await processItem(session, { inboxItemId: activeItem.id, action: "follow_up", contactId, nextActionType: actionType, nextActionAt })).item; }
+      else if (kind === "property") { if (!portfolio) throw new Error("Önce mülk bilgilerini çıkar."); processedItem = (await processItem(session, { inboxItemId: activeItem.id, action: "portfolio", contactId: contactId || null, portfolio })).item; }
+      await onChanged(processedItem ?? undefined); onClose();
     } catch (next) { setError(messageFrom(next)); } finally { setPending(null); }
   }
   return <Modal animationType="slide" presentationStyle="pageSheet" visible onRequestClose={onClose}><SafeAreaView style={[styles.safe, { backgroundColor: theme.card }]}><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">

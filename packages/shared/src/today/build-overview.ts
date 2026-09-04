@@ -86,6 +86,9 @@ export interface TodayOverview {
   tasks: TodayTask[];
   /** Ranked work beyond the stable daily five, for advisors who want the full queue. */
   allTasks: TodayTask[];
+  overdueTasks: TodayTask[];
+  todayTasks: TodayTask[];
+  upcomingTasks: TodayTask[];
   recentInteractions: TodayInteraction[];
   completedTaskCount: number;
 }
@@ -125,8 +128,36 @@ export const reportingPeriodDays: Record<ReportingPeriod, number> = { "30d": 30,
 
 export const reportingPeriodLabels: Record<ReportingPeriod, string> = { "30d": "30 gün", "90d": "90 gün", "1y": "1 yıl" };
 
-function istanbulDayKey(timestamp: number): string {
+export function istanbulDayKey(timestamp: number): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(timestamp));
+}
+
+export type TodayTaskBucket = "overdue" | "today" | "upcoming";
+
+export function todayTaskBucket(task: Pick<TodayTask, "dueAt">, now: number): TodayTaskBucket {
+  if (task.dueAt === null) return "today";
+  const dueDay = istanbulDayKey(task.dueAt);
+  const today = istanbulDayKey(now);
+  if (dueDay < today) return "overdue";
+  return dueDay === today ? "today" : "upcoming";
+}
+
+/** One person should represent one decision in a working list. */
+export function mergeContactTasks(tasks: readonly TodayTask[]): TodayTask[] {
+  const merged = new Map<string, TodayTask>();
+  for (const task of tasks) {
+    const current = merged.get(task.contactId);
+    if (!current) {
+      merged.set(task.contactId, task);
+      continue;
+    }
+    const currentScore = current.priorityScore ?? 0;
+    const nextScore = task.priorityScore ?? 0;
+    if (nextScore > currentScore || (nextScore === currentScore && (task.dueAt ?? Infinity) < (current.dueAt ?? Infinity))) {
+      merged.set(task.contactId, task);
+    }
+  }
+  return [...merged.values()];
 }
 
 export function buildTodayOverview(
@@ -163,8 +194,14 @@ export function buildTodayOverview(
       priority: (contact.nextActionAt ?? now) < now ? "overdue" : "relationship",
     }))
     .sort((left, right) => (left.dueAt ?? now) - (right.dueAt ?? now));
+  const contactsWithPlannedWork = new Set([
+    ...scheduled.map((task) => task.contactId),
+    ...activeOpportunities
+      .filter((opportunity) => opportunity.nextActionAt !== null && opportunity.nextActionType !== null && opportunity.stage !== "won")
+      .map((opportunity) => opportunity.subjectContactId),
+  ]);
   const uncontacted = contacts
-    .filter((contact) => contact.meaningfulTouchCount === 0)
+    .filter((contact) => contact.meaningfulTouchCount === 0 && !contactsWithPlannedWork.has(contact.id))
     .map<TodayTask>((contact) => ({
       id: `first-interaction-${contact.id}`,
       contactId: contact.id,
@@ -248,12 +285,16 @@ export function buildTodayOverview(
       complianceBlocked: false,
     });
   };
-  const tasks = [...missedCalls, ...opportunityTasks, ...unpricedListings, ...scheduled, ...uncontacted]
+  const rankedTasks = [...missedCalls, ...opportunityTasks, ...unpricedListings, ...scheduled, ...uncontacted]
     .filter((task) => !completedTaskIds.has(task.id))
     .map((task) => ({ ...task, priorityScore: taskPriorityScore(task) }))
     .sort((left, right) => right.priorityScore - left.priorityScore
       || (left.dueAt ?? Number.MAX_SAFE_INTEGER) - (right.dueAt ?? Number.MAX_SAFE_INTEGER)
       || left.id.localeCompare(right.id));
+  const overdueTasks = mergeContactTasks(rankedTasks.filter((task) => todayTaskBucket(task, now) === "overdue"));
+  const todayTasks = mergeContactTasks(rankedTasks.filter((task) => todayTaskBucket(task, now) === "today"));
+  const upcomingTasks = mergeContactTasks(rankedTasks.filter((task) => todayTaskBucket(task, now) === "upcoming"));
+  const tasks = mergeContactTasks([...overdueTasks, ...todayTasks]);
 
   const opportunitiesWithoutAction = activeOpportunities.filter((item) => item.stage !== "won" && item.nextActionAt === null).length;
   const currentDayKey = istanbulDayKey(now);
@@ -280,5 +321,5 @@ export function buildTodayOverview(
             ? { title: "Talebi portföye dönüştür", description: `${stages.lead} açık talep var; aktif portföy henüz yok.`, evidence: `${stages.lead} açık talep / 0 aktif portföy`, action: "En eski kaydı değerleme veya yetki adımına ilerlet.", sampleSufficient, targetOpportunityId: activeOpportunities.filter((item) => item.stage !== "won").sort((a, b) => (a.createdAt ?? now) - (b.createdAt ?? now))[0]?.id ?? null, targetContactId: null }
             : { title: "Aktif portföyleri sonuca taşı", description: `${stages.listing} aktif portföy ve ${stages.closing} tamamlanan işlem var.`, evidence: `${stages.listing} aktif portföy / ${stages.closing} kapanan işlem`, action: "En uygun alıcı için sunum veya teklif takibini tamamla.", sampleSufficient, targetOpportunityId: null, targetContactId: null };
 
-  return { period, stages, focus, tasks, allTasks: tasks, recentInteractions, completedTaskCount: completedTaskIds.size };
+  return { period, stages, focus, tasks, allTasks: tasks, overdueTasks, todayTasks, upcomingTasks, recentInteractions, completedTaskCount: completedTaskIds.size };
 }

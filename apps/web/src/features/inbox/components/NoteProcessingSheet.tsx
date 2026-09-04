@@ -51,7 +51,7 @@ function localDateTime(timestamp: number): string {
 
 const numberOrNull = (value: string): number | null => value ? Number(value) : null;
 
-export function NoteProcessingSheet({ item, contacts, onClose, onChanged }: { item: InboxItemRecord; contacts: readonly ContactRecord[]; onClose(): void; onChanged(): Promise<void> | void }) {
+export function NoteProcessingSheet({ item, contacts, onClose, onChanged }: { item: InboxItemRecord; contacts: readonly ContactRecord[]; onClose(): void; onChanged(updatedItem?: InboxItemRecord): Promise<void> | void }) {
   const { session } = useSession();
   const inferred = classifyInboxText(item.safeText);
   const [text, setText] = useState(item.safeText);
@@ -70,10 +70,11 @@ export function NoteProcessingSheet({ item, contacts, onClose, onChanged }: { it
   const alreadyProcessed = expectedAction !== null && item.appliedActions.some((action) => action.type === expectedAction && action.undoneAt === null);
   const listingAlreadyCreated = item.appliedActions.some((action) => action.type === "listing_created" && action.undoneAt === null);
 
-  async function saveEdits(): Promise<void> {
-    if (!session) return;
-    await changeInboxItem(session, { inboxItemId: item.id, text, kind, linkedContactId: contactId || null });
-    await onChanged();
+  async function saveEdits(): Promise<InboxItemRecord | null> {
+    if (!session) return null;
+    const updatedItem = await changeInboxItem(session, { inboxItemId: item.id, text, kind, linkedContactId: contactId || null });
+    await onChanged(updatedItem);
+    return updatedItem;
   }
 
   async function save() {
@@ -108,21 +109,22 @@ export function NoteProcessingSheet({ item, contacts, onClose, onChanged }: { it
     setPending("process"); setError(null);
     try {
       await saveEdits();
+      let processedItem: InboxItemRecord | null = null;
       if (kind === "person") {
         const contact = contactDraftSchema.parse({ fullName: personName, phone: personPhone, metAtPlace: "Akış notu", source: "other", role: "unknown" });
-        await processItem(session, { inboxItemId: item.id, action: "person", contact });
+        processedItem = (await processItem(session, { inboxItemId: item.id, action: "person", contact })).item;
       } else if (kind === "requirement") {
         if (!contactId) throw new Error("Talebi oluşturmak için kişiyi seç.");
         if (!analysis) throw new Error("Önce talep bilgilerini ve tarihi çıkarıp kontrol et.");
-        await processItem(session, { inboxItemId: item.id, action: "requirement", contactId, opportunityType, nextActionType: actionType, nextActionAt: new Date(actionAt).getTime(), approvedInsights: analysis?.insights ?? emptyVoiceInsights });
+        processedItem = (await processItem(session, { inboxItemId: item.id, action: "requirement", contactId, opportunityType, nextActionType: actionType, nextActionAt: new Date(actionAt).getTime(), approvedInsights: analysis?.insights ?? emptyVoiceInsights })).item;
       } else if (kind === "follow_up") {
         if (!contactId) throw new Error("Takibi oluşturmak için kişiyi seç.");
-        await processItem(session, { inboxItemId: item.id, action: "follow_up", contactId, nextActionType: actionType, nextActionAt: new Date(actionAt).getTime() });
+        processedItem = (await processItem(session, { inboxItemId: item.id, action: "follow_up", contactId, nextActionType: actionType, nextActionAt: new Date(actionAt).getTime() })).item;
       } else if (kind === "property") {
         if (!portfolio) throw new Error("Önce notu çözümle ve çıkarılan bilgileri kontrol et.");
-        await processItem(session, { inboxItemId: item.id, action: "portfolio", contactId: contactId || null, portfolio });
+        processedItem = (await processItem(session, { inboxItemId: item.id, action: "portfolio", contactId: contactId || null, portfolio })).item;
       }
-      await onChanged(); onClose();
+      await onChanged(processedItem ?? undefined); onClose();
     } catch (next) { setError(messageFrom(next)); }
     finally { setPending(null); }
   }

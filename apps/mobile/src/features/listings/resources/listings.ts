@@ -1,4 +1,4 @@
-import { createCommandId, type ExistingListingDraft, type Listing, type ListingDraft, type ListingStatus, type ListingTransition } from "@spherepath/shared";
+import { createCommandId, type ExistingListingDraft, type Listing, type ListingDraft, type ListingPriceUpdate, type ListingStatus, type ListingTransition } from "@spherepath/shared";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
 import { apiClient } from "@/shared/api/client";
 
@@ -7,3 +7,4 @@ export async function listListings(): Promise<ListingRecord[]> { return (await a
 export async function saveListing(session: WorkspaceSession, draft: ListingDraft): Promise<ListingRecord> { return (await apiClient.command<ListingDraft, { listing: ListingRecord }>("createListing", draft, createCommandId(session.uid))).listing; }
 export async function saveExistingListing(session: WorkspaceSession, draft: ExistingListingDraft): Promise<ListingRecord> { return (await apiClient.command<ExistingListingDraft, { listing: ListingRecord }>("importExistingListing", draft, createCommandId(session.uid))).listing; }
 export async function moveListing(session: WorkspaceSession, transition: ListingTransition): Promise<{ listingId: string; toStatus: ListingStatus; eventId: string }> { return apiClient.command<ListingTransition, { listingId: string; toStatus: ListingStatus; eventId: string }>("advanceListing", transition, createCommandId(session.uid)); }
+export async function updateListingPrice(session: WorkspaceSession, update: ListingPriceUpdate): Promise<void> { await apiClient.command<ListingPriceUpdate, { listingId: string }>("updateListingPrice", update, createCommandId(session.uid)); }

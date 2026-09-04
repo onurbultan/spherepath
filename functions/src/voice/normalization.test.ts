@@ -143,4 +143,11 @@ describe("voice extraction normalization", () => {
       mustHaves: ["Bahçeli"],
     });
   });
+
+  it("removes the known contact name from a location candidate", () => {
+    const transcript = "Elif Deneme Urla'da 12 milyon TL bütçeyle 3+1 bahçeli ev arıyor.";
+    const result = normalizeVoiceExtraction(extractVoiceDraft(transcript), transcript, "Elif Deneme");
+    expect(result.insights.propertyPreferences.preferredLocations).toEqual(["Urla"]);
+    expect(result.insights.propertyPreferences.budgetRange).toEqual({ min: null, max: 12_000_000, currency: "TRY" });
+  });
 });

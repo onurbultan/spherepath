@@ -85,6 +85,10 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve, 
   const choice = (selected: boolean) => [styles.choice, { backgroundColor: selected ? theme.deedBg : theme.card, borderColor: selected ? theme.deed : theme.line }];
   const shownError = localError ?? error;
 
+  if (task?.type === "complete_listing") {
+    return <Modal animationType="slide" presentationStyle="pageSheet" visible onRequestClose={close}><SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]}><View style={styles.content}><View style={styles.heading}><View style={styles.headingCopy}><SpText variant="eyebrow" color="deed">PORTFÖYÜ TAMAMLA</SpText><SpText variant="hero">{task.title}</SpText><SpText color="secondary">{task.reason}</SpText></View><Pressable accessibilityLabel="Kapat" onPress={close} style={[styles.icon, { borderColor: theme.line }]}><X color={theme.textSecondary} size={20} /></Pressable></View><SpText color="secondary">Bu iş, fiyat ve yayın hazırlığı gerçekten tamamlandığında kapanır. Portföy kaydını açıp eksik bilgiyi gir.</SpText>{onOpenRecord ? <Pressable onPress={() => onOpenRecord(task)} style={[styles.primary, { backgroundColor: theme.ask }]}><SpText style={{ color: theme.onAsk }}>Portföyü tamamla</SpText></Pressable> : null}</View></SafeAreaView></Modal>;
+  }
+
   return <Modal animationType="slide" presentationStyle="pageSheet" visible={Boolean(task)} onRequestClose={close}>
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -120,7 +124,7 @@ export function TaskResolutionSheet({ task, pending, error, onClose, onResolve, 
 
         {shownError ? <View accessibilityRole="alert" style={[styles.alert, { backgroundColor: theme.askBg }]}><SpText color="ask">{shownError}</SpText></View> : null}
 
-        {task && onOpenRecord ? <Pressable onPress={() => onOpenRecord(task)} style={[styles.secondary, { borderColor: theme.line }]}><SpText color="deed">Teması ayrıntılı kaydet</SpText></Pressable> : null}
+        {task && onOpenRecord ? <Pressable onPress={() => onOpenRecord(task)} style={[styles.secondary, { borderColor: theme.line }]}><SpText color="deed">{task.type === "return_call" ? "Kişiyi aç ve ara" : "Teması ayrıntılı kaydet"}</SpText></Pressable> : null}
         <Pressable disabled={pending} onPress={submit} style={[styles.primary, { backgroundColor: theme.ask, opacity: pending ? .6 : 1 }]}>
           <SpText style={{ color: theme.onAsk }}>{pending ? "Kaydediliyor…" : status === "rescheduled" ? "Yeni tarihe ertele" : status === "contact_opt_out" ? "İletişimi kapat" : "Sonucu kaydet"}</SpText>
         </Pressable>

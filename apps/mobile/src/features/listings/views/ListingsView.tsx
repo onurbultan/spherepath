@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Building2, Plus, X } from "lucide-react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   parseMoneyInput,
@@ -25,7 +26,9 @@ import { buttonMetrics, choiceMetrics, controlMetrics, largeButtonMetrics } from
 const messageFrom = (error: unknown) => error instanceof Error ? error.message : "Portföy işlemi tamamlanamadı.";
 
 export default function ListingsView() {
-  const theme = useSpTheme(); const { session } = useSession(); const queryClient = useQueryClient();
+  const theme = useSpTheme(); const { session } = useSession(); const queryClient = useQueryClient(); const router = useRouter();
+  const params = useLocalSearchParams<{ action?: string; ownerContactId?: string }>();
+  const requestedOwnerContactId = params.action === "add-listing" ? params.ownerContactId ?? "" : "";
   const scrollRef = useRef<ScrollView>(null);
   const listingsQuery = useQuery({ queryKey: apiQueryKeys.listings, queryFn: listListings });
   const opportunitiesQuery = useQuery({ queryKey: apiQueryKeys.opportunities, queryFn: listOpportunities });
@@ -33,7 +36,7 @@ export default function ListingsView() {
   const contacts = contactsQuery.data ?? [];
   const listings = listingsQuery.data ?? [];
   const candidates = (opportunitiesQuery.data ?? []).filter((item) => item.stage === "won" && !item.propertyId && ["seller_listing", "landlord_listing"].includes(item.type));
-  const [createOpen, setCreateOpen] = useState(false); const [importMode, setImportMode] = useState(false); const [ownerContactId, setOwnerContactId] = useState(""); const [existingOpportunityType, setExistingOpportunityType] = useState<"seller_listing" | "landlord_listing">("seller_listing"); const [moving, setMoving] = useState<ListingRecord | null>(null); const [pending, setPending] = useState(false); const [error, setError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(Boolean(requestedOwnerContactId)); const [importMode, setImportMode] = useState(Boolean(requestedOwnerContactId)); const [ownerContactId, setOwnerContactId] = useState(requestedOwnerContactId); const [existingOpportunityType, setExistingOpportunityType] = useState<"seller_listing" | "landlord_listing">("seller_listing"); const [moving, setMoving] = useState<ListingRecord | null>(null); const [pending, setPending] = useState(false); const [error, setError] = useState<string | null>(null);
   // The property is already in memory from the call that won the mandate, so the
   // form should not ask for it again; anything the advisor has typed wins.
   const ownerMemory = contacts.find((item) => item.id === ownerContactId)?.memory;
@@ -53,7 +56,7 @@ export default function ListingsView() {
     if (!areaM2 && preferences.areaMinM2 !== null) setAreaM2(String(preferences.areaMinM2));
   }
 
-  async function create() { if (!session) return; const common = { address, regionSlug, propertyType, roomCount: roomCount ? Number(roomCount) : null, areaM2: areaM2 ? Number(areaM2) : null, features, authorizationType, askingPrice: parseMoneyInput(askingPrice), currency, expiresAt: null }; const parsed = importMode ? existingListingDraftSchema.safeParse({ ...common, ownerContactId, opportunityType: existingOpportunityType }) : listingDraftSchema.safeParse({ ...common, opportunityId: selectedOpportunityId }); if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Portföy bilgilerini kontrol et."); setPending(true); setError(null); try { if (importMode) await saveExistingListing(session, parsed.data as Parameters<typeof saveExistingListing>[1]); else await saveListing(session, parsed.data as Parameters<typeof saveListing>[1]); setCreateOpen(false); setAddress(""); setRegionSlug(""); setAskingPrice(""); setOwnerContactId(""); await invalidate(); } catch (nextError) { setError(messageFrom(nextError)); } finally { setPending(false); } }
+  async function create() { if (!session) return; const common = { address, regionSlug, propertyType, roomCount: roomCount ? Number(roomCount) : null, areaM2: areaM2 ? Number(areaM2) : null, features, authorizationType, askingPrice: parseMoneyInput(askingPrice), currency, expiresAt: null }; const parsed = importMode ? existingListingDraftSchema.safeParse({ ...common, ownerContactId, opportunityType: existingOpportunityType }) : listingDraftSchema.safeParse({ ...common, opportunityId: selectedOpportunityId }); if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Portföy bilgilerini kontrol et."); setPending(true); setError(null); try { if (importMode) await saveExistingListing(session, parsed.data as Parameters<typeof saveExistingListing>[1]); else await saveListing(session, parsed.data as Parameters<typeof saveListing>[1]); setCreateOpen(false); if (requestedOwnerContactId) router.replace("/(tabs)/listings"); setAddress(""); setRegionSlug(""); setAskingPrice(""); setOwnerContactId(""); await invalidate(); } catch (nextError) { setError(messageFrom(nextError)); } finally { setPending(false); } }
   function openMove(listing: ListingRecord) { const next = nextListingStatuses(listing.status)[0]; if (!next) return; setMoving(listing); setTargetStatus(next); setReason(""); setError(null); }
   async function move() { if (!session || !moving) return; const parsed = listingTransitionSchema.safeParse({ listingId: moving.id, toStatus: targetStatus, reason: reason.trim() || null }); if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Durum bilgisini kontrol et."); setPending(true); setError(null); try { await moveListing(session, parsed.data); setMoving(null); await invalidate(); } catch (nextError) { setError(messageFrom(nextError)); } finally { setPending(false); } }
 

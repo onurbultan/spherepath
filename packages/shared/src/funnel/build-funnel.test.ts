@@ -52,3 +52,31 @@ describe("coaching names the record", () => {
     expect(result.target).toBe("capture");
   });
 });
+
+describe("lead coaching follows the relationship path", () => {
+  const leadCounts: FunnelCounts = { newPeople: 8, leads: 2, appointments: 0, portfolioMeetings: 0, authorizedListings: 0, negotiations: 0, closings: 0 };
+
+  it("asks for an introduction only for an introduced lead", () => {
+    const subject = { kind: "opportunity" as const, id: "o-1", name: "Elif", detail: "referans", opportunityType: "buyer_requirement" as const, introduced: true };
+    const result = buildFunnelCoaching(leadCounts, { ...emptyFunnelSubjects, oldestOpportunityWithoutAppointment: subject });
+    expect(result.script).toContain("tanıştırabilir");
+  });
+
+  it("asks a direct buyer for a needs meeting", () => {
+    const subject = { kind: "opportunity" as const, id: "o-2", name: "Deniz", detail: "doğrudan", opportunityType: "buyer_requirement" as const, introduced: false };
+    const result = buildFunnelCoaching(leadCounts, { ...emptyFunnelSubjects, oldestOpportunityWithoutAppointment: subject });
+    expect(result.title).toContain("İhtiyaç görüşmesini");
+    expect(result.script).not.toContain("tanıştırabilir");
+  });
+});
+
+describe("portfolio readiness coaching", () => {
+  it("finishes an unpriced authorization before recommending presentations", () => {
+    const counts: FunnelCounts = { newPeople: 5, leads: 1, appointments: 1, portfolioMeetings: 1, authorizedListings: 1, negotiations: 0, closings: 0 };
+    const subject = { kind: "listing" as const, id: "listing-1", name: "Moda Caddesi 42", detail: "fiyat bekliyor" };
+    const result = buildFunnelCoaching(counts, { ...emptyFunnelSubjects, oldestUnreadyListing: subject });
+    expect(result.title).toBe("Portföyü pazara hazırla");
+    expect(result.subject).toEqual(subject);
+    expect(result.target).toBe("listings");
+  });
+});

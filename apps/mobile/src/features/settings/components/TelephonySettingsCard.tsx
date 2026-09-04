@@ -6,10 +6,10 @@ import { apiQueryKeys } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
 import { SpCard } from "@/shared/ui/SpCard";
 import { SpText } from "@/shared/ui/SpText";
-import { SpButton, SpChoice, SpField, SpInput } from "@/shared/ui/SpField";
+import { SpButton, SpField, SpInput } from "@/shared/ui/SpField";
 import { useSpTheme } from "@/shared/ui/theme";
 import { radius, space } from "@/shared/ui/tokens.generated";
-import { configureCallIntegration, connectCallProvider, listCallAnnouncements, loadCallIntegration, loadOfficeTeam } from "../resources/settings";
+import { configureCallIntegration, connectCallProvider, loadCallIntegration, loadOfficeTeam } from "../resources/settings";
 
 const messageFrom = (error: unknown) => error instanceof Error ? error.message : "Telefon ayarları güncellenemedi.";
 const functionsOrigin = "https://europe-west8-spherepath-96ecd.cloudfunctions.net";
@@ -31,8 +31,6 @@ export function TelephonySettingsCard() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
-  const [noticeId, setNoticeId] = useState<number | null>(null);
-  const announcementsQuery = useQuery({ queryKey: apiQueryKeys.callAnnouncements, queryFn: listCallAnnouncements, enabled: Boolean(integrationQuery.data) });
 
   const integration = integrationQuery.data;
   const members = teamQuery.data?.members ?? [];
@@ -48,10 +46,7 @@ export function TelephonySettingsCard() {
       const extensionOwners = Object.fromEntries(
         Object.entries(byAdvisor).filter(([, extension]) => extension.trim()).map(([uid, extension]) => [extension.trim(), uid]),
       );
-      await configureCallIntegration(session, {
-        extensionOwners, rotateToken,
-        recordingNoticeAnnouncementId: noticeId ?? integration?.recordingNoticeAnnouncementId ?? null,
-      });
+      await configureCallIntegration(session, { extensionOwners, rotateToken });
       setExtensions(null);
       if (rotateToken) setConnected(null);
       setMessage(rotateToken ? "Yeni webhook adresi üretildi; Verimor panelindeki adresi güncelleyin." : "Telefon ayarları kaydedildi.");
@@ -97,7 +92,7 @@ export function TelephonySettingsCard() {
         </View>
       </View>
       <SpText variant="bodySmall" color="secondary">
-        Giden aramada santral, danışmanın profilindeki telefonu arar; o açınca müşteriye bağlar. Buradaki dahili numara ise gelen çağrının hangi danışmana düşeceğini belirler.
+        Giden aramada santral, danışmanın profilindeki telefonu arar; o açınca müşteriye bağlar. Yalnız çağrı zamanı, süresi ve sonucu tutulur; görüşme sesi kaydedilmez.
       </SpText>
 
       {integrationQuery.isPending ? (
@@ -114,29 +109,6 @@ export function TelephonySettingsCard() {
               />
             </SpField>
           ))}
-
-          {/* Recording someone without telling them is the last thing standing
-              between this and an office; the file is usually already on the account. */}
-          <SpField label="Kayıt bildirimi anonsu · müşteriye çalınır">
-            <View style={styles.notices}>
-              {[{ id: 0, name: "Seçilmedi" }, ...(announcementsQuery.data ?? [])].map((item) => {
-                const selected = (noticeId ?? integration?.recordingNoticeAnnouncementId ?? 0) === item.id;
-                return (
-                  <SpChoice
-                    key={item.id}
-                    label={item.name}
-                    onPress={() => setNoticeId(item.id === 0 ? null : item.id)}
-                    selected={selected}
-                  />
-                );
-              })}
-            </View>
-          </SpField>
-          {!(noticeId ?? integration?.recordingNoticeAnnouncementId) ? (
-            <View style={[styles.notice, { backgroundColor: theme.askBg }]}>
-              <SpText variant="bodySmall" color="ask">Anons seçilmeden karşı taraf kaydedildiğini duymuyor.</SpText>
-            </View>
-          ) : null}
 
           {integration ? (
             <View style={[styles.addresses, { backgroundColor: theme.sunk }]}>
@@ -170,7 +142,6 @@ export function TelephonySettingsCard() {
 }
 
 const styles = StyleSheet.create({
-  notices: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   card: { gap: space.md },
   title: { flexDirection: "row", alignItems: "center", gap: space.md },
   flex: { flex: 1 },

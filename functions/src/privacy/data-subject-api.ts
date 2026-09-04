@@ -2,6 +2,7 @@ import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/fires
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   createDataSubjectRequestSchema,
+  contactDataExportSchema,
   resolveDataSubjectRequestSchema,
   type ContactDataExport,
   type DataSubjectRequestStatus,
@@ -189,11 +190,18 @@ function publicRecord(record: Record<string, unknown>) {
 
 export const getContactDataExport = onCall(callableOptions, async (request): Promise<{ export: ContactDataExport }> => {
   const claims = requireSpherepathClaims(request);
-  const envelope = readApiEnvelope<{ contactId?: unknown }>(request.data);
-  if (typeof envelope.data?.contactId !== "string") throw new HttpsError("invalid-argument", "contactId is invalid.");
-  const contactId = envelope.data.contactId;
+  const envelope = readApiEnvelope<unknown>(request.data);
+  const parsed = contactDataExportSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Data export request is invalid.", parsed.error.flatten());
   return observeApiRequest("getContactDataExport", envelope.requestId, async () => {
     const firestore = getFirestore();
+    const requestSnapshot = await firestore.collection("dataSubjectRequests").doc(parsed.data.requestId).get();
+    const requestData = requestSnapshot.data();
+    if (!requestData || !canManage(requestData, claims)) throw new HttpsError("not-found", "Data subject request was not found.");
+    if (requestData.type !== "access" || !["approved", "completed"].includes(requestData.status as string)) {
+      throw new HttpsError("failed-precondition", "Identity verification and an approved access request are required for export.");
+    }
+    const contactId = requestData.contactId as string;
     const contactSnapshot = await firestore.collection("contacts").doc(contactId).get();
     if (!contactSnapshot.exists || !canManage(contactSnapshot.data()!, claims)) throw new HttpsError("not-found", "Contact was not found.");
     const [interactions, sourceReferrals, referredReferrals, opportunities, presentations, deals, voiceNotes, inboxItems] = await Promise.all([
@@ -208,7 +216,7 @@ export const getContactDataExport = onCall(callableOptions, async (request): Pro
     ]);
     const contact = contactSnapshot.data()!;
     const relationship = contact.relationship as DocumentData;
-    return { export: {
+    const contactExport: ContactDataExport = {
       generatedAt: Date.now(),
       contact: publicRecord({ id: contactSnapshot.id, ...contact }),
       relationshipSignals: [
@@ -232,6 +240,16 @@ export const getContactDataExport = onCall(callableOptions, async (request): Pro
         updatedAt: item.updatedAt,
       })),
       inboxItems: inboxItems.map((item) => publicRecord({ id: item.id, source: item.source, safeText: item.safeText, summary: item.summary, kind: item.kind, status: item.status, appliedActions: item.appliedActions, createdAt: item.createdAt, updatedAt: item.updatedAt })),
-    } };
+    };
+    await firestore.collection("auditEvents").add({
+      officeId: claims.officeId,
+      actorUid: claims.uid,
+      action: "contact_data_exported",
+      entityType: "data_subject_request",
+      entityId: requestSnapshot.id,
+      metadata: { requestType: "access" },
+      createdAt: Timestamp.now(),
+    });
+    return { export: contactExport };
   });
 });

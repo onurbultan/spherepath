@@ -6,6 +6,15 @@ export type DataSubjectRequestType = (typeof dataSubjectRequestTypes)[number];
 export const dataSubjectRequestStatuses = ["pending_verification", "approved", "processing", "completed", "rejected", "failed"] as const;
 export type DataSubjectRequestStatus = (typeof dataSubjectRequestStatuses)[number];
 
+export const dataSubjectRequestStatusLabels: Record<DataSubjectRequestStatus, string> = {
+  pending_verification: "Kimlik doğrulaması bekliyor",
+  approved: "Onaylandı",
+  processing: "İşleniyor",
+  completed: "Tamamlandı",
+  rejected: "Reddedildi",
+  failed: "İşlem başarısız",
+};
+
 export const dataSubjectRequestTypeLabels: Record<DataSubjectRequestType, string> = {
   access: "Erişim / veri kopyası",
   correction: "Düzeltme",
@@ -38,6 +47,11 @@ export const resolveDataSubjectRequestSchema = z.object({
 
 export type CreateDataSubjectRequestInput = z.infer<typeof createDataSubjectRequestSchema>;
 export type ResolveDataSubjectRequestInput = z.infer<typeof resolveDataSubjectRequestSchema>;
+
+export const contactDataExportSchema = z.object({
+  requestId: z.string().min(1).max(160),
+}).strict();
+export type ContactDataExportInput = z.infer<typeof contactDataExportSchema>;
 
 export interface DataSubjectRequestView {
   id: string;

@@ -1,10 +1,13 @@
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
-  assertOpportunityTransition,
+  assertOpportunityTransitionFor,
   opportunityStageCorrectionSchema,
   opportunityTransitionSchema,
+  reconcileMirroredOpenAction,
   type OpportunityStage,
+  type OpportunityType,
+  type NextActionType,
 } from "../../../packages/shared/src/index";
 import { requireSpherepathClaims } from "../auth/claims.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
@@ -13,6 +16,10 @@ interface OpportunityDocument {
   officeId: string;
   ownerUid: string;
   stage: OpportunityStage;
+  type: OpportunityType;
+  subjectContactId: string;
+  nextActionAt: Timestamp | null;
+  nextActionType: NextActionType | null;
   deletedAt: unknown;
 }
 
@@ -62,7 +69,7 @@ export const advanceOpportunity = onCall(
       if (!canManage) throw new HttpsError("permission-denied", "Opportunity is outside your workspace.");
 
       try {
-        assertOpportunityTransition(opportunity.stage, command.toStage);
+        assertOpportunityTransitionFor(opportunity.type, opportunity.stage, command.toStage);
       } catch {
         throw new HttpsError(
           "failed-precondition",
@@ -70,8 +77,12 @@ export const advanceOpportunity = onCall(
         );
       }
 
-      const now = Timestamp.now();
       const closing = command.toStage === "won" || command.toStage === "lost";
+      const contactRef = opportunity.subjectContactId
+        ? firestore.collection("contacts").doc(opportunity.subjectContactId)
+        : null;
+      const contactSnapshot = contactRef ? await transaction.get(contactRef) : null;
+      const now = Timestamp.now();
       transaction.update(opportunityRef, {
         stage: command.toStage,
         stageEnteredAt: now,
@@ -95,6 +106,23 @@ export const advanceOpportunity = onCall(
         occurredAt: now,
         createdAt: now,
       });
+      const contactActionAt = contactSnapshot?.data()?.relationship?.nextActionAt;
+      const opportunityActionAt = opportunity.nextActionAt;
+      const contact = contactSnapshot?.data();
+      const contactBelongsToOpportunity = contactSnapshot?.exists && contact?.officeId === opportunity.officeId &&
+        contact?.ownerUid === opportunity.ownerUid && contact?.deletedAt === null;
+      const reconciledAction = contactRef && contactBelongsToOpportunity ? reconcileMirroredOpenAction(
+        { type: contactSnapshot.data()?.relationship?.nextActionType ?? null, at: contactActionAt instanceof Timestamp ? contactActionAt.toMillis() : null },
+        { type: opportunity.nextActionType, at: opportunityActionAt instanceof Timestamp ? opportunityActionAt.toMillis() : null },
+        { type: command.nextActionType, at: command.nextActionAt },
+      ) : undefined;
+      if (contactRef && reconciledAction) {
+        transaction.update(contactRef, {
+          "relationship.nextActionAt": reconciledAction.at === null ? null : Timestamp.fromMillis(reconciledAction.at),
+          "relationship.nextActionType": reconciledAction.type,
+          updatedAt: now,
+        });
+      }
 
       const receipt = {
         opportunityId: opportunityRef.id,
@@ -144,9 +172,25 @@ export const correctOpportunityStage = onCall(
         const canManage = opportunity.officeId === claims.officeId && (opportunity.ownerUid === claims.uid || claims.role === "broker") && opportunity.deletedAt === null;
         if (!canManage) throw new HttpsError("permission-denied", "Opportunity is outside your workspace.");
         if (opportunity.stage === parsed.data.toStage) throw new HttpsError("failed-precondition", "Opportunity is already in that stage.");
-        const now = Timestamp.now();
         const terminal = parsed.data.toStage === "won" || parsed.data.toStage === "lost";
+        const contactRef = opportunity.subjectContactId ? firestore.collection("contacts").doc(opportunity.subjectContactId) : null;
+        const contactSnapshot = contactRef ? await transaction.get(contactRef) : null;
+        const now = Timestamp.now();
         transaction.update(opportunityRef, { stage: parsed.data.toStage, stageEnteredAt: now, updatedAt: now, closedAt: terminal ? now : null, lostReason: parsed.data.toStage === "lost" ? parsed.data.lostReason : null, lostKind: parsed.data.toStage === "lost" ? parsed.data.lostKind : "lost", nextActionAt: parsed.data.nextActionAt === null ? null : Timestamp.fromMillis(parsed.data.nextActionAt), nextActionType: parsed.data.nextActionType });
+        const contactActionAt = contactSnapshot?.data()?.relationship?.nextActionAt;
+        const contact = contactSnapshot?.data();
+        const contactBelongsToOpportunity = contactSnapshot?.exists && contact?.officeId === opportunity.officeId &&
+          contact?.ownerUid === opportunity.ownerUid && contact?.deletedAt === null;
+        const reconciledAction = contactRef && contactBelongsToOpportunity ? reconcileMirroredOpenAction(
+          { type: contactSnapshot.data()?.relationship?.nextActionType ?? null, at: contactActionAt instanceof Timestamp ? contactActionAt.toMillis() : null },
+          { type: opportunity.nextActionType, at: opportunity.nextActionAt instanceof Timestamp ? opportunity.nextActionAt.toMillis() : null },
+          { type: parsed.data.nextActionType, at: parsed.data.nextActionAt },
+        ) : undefined;
+        if (contactRef && reconciledAction) transaction.update(contactRef, {
+          "relationship.nextActionAt": reconciledAction.at === null ? null : Timestamp.fromMillis(reconciledAction.at),
+          "relationship.nextActionType": reconciledAction.type,
+          updatedAt: now,
+        });
         transaction.create(eventRef, { officeId: opportunity.officeId, ownerUid: opportunity.ownerUid, entityType: "opportunity", entityId: opportunityRef.id, fromStage: opportunity.stage, toStage: parsed.data.toStage, reason: `Düzeltme: ${parsed.data.reason}`, correction: true, commandId: envelope.commandId, occurredAt: now, createdAt: now });
         transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "correctOpportunityStage", opportunityId: opportunityRef.id, toStage: parsed.data.toStage, eventId: eventRef.id, createdAt: now });
         return { opportunityId: opportunityRef.id, toStage: parsed.data.toStage, eventId: eventRef.id };

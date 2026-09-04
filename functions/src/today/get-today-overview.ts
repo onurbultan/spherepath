@@ -8,6 +8,15 @@ function millis(value: unknown): number | null {
   return value instanceof Timestamp ? value.toMillis() : null;
 }
 
+const dailyPlanSchemaVersion = 2;
+
+function candidateFingerprint(tasks: readonly TodayTask[]): string {
+  return [...tasks]
+    .map((task) => `${task.id}:${task.dueAt ?? "none"}:${task.priority}`)
+    .sort()
+    .join("|");
+}
+
 export const getTodayOverview = onCall(
   {
     region: "europe-west8",
@@ -84,7 +93,20 @@ export const getTodayOverview = onCall(
       })
       .filter((opportunity) => opportunity.deletedAt === null);
 
-    const listings = listingsSnapshot.docs.map((item) => ({ id: item.id, status: item.data().status, createdAt: millis(item.data().createdAt) ?? 0, askingPrice: (item.data().askingPrice ?? null) as number | null, ownerContactId: (item.data().ownerContactId ?? null) as string | null, deletedAt: millis(item.data().deletedAt) })).filter((item) => item.deletedAt === null);
+    const opportunityContacts = new Map(opportunitiesSnapshot.docs.map((item) => [item.id, item.data().subjectContactId as string]));
+    const listings = listingsSnapshot.docs.map((item) => {
+      const data = item.data();
+      const ownerContactId = opportunityContacts.get(data.opportunityId as string) ?? null;
+      return {
+        id: item.id,
+        status: data.status,
+        createdAt: millis(data.createdAt) ?? 0,
+        askingPrice: (data.askingPrice ?? null) as number | null,
+        ownerContactId,
+        ownerContactName: ownerContactId ? contactNames.get(ownerContactId) ?? null : null,
+        deletedAt: millis(data.deletedAt),
+      };
+    }).filter((item) => item.deletedAt === null);
     const deals = dealsSnapshot.docs.map((item) => ({ id: item.id, stage: item.data().stage, closedAt: millis(item.data().closedAt), deletedAt: millis(item.data().deletedAt) })).filter((item) => item.deletedAt === null);
     const interactions = interactionsSnapshot.docs.map((item) => {
       const data = item.data();
@@ -138,6 +160,8 @@ export const getTodayOverview = onCall(
     const visibleCandidates = candidateOverview.tasks.filter((task) => !suppressedContactIds.includes(task.contactId));
     const storedSnapshots = (planSnapshot.data()?.taskSnapshots ?? []) as TodayTask[];
     const storedTaskIds = planSnapshot.exists ? ((planSnapshot.data()!.taskIds ?? []) as string[]) : [];
+    const storedSchemaVersion = Number(planSnapshot.data()?.schemaVersion ?? 0);
+    const fingerprint = candidateFingerprint(visibleCandidates);
     // The day's list is pinned so it does not reshuffle while it is being worked,
     // but a pinned task whose condition has since gone stops being work: "record a
     // first interaction" survives the interaction that answers it, and the list
@@ -145,15 +169,15 @@ export const getTodayOverview = onCall(
     // stays, so the tick they gave it does not disappear.
     const candidateIds = new Set(visibleCandidates.map((task) => task.id));
     const liveStoredTaskIds = storedTaskIds.filter((taskId) => candidateIds.has(taskId) || resolutionById.has(taskId));
-    const taskIds = planSnapshot.exists
+    const taskIds = planSnapshot.exists && storedSchemaVersion === dailyPlanSchemaVersion
       ? topUpDailyPlanTasks([...storedSnapshots, ...visibleCandidates], liveStoredTaskIds)
       : selectDailyPlanTasks(visibleCandidates).map((task) => task.id);
     const snapshotById = new Map([...storedSnapshots, ...visibleCandidates].map((task) => [task.id, task]));
     const selectedSnapshots = taskIds.flatMap((taskId) => { const task = snapshotById.get(taskId); return task ? [task] : []; });
     if (!planSnapshot.exists) {
-      await planRef.set({ officeId: claims.officeId, ownerUid: claims.uid, dayKey, taskIds, taskSnapshots: selectedSnapshots, suppressedContactIds: [], createdAt: Timestamp.fromMillis(now), updatedAt: Timestamp.fromMillis(now) });
-    } else if (taskIds.join("|") !== storedTaskIds.join("|")) {
-      await planRef.update({ taskIds, taskSnapshots: selectedSnapshots, updatedAt: Timestamp.fromMillis(now) });
+      await planRef.set({ officeId: claims.officeId, ownerUid: claims.uid, dayKey, schemaVersion: dailyPlanSchemaVersion, candidateFingerprint: fingerprint, taskIds, taskSnapshots: selectedSnapshots, suppressedContactIds: [], createdAt: Timestamp.fromMillis(now), updatedAt: Timestamp.fromMillis(now) });
+    } else if (taskIds.join("|") !== storedTaskIds.join("|") || storedSchemaVersion !== dailyPlanSchemaVersion || planSnapshot.data()?.candidateFingerprint !== fingerprint) {
+      await planRef.update({ schemaVersion: dailyPlanSchemaVersion, candidateFingerprint: fingerprint, taskIds, taskSnapshots: selectedSnapshots, updatedAt: Timestamp.fromMillis(now) });
     }
     const tasksById = new Map(selectedSnapshots.map((task) => [task.id, task]));
     const plannedTasks = taskIds.flatMap((taskId) => {
@@ -165,7 +189,20 @@ export const getTodayOverview = onCall(
       const resolution = resolutionById.get(task.id) ?? optOutResolutionByContactId.get(task.contactId);
       return { ...task, resolutionStatus: resolution?.status ?? null, resolutionNote: resolution?.note ?? null };
     });
-    return { overview: { ...candidateOverview, tasks: plannedTasks, allTasks, completedTaskCount: plannedTasks.filter((task) => task.resolutionStatus).length } };
+    const withResolution = (task: TodayTask) => {
+      const resolution = resolutionById.get(task.id) ?? optOutResolutionByContactId.get(task.contactId);
+      return { ...task, resolutionStatus: resolution?.status ?? null, resolutionNote: resolution?.note ?? null };
+    };
+    const visibleContactIds = new Set(visibleCandidates.map((task) => task.contactId));
+    return { overview: {
+      ...candidateOverview,
+      tasks: plannedTasks,
+      allTasks,
+      overdueTasks: candidateOverview.overdueTasks.filter((task) => visibleContactIds.has(task.contactId)).map(withResolution),
+      todayTasks: candidateOverview.todayTasks.filter((task) => visibleContactIds.has(task.contactId)).map(withResolution),
+      upcomingTasks: candidateOverview.upcomingTasks.filter((task) => !suppressedContactIds.includes(task.contactId)).map(withResolution),
+      completedTaskCount: plannedTasks.filter((task) => task.resolutionStatus).length,
+    } };
     });
   },
 );
@@ -177,18 +214,22 @@ export const completeDailyTask = onCall(
     const envelope = readApiEnvelope<DailyTaskOutcome>(request.data, { command: true });
     const parsed = dailyTaskOutcomeSchema.safeParse(envelope.data);
     if (!parsed.success) throw new HttpsError("invalid-argument", "Daily task outcome is invalid.", parsed.error.flatten());
-    if (!/^(next-action|first-interaction|opportunity-action)-/.test(parsed.data.taskId)) throw new HttpsError("invalid-argument", "Daily task identifier is invalid.");
+    if (!/^(next-action|first-interaction|opportunity-action|missed-call)-/.test(parsed.data.taskId)) throw new HttpsError("invalid-argument", "Daily task identifier is invalid.");
     return observeApiRequest("completeDailyTask", envelope.requestId, async () => {
       const db = getFirestore();
       const commandRef = db.collection("commands").doc(envelope.commandId!);
       const completionRef = db.collection("dailyTaskCompletions").doc(`${claims.uid}-${istanbulDayKey(Date.now())}-${parsed.data.taskId}`.replace(/[^a-zA-Z0-9_-]/g, "_"));
       const opportunityPrefix = "opportunity-action-";
+      const callPrefix = "missed-call-";
       const contactPrefixes = ["next-action-", "first-interaction-"] as const;
       const opportunityId = parsed.data.taskId.startsWith(opportunityPrefix) ? parsed.data.taskId.slice(opportunityPrefix.length) : null;
+      const callId = parsed.data.taskId.startsWith(callPrefix) ? parsed.data.taskId.slice(callPrefix.length) : null;
       const contactPrefix = contactPrefixes.find((prefix) => parsed.data.taskId.startsWith(prefix));
       const contactId = contactPrefix ? parsed.data.taskId.slice(contactPrefix.length) : null;
       const targetRef = opportunityId
         ? db.collection("opportunities").doc(opportunityId)
+        : callId
+          ? db.collection("calls").doc(callId)
         : contactId
           ? db.collection("contacts").doc(contactId)
           : null;
@@ -233,6 +274,17 @@ export const completeDailyTask = onCall(
             && contactActionAt instanceof Timestamp
             && opportunityActionAt instanceof Timestamp
             && Math.abs(contactActionAt.toMillis() - opportunityActionAt.toMillis()) <= 5 * 60 * 1_000;
+        } else if (callId && typeof targetData.contactId === "string") {
+          const contactRef = db.collection("contacts").doc(targetData.contactId);
+          const contactSnapshot = await transaction.get(contactRef);
+          const contactData = contactSnapshot.data();
+          if (contactSnapshot.exists
+            && contactData?.officeId === claims.officeId
+            && (contactData?.ownerUid === claims.uid || claims.role === "broker")
+            && !(contactData?.deletedAt instanceof Timestamp)) {
+            resolvedContactRef = contactRef;
+            resolvedContactData = contactData ?? null;
+          }
         }
 
         if (parsed.data.status === "contact_opt_out" && (!resolvedContactRef || !resolvedContactData)) {
@@ -256,8 +308,15 @@ export const completeDailyTask = onCall(
               updatedAt: now,
             });
           }
-        } else if (contactId && (contactPrefix === "next-action-" || parsed.data.status === "rescheduled") && parsed.data.status !== "contact_opt_out") {
-          transaction.update(targetRef, {
+        } else if (
+          parsed.data.status !== "contact_opt_out"
+          && resolvedContactRef
+          && (
+            (Boolean(contactId) && (contactPrefix === "next-action-" || parsed.data.status === "rescheduled"))
+            || (Boolean(callId) && parsed.data.status === "rescheduled")
+          )
+        ) {
+          transaction.update(resolvedContactRef, {
             "relationship.nextActionAt": parsed.data.status === "rescheduled" ? Timestamp.fromMillis(parsed.data.rescheduledAt!) : null,
             "relationship.nextActionType": parsed.data.status === "rescheduled" ? parsed.data.rescheduledActionType : null,
             updatedAt: now,

@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { apiQueryKeys, callRecordingStatusLabels, callSummaryLabel, type CallRecordView } from "@spherepath/shared";
-import { PhoneIncoming, PhoneMissed, PhoneOutgoing, RefreshCw, Sparkles } from "lucide-react";
+import { apiQueryKeys, type CallRecordView } from "@spherepath/shared";
+import { PhoneIncoming, PhoneMissed, PhoneOutgoing, RefreshCw } from "lucide-react";
 import { SpCard } from "@/shared/ui/SpCard";
 import { listContactCalls } from "../resources/calls";
 
@@ -54,7 +53,6 @@ export function ContactCallHistory({ contactId }: { contactId: string }) {
         <ol className="contact-history-list">
           {calls.map((call) => {
             const Icon = !call.answered ? PhoneMissed : call.direction === "outbound" ? PhoneOutgoing : PhoneIncoming;
-            const summary = callSummaryLabel(call);
             return (
               <li className={call.answered ? "" : "contact-history-alert"} key={call.id}>
                 <span className="contact-history-icon"><Icon size={15} aria-hidden /></span>
@@ -65,12 +63,7 @@ export function ContactCallHistory({ contactId }: { contactId: string }) {
                   </div>
                   <p>{call.answered ? `${spokenFor(call.talkDurationMs)} görüşüldü.` : "Görüşme gerçekleşmedi; geri dönülmeyi bekliyor."}</p>
                   <div className="contact-history-tags">
-                    {call.answered ? <span>{callRecordingStatusLabels[call.recordingStatus]}</span> : null}
-                    {summary && call.noteStatus === "needs_review" && call.contactId
-                      // Saying a summary is waiting without a way to reach it leaves
-                      // the advisor hunting for the capture screen.
-                      ? <Link className="contact-history-review" href={`/capture?contactId=${encodeURIComponent(call.contactId)}`}><Sparkles size={12} aria-hidden /> {summary}</Link>
-                      : summary ? <span><Sparkles size={12} aria-hidden /> {summary}</span> : null}
+                    {call.answered ? <span>Yalnız arama bilgisi</span> : null}
                     {call.contactCreatedFromCall ? <span>Bu aramayla eklendi</span> : null}
                   </div>
                 </div>

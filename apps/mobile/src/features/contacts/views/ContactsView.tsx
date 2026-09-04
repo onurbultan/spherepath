@@ -33,7 +33,7 @@ import {
   type ContactDraft,
   type ContactPrivacyDraft,
 } from "@spherepath/shared";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSession } from "@/features/auth/resources/session";
 import { SpCard } from "@/shared/ui/SpCard";
 import { SpText } from "@/shared/ui/SpText";
@@ -73,9 +73,10 @@ function messageFrom(error: unknown) {
 export default function ContactsView() {
   const theme = useSpTheme();
   const router = useRouter();
+  const { next, contactId, action } = useLocalSearchParams<{ next?: string; contactId?: string; action?: string }>();
   const { session, signOut } = useSession();
   const queryClient = useQueryClient();
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(next === "listings");
   const [editing, setEditing] = useState<ContactRecord | null>(null);
   const [draft, setDraft] = useState<ContactDraft>(emptyDraft);
   const [pending, setPending] = useState(false);
@@ -95,6 +96,15 @@ export default function ContactsView() {
     enabled: Boolean(session),
   });
   const contacts = useMemo(() => contactsQuery.data ?? [], [contactsQuery.data]);
+  const [openedPrivacyFor, setOpenedPrivacyFor] = useState<string | null>(null);
+  const privacyLinkTarget = action === "privacy" && contactId && openedPrivacyFor !== contactId
+    ? contacts.find((contact) => contact.id === contactId) ?? null
+    : null;
+  if (privacyLinkTarget) {
+    setOpenedPrivacyFor(privacyLinkTarget.id);
+    setPrivacyEditing(privacyLinkTarget);
+    setPrivacy(privacyDraft(privacyLinkTarget));
+  }
   const filteredContacts = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase("tr-TR");
     if (!needle) return contacts;
@@ -144,12 +154,15 @@ export default function ContactsView() {
     }
     setPending(true);
     try {
-      await saveContact(session, parsed.data, editing ?? undefined);
+      const savedContact = await saveContact(session, parsed.data, editing ?? undefined);
       setPanelOpen(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
       ]);
+      if (!editing && next === "listings") {
+        router.replace({ pathname: "/(tabs)/listings", params: { action: "add-listing", ownerContactId: savedContact.id } });
+      }
     } catch (nextError) {
       setError(messageFrom(nextError));
     } finally {

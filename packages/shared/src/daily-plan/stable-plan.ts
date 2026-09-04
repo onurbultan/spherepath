@@ -1,4 +1,6 @@
-import type { TodayTask } from "../today/build-overview.js";
+import { istanbulDayKey, type TodayTask } from "../today/build-overview.js";
+
+export { istanbulDayKey } from "../today/build-overview.js";
 
 export interface DailyPlanSelection {
   taskIds: string[];
@@ -6,10 +8,6 @@ export interface DailyPlanSelection {
 }
 
 const priorityWeight: Record<TodayTask["priority"], number> = { overdue: 3, bottleneck: 2, relationship: 1 };
-
-export function istanbulDayKey(timestamp: number): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(timestamp));
-}
 
 export function selectDailyPlanTasks(tasks: readonly TodayTask[], limit = 5, excludedIds: ReadonlySet<string> = new Set()): TodayTask[] {
   const seenContacts = new Set<string>();

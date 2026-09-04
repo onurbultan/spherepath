@@ -94,7 +94,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await page.getByRole("button", { name: "Yeni kişi" }).click();
   const contactDialog = page.getByRole("dialog");
   await contactDialog.getByLabel("Ad, soyad veya tanımlayıcı").fill(contactName);
-  await contactDialog.getByLabel("Telefon isteğe bağlı").fill("+905551112233");
+  await contactDialog.getByLabel("Telefon numarası").fill("5551112233");
   await contactDialog.getByLabel("Tanışma yeri isteğe bağlı").fill("Urla açık ev etkinliği");
   await contactDialog.getByLabel("Rol").selectOption({ label: "Satıcı" });
   await contactDialog.getByRole("button", { name: "Kişiyi kaydet" }).click();
@@ -142,6 +142,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await analyzeRequirementButton.click();
   await expect(noteDialog.getByText("Talep bilgileri çıkarıldı")).toBeVisible();
   await noteDialog.getByRole("button", { name: "Talep oluştur" }).click();
+  await page.getByRole("button", { name: "İşlendi" }).click();
   const processedNote = page.locator("article.keep-card").filter({ hasText: "Ayşe Urla'da bahçeli satılık ev arıyor." });
   await expect(processedNote).toContainText("Alıcı talebi oluşturuldu");
   await processedNote.getByRole("button", { name: "Arşivle" }).click();
@@ -150,9 +151,9 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await expect(processedNote).toBeVisible();
   await processedNote.getByRole("button", { name: "Geri getir" }).click();
   await expect(processedNote).toBeHidden();
-  await page.getByRole("button", { name: "Aktif" }).click();
+  await page.getByRole("button", { name: "İşlendi" }).click();
   await expect(processedNote).toBeVisible();
-  const dailyTasks = page.locator(".daily-five li");
+  const dailyTasks = page.getByRole("region", { name: "Önce bunları bitir" }).getByRole("listitem");
   await expect(dailyTasks).toHaveCount(2);
   const stableTaskTitles = await dailyTasks.locator("strong").allTextContents();
   await page.reload();
@@ -294,8 +295,8 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await page.getByLabel("Kısa sonuç").fill("Satış hedefini netleştirdik; ekspertiz için görüşeceğiz.");
   await page.getByLabel("Aksiyon").selectOption({ label: "Ara" });
   await page.getByRole("button", { name: "Yarın sabah" }).click();
-  await page.getByRole("button", { name: "Teması kaydet" }).click();
-  await expect(page.getByRole("heading", { name: "Temas ve sonraki aksiyon hazır" })).toBeVisible();
+  await page.getByRole("button", { name: `${contactName} için kaydet` }).click();
+  await expect(page.getByRole("heading", { name: `${contactName} için temas kaydedildi` })).toBeVisible();
   await page.getByRole("link", { name: "Yetkili portföy ekle" }).click();
   await expect(page).toHaveURL(/\/listings\/?\?action=add-listing&ownerContactId=/);
   const contactListingDialog = page.getByRole("dialog");

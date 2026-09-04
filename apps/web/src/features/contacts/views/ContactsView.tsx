@@ -85,9 +85,10 @@ export function ContactsView() {
   const [referenceTime] = useState(Date.now);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const continuation = searchParams.get("next");
   const { session } = useSession();
   const queryClient = useQueryClient();
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(continuation === "listings");
   const [editing, setEditing] = useState<ContactRecord | null>(null);
   const [draft, setDraft] = useState<ContactDraft>(emptyDraft);
   const [pending, setPending] = useState(false);
@@ -121,12 +122,13 @@ export function ContactsView() {
   // The workspace page has no form of its own, so its edit action sends the
   // advisor back here with the sheet already open on the right contact.
   const requestedEdit = searchParams.get("action") === "edit";
+  const requestedPrivacy = searchParams.get("action") === "privacy";
   const linkedContact = requestedContactId && dismissedDeepLink !== requestedContactId
     ? contacts.find((contact) => contact.id === requestedContactId) ?? null
     : null;
   // An edit link carries a contactId too, but it asks for the form, not the
   // detail sheet; honouring both stacked one panel on top of the other.
-  const activeSelectedContact = selectedContact ?? (requestedEdit ? null : linkedContact);
+  const activeSelectedContact = selectedContact ?? (requestedEdit || requestedPrivacy ? null : linkedContact);
   // The workspace page has no form of its own, so its edit action arrives here as
   // a link. Opening the sheet is an adjustment to a changed input rather than a
   // synchronisation with anything outside React, so it belongs in render and is
@@ -139,6 +141,13 @@ export function ContactsView() {
     setEditing(editLinkTarget);
     setDraft(contactDraft(editLinkTarget));
     setPanelOpen(true);
+  }
+  const [openedPrivacyFor, setOpenedPrivacyFor] = useState<string | null>(null);
+  const privacyLinkTarget = requestedPrivacy && linkedContact && openedPrivacyFor !== linkedContact.id ? linkedContact : null;
+  if (privacyLinkTarget) {
+    setOpenedPrivacyFor(privacyLinkTarget.id);
+    setPrivacyEditing(privacyLinkTarget);
+    setPrivacy(privacyDraft(privacyLinkTarget));
   }
   const normalizedSearch = search.trim().toLocaleLowerCase("tr-TR");
   const thirtyDaysAgo = referenceTime - 30 * 86_400_000;
@@ -243,7 +252,7 @@ export function ContactsView() {
 
     setPending(true);
     try {
-      await saveContact(session, parsed.data, editing ?? undefined);
+      const savedContact = await saveContact(session, parsed.data, editing ?? undefined);
       setPanelOpen(false);
       setEditing(null);
       setDraft(emptyDraft);
@@ -251,6 +260,9 @@ export function ContactsView() {
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
       ]);
+      if (!editing && continuation === "listings") {
+        router.push(`/listings?action=add-listing&ownerContactId=${encodeURIComponent(savedContact.id)}`);
+      }
     } catch (nextError) {
       setError(messageFrom(nextError));
     } finally {
@@ -348,7 +360,7 @@ export function ContactsView() {
                 <span className="contact-row-source">{contactSourceLabels[contact.source]}</span>
                 <span className="contact-row-last-touch">{relativeDate(contact.relationship.lastTouchAt, referenceTime)}</span>
                 <span className={`contact-row-next-action ${contact.relationship.nextActionAt !== null && contact.relationship.nextActionAt < referenceTime ? "overdue-text" : ""}`}>{nextActionLabel(contact)}</span>
-                <span className="contact-row-compliance">{contact.phone ? null : <span className="compliance-pill missing-phone" title="Bu kişi aranamaz ve gelen çağrısı eşleşmez">Telefon eksik</span>}<span className={`compliance-pill ${contact.privacy.noticeStatus === "completed" ? "compliant" : "pending"}`}>{contact.privacy.iysStatus === "approved" ? "İYS onaylı" : contact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</span></span>
+                <span className="contact-row-compliance">{contact.phone ? null : <span className="compliance-pill missing-phone" title="Bu kişi aranamaz ve gelen çağrısı eşleşmez">Telefon eksik</span>}<span className={`compliance-pill ${contact.privacy.marketingConsent === "withdrawn" ? "withdrawn" : contact.privacy.noticeStatus === "completed" ? "compliant" : "pending"}`}>{contact.privacy.marketingConsent === "withdrawn" ? "İletişim istemiyor" : contact.privacy.iysStatus === "approved" ? "İYS onaylı" : contact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</span></span>
                 <details className="contact-action-menu"><summary aria-label={`${contactName} işlemlerini aç`}><MoreHorizontal size={16} /></summary><div><button onClick={() => router.push(`/capture?contactId=${encodeURIComponent(contact.id)}`)} type="button"><MessageSquarePlus size={14} /> Temas kaydet</button><button onClick={() => setReferralSource(contact)} type="button"><UserRoundPlus size={14} /> Referans ekle</button><button onClick={() => { setPrivacyEditing(contact); setPrivacy(privacyDraft(contact)); }} type="button"><ShieldCheck size={14} /> Uyumu düzenle</button><button onClick={() => openEdit(contact)} type="button"><Pencil size={14} /> Kişiyi düzenle</button><button onClick={() => requestArchive(contact)} type="button"><Archive size={14} /> Arşivle</button></div></details>
               </div>;
             })}

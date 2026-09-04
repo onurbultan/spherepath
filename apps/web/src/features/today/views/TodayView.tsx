@@ -91,7 +91,7 @@ export function TodayView() {
             <div className="stage-grid">{stages.map((stage) => <SpCard key={stage.label} className={`stage-card stage-tone-${stage.tone}`}><span className="stage-label">{stage.label}</span><strong>{stage.value}</strong><span>{stage.detail}</span><div className="stage-progress" aria-hidden><span style={{ width: `${stage.progress}%` }} /></div></SpCard>)}</div>
           </section>
 
-          {fullOverview?.stages.acquaintance === 0 ? <SpCard className="onboarding-card"><div><p className="eyebrow">İLK GÜN KURULUMU</p><h2>Üç adımda günlük planını hazırla</h2></div><ol><li><Link href="/settings#advisor-profile"><strong>1. Bölgeni yaz</strong><span>Çalıştığın mahalleleri belirle</span></Link></li><li><Link href="/settings#advisor-profile"><strong>2. Aylık hedefini seç</strong><span>Portföy hedefini görünür kıl</span></Link></li><li><Link href="/contacts"><strong>3. İlk kişilerini ekle</strong><span>Plan gerçek ilişkilerinden oluşsun</span></Link></li></ol></SpCard> : null}
+          {fullOverview?.stages.acquaintance === 0 ? <SpCard className="onboarding-card"><div><p className="eyebrow">HEMEN BAŞLA</p><h2>Şu an hangi işi yapmak istiyorsun?</h2><p className="context-sentence">Ayarlar daha sonra tamamlanabilir. İlk gerçek kaydı bulunduğun işten oluştur.</p></div><ol><li><Link href="/capture"><strong>Görüşme notu kaydet</strong><span>Kişiyi aynı akışta ekle, sonucu ve sonraki adımı kapat</span></Link></li><li><Link href="/contacts?next=listings"><strong>Mevcut portföy ekle</strong><span>Önce mülk sahibini ekle, ardından yetki bilgilerine devam et</span></Link></li><li><Link href="/contacts"><strong>Kişi ağını oluştur</strong><span>Rehberinden veya elle ilk kişiyi ekle</span></Link></li></ol></SpCard> : null}
 
           <section className="today-primary-grid">
             <SpCard className="focus-card compact-focus-card">
@@ -107,6 +107,11 @@ export function TodayView() {
               <div className="daily-plan-footer"><span>Plan kayıtlı sonraki adımlardan üretilir.</span>{(fullOverview?.tasks.length ?? 0) > 5 ? <button className="text-button" type="button" onClick={() => setShowAllTasks((value) => !value)}>{showAllTasks ? "İlk 5 işi göster" : `Tüm ${fullOverview!.tasks.length} işi göster`}</button> : null}</div>
             </SpCard>
           </section>
+
+          {overview.upcomingTasks.length ? <section className="section-stack" aria-labelledby="upcoming-title">
+            <div className="section-heading"><div><p className="eyebrow">YAKLAŞAN</p><h2 id="upcoming-title">Yarın ve sonrası</h2></div><span className="period-chip">{overview.upcomingTasks.length} İŞ</span></div>
+            <SpCard><ul className="today-task-list">{overview.upcomingTasks.slice(0, 8).map((task) => <li key={task.id}><span className="task-priority-dot" aria-hidden /><Link href={task.opportunityId ? `/opportunities?opportunityId=${encodeURIComponent(task.opportunityId)}` : `/contacts/__contact__?contactId=${encodeURIComponent(task.contactId)}`}><strong>{task.title}</strong><span>{task.reason}</span></Link><time>{dueLabel(task.dueAt)}</time></li>)}</ul></SpCard>
+          </section> : null}
 
           <section className="section-stack today-interactions" aria-labelledby="today-interactions-title">
             <div className="section-heading"><div><p className="eyebrow">GÜNÜN HAFIZASI</p><h2 id="today-interactions-title">Bugün kaydedilen temaslar</h2></div><span className="period-chip">{overview.recentInteractions.length} TEMAS</span></div>

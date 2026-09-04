@@ -36,17 +36,16 @@ export async function saveContact(
   _session: WorkspaceSession,
   draft: ContactDraft,
   existing?: ContactRecord,
-): Promise<void> {
+): Promise<ContactRecord> {
   if (existing) {
-    await apiClient.command<{ contactId: string; draft: ContactDraft }, { contact: ContactRecord }>(
+    return (await apiClient.command<{ contactId: string; draft: ContactDraft }, { contact: ContactRecord }>(
       "updateContact", { contactId: existing.id, draft }, createCommandId(_session.uid),
-    );
-    return;
+    )).contact;
   }
 
-  await apiClient.command<ContactDraft, { contact: ContactRecord }>(
+  return (await apiClient.command<ContactDraft, { contact: ContactRecord }>(
     "createContact", draft, createCommandId(_session.uid),
-  );
+  )).contact;
 }
 
 export async function archiveContact(session: WorkspaceSession, contactId: string): Promise<void> {

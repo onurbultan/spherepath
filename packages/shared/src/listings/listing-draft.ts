@@ -55,6 +55,14 @@ export const existingListingDraftSchema = listingDraftSchema.omit({ opportunityI
 
 export type ExistingListingDraft = z.infer<typeof existingListingDraftSchema>;
 
+export const listingPriceUpdateSchema = z.object({
+  listingId: z.string().trim().min(1).max(160),
+  askingPrice: z.number().positive().max(1_000_000_000_000),
+  currency: z.enum(currencyCodes),
+}).strict();
+
+export type ListingPriceUpdate = z.infer<typeof listingPriceUpdateSchema>;
+
 export function createPropertyAndListing(draft: ListingDraft, tenant: TenantOwned, ownerContactId: string, propertyId: string, now: number): { property: Property; listing: Listing } {
   const parsed = listingDraftSchema.parse(draft);
   const summary = {

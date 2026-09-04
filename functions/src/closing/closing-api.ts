@@ -70,7 +70,9 @@ export const advanceDeal = onCall(options, async (request): Promise<{ dealId: st
       let listingRef: FirebaseFirestore.DocumentReference | null = null;
       let listing: DocumentData | null = null;
       let listingStatus: ListingStatus | null = null;
-      if (parsed.data.toStage === "closed") {
+      let ownerContactRef: FirebaseFirestore.DocumentReference | null = null;
+      const terminalDeal = parsed.data.toStage === "closed" || parsed.data.toStage === "lost";
+      if (terminalDeal) {
         listingRef = db.collection("listings").doc(deal.listingId as string);
         const listingSnapshot = await transaction.get(listingRef);
         if (!listingSnapshot.exists || !manageable(listingSnapshot.data()!, claims)) throw new HttpsError("permission-denied", "Listing is outside your workspace.");
@@ -80,11 +82,22 @@ export const advanceDeal = onCall(options, async (request): Promise<{ dealId: st
         if (typeof opportunityId !== "string" || !opportunityId) throw new HttpsError("failed-precondition", "Listing source opportunity is missing.");
         const opportunitySnapshot = await transaction.get(db.collection("opportunities").doc(opportunityId));
         if (!opportunitySnapshot.exists || !manageable(opportunitySnapshot.data()!, claims)) throw new HttpsError("failed-precondition", "Listing source opportunity is unavailable.");
-        const opportunityType = opportunitySnapshot.data()!.type;
+        const opportunity = opportunitySnapshot.data()!;
+        const opportunityType = opportunity.type;
         if (opportunityType !== "seller_listing" && opportunityType !== "landlord_listing") throw new HttpsError("failed-precondition", "Listing source opportunity type is invalid.");
-        listingStatus = opportunityType === "landlord_listing" ? "rented" : "sold";
+        const ownerContactId = opportunitySnapshot.data()!.subjectContactId;
+        if (typeof ownerContactId === "string" && ownerContactId) {
+          ownerContactRef = db.collection("contacts").doc(ownerContactId);
+          const ownerContactSnapshot = await transaction.get(ownerContactRef);
+          const ownerContact = ownerContactSnapshot.data();
+          if (!ownerContactSnapshot.exists || !ownerContact || !manageable(ownerContact, claims)
+            || ownerContact.officeId !== opportunity.officeId || ownerContact.ownerUid !== opportunity.ownerUid) ownerContactRef = null;
+        }
 
-        if (listing.status !== listingStatus) {
+        if (parsed.data.toStage === "closed") {
+          listingStatus = opportunityType === "landlord_listing" ? "rented" : "sold";
+        }
+        if (listingStatus && listing.status !== listingStatus) {
           try { assertListingTransition(listing.status as ListingStatus, listingStatus); }
           catch { throw new HttpsError("failed-precondition", `Listing cannot close from ${listing.status}.`); }
         }
@@ -115,6 +128,9 @@ export const advanceDeal = onCall(options, async (request): Promise<{ dealId: st
           occurredAt: now,
           createdAt: now,
         });
+      }
+      if (ownerContactRef && terminalDeal) {
+        transaction.update(ownerContactRef, { "relationship.nextActionAt": null, "relationship.nextActionType": null, updatedAt: now });
       }
       transaction.create(commandRef, {
         officeId: claims.officeId,

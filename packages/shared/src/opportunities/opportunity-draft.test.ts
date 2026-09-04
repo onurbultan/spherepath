@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createOpportunity, opportunityDraftSchema, opportunityStageLabel } from "./opportunity-draft.js";
+import { createOpportunity, opportunityDraftSchema, opportunityPath, opportunityStageLabel, suggestOpportunityTypeForRoles } from "./opportunity-draft.js";
 
 describe("opportunity draft", () => {
   it("creates a new lead with a required next action", () => {
@@ -20,5 +20,20 @@ describe("opportunity draft", () => {
     expect(opportunityStageLabel("won", "buyer_requirement")).toBe("Müşteri kazanıldı");
     expect(opportunityStageLabel("mandate_offer", "tenant_requirement")).toBe("Hizmet konuşuluyor");
     expect(opportunityStageLabel("won", "seller_listing")).toBe("Yetki alındı");
+  });
+
+  it("keeps owner and customer journeys explicit", () => {
+    expect(opportunityPath("seller_listing").map((step) => step.label)).toContain("Yeni portföy adayı");
+    expect(opportunityPath("buyer_requirement").map((step) => step.label)).toContain("İhtiyaç görüşmesi");
+    expect(opportunityPath("buyer_requirement").map((step) => step.label)).not.toContain("Yetki alındı");
+  });
+
+  it("suggests the journey from the selected contact role", () => {
+    expect(suggestOpportunityTypeForRoles(["buyer"])).toBe("buyer_requirement");
+    expect(suggestOpportunityTypeForRoles(["investor"])).toBe("buyer_requirement");
+    expect(suggestOpportunityTypeForRoles(["tenant"])).toBe("tenant_requirement");
+    expect(suggestOpportunityTypeForRoles(["seller"])).toBe("seller_listing");
+    expect(suggestOpportunityTypeForRoles(["landlord"])).toBe("landlord_listing");
+    expect(suggestOpportunityTypeForRoles(["unknown"])).toBeNull();
   });
 });

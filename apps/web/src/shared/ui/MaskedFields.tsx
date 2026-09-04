@@ -22,11 +22,13 @@ export function PhoneField({
   onChange,
   autoFocus,
   id,
+  ariaLabel = "Telefon numarası",
 }: {
   value: string;
   onChange: (value: string) => void;
   autoFocus?: boolean;
   id?: string;
+  ariaLabel?: string;
 }) {
   const parsed = splitPhone(value);
   // The dialling code lives in the stored value once a number exists; the local
@@ -57,6 +59,7 @@ export function PhoneField({
         </select>
       </span>
       <input
+        aria-label={ariaLabel}
         autoComplete="tel-national"
         autoFocus={autoFocus}
         className="sp-control-inner phone-field-number"
