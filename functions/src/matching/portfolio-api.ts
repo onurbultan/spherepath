@@ -291,7 +291,15 @@ export const draftMatchMessage = onCall(callableOptions, async (request): Promis
     }
 
     const portfolioItem = toRecord(itemSnapshot.id, item, (item.sourceAuthorName as string) ?? "Ofis danışmanı");
+    const rawMemory = (contact.memory ?? {}) as DocumentData;
+    const memory = contactMemorySchema.safeParse({ ...rawMemory, updatedAt: rawMemory.updatedAt instanceof Timestamp ? rawMemory.updatedAt.toMillis() : null });
+    const preferences = memory.success
+      ? memory.data.propertySituations.find((situation) => situation.propertyContext === "search_preference")?.propertyPreferences ?? memory.data.propertyPreferences
+      : null;
+    const score = preferences ? scorePortfolioItem(preferences, portfolioItem) : null;
+    if (score && !score.eligible) throw new HttpsError("failed-precondition", "Portföy zorunlu talep kriterlerini karşılamıyor.");
     const subject = {
+      mismatchReasons: score?.reasons.filter((reason) => reason.status === "mismatch").map((reason) => reason.detail),
       contactName: customerFacingContactName((contact.fullName ?? contact.label) as string | null) ?? "İsimsiz kişi",
       headline: portfolioItem.headline,
       location: portfolioItem.location,
@@ -299,19 +307,8 @@ export const draftMatchMessage = onCall(callableOptions, async (request): Promis
       listingUrl: portfolioItem.listingUrl,
     };
     const fallback: MatchMessageDraft = { message: buildMatchMessageFallback(subject), source: "template" };
-
-    // Same gate as the voice pipeline: a contact who objected to profiling is never
-    // sent through the model, and the plain template still gets the advisor a draft.
-    if (contact.privacy?.profilingObjection === true) return fallback;
-
-    const rawMemory = (contact.memory ?? {}) as DocumentData;
-    const memory = contactMemorySchema.safeParse({ ...rawMemory, updatedAt: rawMemory.updatedAt instanceof Timestamp ? rawMemory.updatedAt.toMillis() : null });
-    const preferences = memory.success
-      ? memory.data.propertySituations.find((situation) => situation.propertyContext === "search_preference")?.propertyPreferences ?? memory.data.propertyPreferences
-      : null;
-    const matchReasons = preferences
-      ? scorePortfolioItem(preferences, portfolioItem).reasons.filter((reason) => reason.status === "match").map((reason) => reason.detail)
-      : [];
+    if (contact.privacy?.profilingObjection === true || subject.mismatchReasons?.length) return fallback;
+    const matchReasons = score?.reasons.filter((reason) => reason.status === "match").map((reason) => reason.detail) ?? [];
 
     try {
       const message = await draftMatchMessageWithVertex({

@@ -2,8 +2,8 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { ArrowRight, Target, TrendingDown } from "lucide-react-native";
 import { router } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
-import { apiQueryKeys, opportunityStageLabels, reportingPeriodLabels, reportingPeriods, type CurrencyCode, type ReportingPeriod } from "@spherepath/shared";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { funnelCountRatioCopy, apiQueryKeys, opportunityStageLabels, reportingPeriodLabels, reportingPeriods, type CurrencyCode, type ReportingPeriod } from "@spherepath/shared";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { loadFunnelOverview } from "../resources/funnel";
 import { SpCard } from "@/shared/ui/SpCard";
@@ -18,7 +18,7 @@ const money = (amount: number, currency: CurrencyCode) => new Intl.NumberFormat(
 
 export default function FunnelView() {
   const theme = useSpTheme(); const [period, setPeriod] = useState<ReportingPeriod>("90d");
-  const query = useQuery({ queryKey: apiQueryKeys.funnelOverview(period), queryFn: () => loadFunnelOverview(period) });
+  const query = useQuery({ placeholderData: keepPreviousData, queryKey: apiQueryKeys.funnelOverview(period), queryFn: () => loadFunnelOverview(period) });
   const routes = { capture: "/(tabs)/capture", contacts: "/(tabs)/contacts", opportunities: "/(tabs)/opportunities", listings: "/(tabs)/listings" } as const;
   const counts = query.data?.counts; const earnings = query.data?.earnings; const target = query.data?.target; const metrics = query.data?.metrics;
   const stages = counts ? [
@@ -39,7 +39,7 @@ export default function FunnelView() {
   return <SafeAreaView edges={["top", "left", "right"]} style={[styles.safe, { backgroundColor: theme.background }]}><ScrollView contentContainerStyle={styles.content}>
     <View style={styles.header}><SpText variant="eyebrow" color="deed">SATIŞ HUNİSİ</SpText><SpText variant="hero">Nerede takılıyor?</SpText><SpText color="secondary">Rakamı gör, doğru cümleyi al ve bir sonraki adımı aç.</SpText></View>
     <View accessibilityRole="radiogroup" style={styles.periods}>{reportingPeriods.map((item) => <Pressable key={item} accessibilityRole="radio" accessibilityState={{ checked: period === item }} onPress={() => setPeriod(item)} style={[styles.period, { borderColor: period === item ? theme.deed : theme.line, backgroundColor: period === item ? theme.deedBg : theme.card }]}><SpText variant="bodySmall" color={period === item ? "deed" : "secondary"}>{reportingPeriodLabels[item]}</SpText></Pressable>)}</View>
-    {query.isPending ? <ActivityIndicator color={theme.deed} /> : query.error ? <SpCard><SpText color="ask">{messageFrom(query.error)}</SpText></SpCard> : <>
+    {query.isFetching && !query.isPending ? <SpText accessibilityRole="text" color="secondary">Seçilen dönem hesaplanıyor; önceki dönem gösteriliyor…</SpText> : null}<SpText variant="bodySmall" color="secondary">{funnelCountRatioCopy}</SpText>{query.isPending ? <ActivityIndicator color={theme.deed} /> : query.error ? <SpCard><SpText color="ask">{messageFrom(query.error)}</SpText></SpCard> : <>
       <SpCard style={styles.earnings}><View style={styles.earningsHead}><View style={{ flex: 1 }}><SpText variant="eyebrow" color="deed">{reportingPeriodLabels[period].toLocaleUpperCase("tr-TR")} İÇİNDE</SpText><SpText variant="title">Kazancın</SpText></View>{target?.periodTarget ? <View style={[styles.targetChip, { borderColor: theme.line, backgroundColor: theme.background }]}><SpText variant="caption" color="secondary">Portföy hedefi</SpText><SpText variant="bodySmall">{target.achieved} / {target.periodTarget}</SpText></View> : null}</View>
       {earnings?.totals.length ? earnings.totals.map((total) => <View key={total.currency} style={styles.earningsTotal}><SpText variant="figure" style={{ color: theme.good }}>{money(total.commission, total.currency)}</SpText><SpText variant="caption" color="secondary">{total.closedCount} kapanan işlem · {money(total.volume, total.currency)} hacim{total.commissionRate !== null ? ` · %${(total.commissionRate * 100).toFixed(1)} komisyon` : ""}</SpText></View>) : <SpText color="secondary">Bu dönemde kapanan işlem yok. Bir işlemi kapattığında komisyonun burada toplanır.</SpText>}
       {target?.periodTarget ? <View style={[styles.bar, { backgroundColor: theme.sunk }]}><View style={{ width: `${Math.min(100, Math.round((target.ratio ?? 0) * 100))}%`, height: "100%", borderRadius: 999, backgroundColor: theme.deed }} /></View> : null}

@@ -3,7 +3,8 @@
 import { useState, type FormEvent } from "react";
 import { ArrowRight, LockKeyhole } from "lucide-react";
 import { useSession } from "../resources/session";
-import { SpInput } from "@/shared/ui/SpField";
+import { onboardingCopy } from "@spherepath/shared";
+import { SpInput, SpSelect } from "@/shared/ui/SpField";
 
 export function AuthView() {
   const { signIn, createAccount, resetPassword } = useSession();
@@ -11,6 +12,7 @@ export function AuthView() {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [workspaceMode, setWorkspaceMode] = useState<"create" | "join">("create");
   const [inviteCode, setInviteCode] = useState("");
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -21,7 +23,7 @@ export function AuthView() {
     setPending(true);
     setFormError(null);
     try {
-      if (mode === "register") await createAccount(displayName, email, password, inviteCode || undefined);
+      if (mode === "register") await createAccount(displayName, email, password, workspaceMode === "join" ? inviteCode : undefined);
       else await signIn(email, password);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Oturum açılamadı.");
@@ -43,7 +45,7 @@ export function AuthView() {
         <h2 id="auth-title">{mode === "signin" ? "Tekrar hoş geldin" : "Çalışma alanını oluştur"}</h2>
         <form className="form-stack" onSubmit={submit}>
           {mode === "register" ? (
-            <><label>Ad soyad<SpInput autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} required minLength={2} /></label><label>Ofis davet kodu <span className="optional">isteğe bağlı</span><SpInput autoCapitalize="characters" maxLength={8} placeholder="ABCD2345" value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toLocaleUpperCase("tr-TR").replace(/[^A-Z2-9]/gu, ""))} /></label></>
+            <><label>Ad soyad<SpInput autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} required minLength={2} /></label><label>{onboardingCopy.workspaceChoice}<SpSelect value={workspaceMode} onChange={(event) => setWorkspaceMode(event.target.value as "create" | "join")}><option value="create">{onboardingCopy.createOffice}</option><option value="join">{onboardingCopy.joinOffice}</option></SpSelect></label><p className="privacy-hint">{workspaceMode === "join" ? onboardingCopy.inviteHint : onboardingCopy.newOfficeHint}</p>{workspaceMode === "join" ? <label>Ofis davet kodu <SpInput required minLength={8} autoCapitalize="characters" maxLength={8} placeholder="ABCD2345" value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toLocaleUpperCase("tr-TR").replace(/[^A-Z2-9]/gu, ""))} /></label> : null}</>
           ) : null}
           <label>E-posta<SpInput autoComplete="email" inputMode="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
           <label>Şifre<SpInput autoComplete={mode === "register" ? "new-password" : "current-password"} type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={6} /></label>

@@ -65,6 +65,7 @@ export function PhoneField({
         className="sp-control-inner phone-field-number"
         id={id}
         inputMode="tel"
+        type="tel"
         onChange={(event) => onChange(joinPhone(dialCode, formatNationalAsTyped(event.target.value, dialCode)))}
         placeholder="507 872 70 22"
         value={parsed.national}

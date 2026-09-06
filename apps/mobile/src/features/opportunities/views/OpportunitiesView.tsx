@@ -20,6 +20,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   apiQueryKeys,
+  defaultOpportunityJourney,
+  isOwnerOpportunity,
+  emptyVoicePropertyPreferences,
+  opportunityCriteriaCopy,
+  portfolioAuthorizationLabels,
+  portfolioAuthorizationTypes,
+  type OwnerOpportunityDetails,
   currencyCodes,
   nextActionTypeLabels,
   nextActionTypes,
@@ -90,13 +97,16 @@ const messageFrom = (error: unknown) =>
 const emptyOpportunities: OpportunityRecord[] = [];
 
 interface CriteriaForm {
+  locationRequired: boolean;
+  authorizationType: OwnerOpportunityDetails["authorizationType"];
+  motivation: string;
   locations: string; propertyTypes: PropertyType[]; budgetMin: string; budgetMax: string; currency: CurrencyCode;
   bedrooms: string; livingRooms: string; areaMin: string; mustHaves: string; timeline: string;
 }
 
 function preferencesFor(opportunity: OpportunityRecord) {
-  return opportunitySituation(opportunity.subjectContactMemory, opportunity.type)?.propertyPreferences
-    ?? opportunity.subjectContactMemory.propertyPreferences;
+  return opportunity.criteria ?? opportunitySituation(opportunity.subjectContactMemory, opportunity.type)?.propertyPreferences
+    ?? (isOwnerOpportunity(opportunity.type) ? emptyVoicePropertyPreferences : opportunity.subjectContactMemory.propertyPreferences);
 }
 
 function optionalNumber(value: string): number | null {
@@ -105,10 +115,7 @@ function optionalNumber(value: string): number | null {
 }
 
 function opportunityHighlights(opportunity: OpportunityRecord): string[] {
-  const memory = opportunity.subjectContactMemory;
-  const preferences =
-    opportunitySituation(memory, opportunity.type)?.propertyPreferences ??
-    memory.propertyPreferences;
+  const preferences = preferencesFor(opportunity);
   const budget = preferences.budgetRange;
   const budgetText = budget
     ? (() => {
@@ -118,6 +125,7 @@ function opportunityHighlights(opportunity: OpportunityRecord): string[] {
             currency: budget.currency,
             maximumFractionDigits: 0,
           }).format(value);
+        if (budget.min !== null && budget.min === budget.max) return format(budget.min);
         return budget.min !== null && budget.max !== null
           ? `${format(budget.min)} – ${format(budget.max)}`
           : budget.min !== null
@@ -140,7 +148,7 @@ function opportunityHighlights(opportunity: OpportunityRecord): string[] {
     preferences.bedroomCountMin !== null
       ? `${preferences.bedroomCountMin}+${preferences.livingRoomCountMin ?? 0} oda`
       : null,
-    preferences.areaMinM2 !== null ? `En az ${preferences.areaMinM2} m²` : null,
+    preferences.areaMinM2 !== null ? `${isOwnerOpportunity(opportunity.type) ? "Mülk alanı:" : "En az"} ${preferences.areaMinM2} m²` : null,
     ...preferences.mustHaves
       .slice(0, 2)
       .map((item) => `Olmazsa olmaz: ${item}`),
@@ -184,7 +192,7 @@ export default function OpportunitiesView() {
   const [correcting, setCorrecting] = useState<OpportunityRecord | null>(null);
   const [selected, setSelected] = useState<OpportunityRecord | null>(null);
   const [criteriaEditing, setCriteriaEditing] = useState<OpportunityRecord | null>(null);
-  const [criteriaForm, setCriteriaForm] = useState<CriteriaForm>({ locations: "", propertyTypes: [], budgetMin: "", budgetMax: "", currency: "TRY", bedrooms: "", livingRooms: "", areaMin: "", mustHaves: "", timeline: "" });
+  const [criteriaForm, setCriteriaForm] = useState<CriteriaForm>({ locationRequired: false, authorizationType: "unknown", motivation: "", locations: "", propertyTypes: [], budgetMin: "", budgetMax: "", currency: "TRY", bedrooms: "", livingRooms: "", areaMin: "", mustHaves: "", timeline: "" });
   const detailQuery = useQuery({
     queryKey: apiQueryKeys.opportunityDetail(selected?.id ?? "none"),
     queryFn: () => getOpportunityDetail(selected!.id),
@@ -203,9 +211,8 @@ export default function OpportunitiesView() {
   const [lostReason, setLostReason] = useState("");
   const [lostKind, setLostKind] = useState<"lost" | "duplicate">("lost");
   const [correctionReason, setCorrectionReason] = useState("");
-  const [journeyFilter, setJourneyFilter] = useState<"owner" | "requirement">(
-    "owner",
-  );
+  const [chosenJourney, setJourneyFilter] = useState<"owner" | "requirement" | null>(null);
+  const journeyFilter = chosenJourney ?? defaultOpportunityJourney(opportunities);
   useEffect(() => {
     if (typeof params.opportunityId !== "string") return;
     const linked = opportunities.find((item) => item.id === params.opportunityId);
@@ -351,8 +358,8 @@ export default function OpportunitiesView() {
     setError(null);
     try {
       await moveOpportunity(session, parsed.data);
-      setMoving(null);
       await invalidate();
+      setMoving(null);
     } catch (nextError) {
       setError(messageFrom(nextError));
     } finally {
@@ -395,7 +402,10 @@ export default function OpportunitiesView() {
     const preferences = preferencesFor(current);
     setCriteriaEditing(current);
     setCriteriaForm({
-      locations: preferences.preferredLocations.join(", "), propertyTypes: preferences.propertyTypes,
+      locationRequired: preferences.locationRequired ?? false,
+      authorizationType: current.ownerDetails?.authorizationType ?? "unknown",
+      motivation: current.ownerDetails?.motivation ?? "",
+      locations: current.ownerDetails?.address ?? preferences.preferredLocations.join(", "), propertyTypes: preferences.propertyTypes,
       budgetMin: preferences.budgetRange?.min?.toString() ?? "", budgetMax: preferences.budgetRange?.max?.toString() ?? "", currency: preferences.budgetRange?.currency ?? "TRY",
       bedrooms: preferences.bedroomCountMin?.toString() ?? "", livingRooms: preferences.livingRoomCountMin?.toString() ?? "", areaMin: preferences.areaMinM2?.toString() ?? "",
       mustHaves: preferences.mustHaves.join(", "), timeline: preferences.timeline ?? "",
@@ -407,10 +417,11 @@ export default function OpportunitiesView() {
     if (!session || !criteriaEditing) return;
     const current = preferencesFor(criteriaEditing);
     const budgetMin = optionalNumber(criteriaForm.budgetMin); const budgetMax = optionalNumber(criteriaForm.budgetMax);
-    const parsed = opportunityCriteriaUpdateSchema.safeParse({ opportunityId: criteriaEditing.id, preferences: {
+    const parsed = opportunityCriteriaUpdateSchema.safeParse({ opportunityId: criteriaEditing.id, ...(isOwnerOpportunity(criteriaEditing.type) ? { ownerDetails: { address: criteriaForm.locations, authorizationType: criteriaForm.authorizationType, motivation: criteriaForm.motivation.trim() || null } } : {}), preferences: {
       ...current, transactionType: opportunityTransactionType(criteriaEditing.type), propertyTypes: criteriaForm.propertyTypes,
       preferredLocations: criteriaForm.locations.split(",").map((item) => item.trim()).filter(Boolean),
-      budgetRange: budgetMin !== null || budgetMax !== null ? { min: budgetMin, max: budgetMax, currency: criteriaForm.currency } : null,
+        locationRequired: criteriaForm.locationRequired,
+      budgetRange: budgetMin !== null || budgetMax !== null ? { min: isOwnerOpportunity(criteriaEditing.type) ? budgetMax : budgetMin, max: budgetMax, currency: criteriaForm.currency } : null,
       bedroomCountMin: optionalNumber(criteriaForm.bedrooms), livingRoomCountMin: optionalNumber(criteriaForm.livingRooms), roomCountMin: optionalNumber(criteriaForm.bedrooms), areaMinM2: optionalNumber(criteriaForm.areaMin),
       mustHaves: criteriaForm.mustHaves.split(",").map((item) => item.trim()).filter(Boolean), timeline: criteriaForm.timeline.trim() || null,
     }});
@@ -709,15 +720,13 @@ export default function OpportunitiesView() {
                 </View>
                 {selected ? (
                   <><Pressable onPress={() => openCriteriaEditor(withCurrentContactMemory(detailQuery.data?.opportunity ?? selected, contacts))} style={[styles.secondary, { borderColor: theme.line }]}>
-                    <SpText variant="bodySmall">Kriterleri düzenle</SpText>
+                    <SpText variant="bodySmall">{isOwnerOpportunity(selected.type) ? opportunityCriteriaCopy.ownerAction : opportunityCriteriaCopy.demandAction}</SpText>
                   </Pressable><Pressable
                     onPress={() => {
                       setCorrecting(selected);
-                      setTargetStage(
-                        opportunityStages.find(
-                          (stage) => stage !== selected.stage,
-                        ) ?? "new_lead",
-                      );
+                      setTargetStage(selected.stage);
+                      setActionType(selected.nextActionType ?? "call");
+                      setActionAt(dateTimeValue(selected.nextActionAt));
                       setCorrectionReason("");
                       setLostReason("");
                       setError(null);
@@ -736,13 +745,13 @@ export default function OpportunitiesView() {
       <Modal animationType="slide" presentationStyle="pageSheet" visible={Boolean(criteriaEditing)} onRequestClose={() => setCriteriaEditing(null)}>
         <SafeAreaView style={[styles.safe, { backgroundColor: theme.card }]}>
           <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-            <View style={styles.sheetHeader}><View><SpText variant="eyebrow" color="deed">TALEP KRİTERLERİ</SpText><SpText variant="hero">{criteriaEditing?.subjectContactName}</SpText></View><Pressable disabled={pending} onPress={() => setCriteriaEditing(null)} style={[styles.iconButton, { borderColor: theme.line }]}><X color={theme.textSecondary} size={20} /></Pressable></View>
-            <SpText color="secondary">Bu bilgiler eşleşme motorunda ve fırsat detayında birlikte kullanılır.</SpText>
-            <SpText variant="title">Bölgeler · virgülle ayır</SpText><TextInput placeholder="Karşıyaka, Bostanlı" placeholderTextColor={theme.textTertiary} style={inputStyle} value={criteriaForm.locations} onChangeText={(locations) => setCriteriaForm((current) => ({ ...current, locations }))} />
-            <SpText variant="title">Mülk türleri</SpText><View style={styles.choices}>{propertyTypes.map((item) => <Pressable key={item} onPress={() => setCriteriaForm((current) => ({ ...current, propertyTypes: current.propertyTypes.includes(item) ? current.propertyTypes.filter((value) => value !== item) : [...current.propertyTypes, item] }))} style={choice(criteriaForm.propertyTypes.includes(item))}><SpText variant="bodySmall" color={criteriaForm.propertyTypes.includes(item) ? "deed" : "secondary"}>{propertyTypeLabels[item]}</SpText></Pressable>)}</View>
-            <SpText variant="title">Bütçe</SpText><View style={styles.fieldRow}><TextInput keyboardType="numeric" placeholder="Minimum" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.budgetMin} onChangeText={(budgetMin) => setCriteriaForm((current) => ({ ...current, budgetMin }))} /><TextInput keyboardType="numeric" placeholder="Maksimum" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.budgetMax} onChangeText={(budgetMax) => setCriteriaForm((current) => ({ ...current, budgetMax }))} /></View><View style={styles.choices}>{currencyCodes.map((item) => <Pressable key={item} onPress={() => setCriteriaForm((current) => ({ ...current, currency: item }))} style={choice(criteriaForm.currency === item)}><SpText variant="bodySmall" color={criteriaForm.currency === item ? "deed" : "secondary"}>{item}</SpText></Pressable>)}</View>
-            <SpText variant="title">Oda ve alan</SpText><View style={styles.fieldRow}><TextInput keyboardType="numeric" placeholder="Yatak odası" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.bedrooms} onChangeText={(bedrooms) => setCriteriaForm((current) => ({ ...current, bedrooms }))} /><TextInput keyboardType="numeric" placeholder="Salon" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.livingRooms} onChangeText={(livingRooms) => setCriteriaForm((current) => ({ ...current, livingRooms }))} /><TextInput keyboardType="numeric" placeholder="Min. m²" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.areaMin} onChangeText={(areaMin) => setCriteriaForm((current) => ({ ...current, areaMin }))} /></View>
-            <SpText variant="title">Olmazsa olmazlar · virgülle ayır</SpText><TextInput placeholder="Havuz, otopark" placeholderTextColor={theme.textTertiary} style={inputStyle} value={criteriaForm.mustHaves} onChangeText={(mustHaves) => setCriteriaForm((current) => ({ ...current, mustHaves }))} />
+            <View style={styles.sheetHeader}><View><SpText variant="eyebrow" color="deed">{criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.ownerTitle : opportunityCriteriaCopy.demandTitle}</SpText><SpText variant="hero">{criteriaEditing?.subjectContactName}</SpText></View><Pressable disabled={pending} onPress={() => setCriteriaEditing(null)} style={[styles.iconButton, { borderColor: theme.line }]}><X color={theme.textSecondary} size={20} /></Pressable></View>
+            <SpText color="secondary">Bu bilgiler eşleşme motorunda ve fırsat detayında birlikte kullanılır.</SpText>{criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? <><SpText variant="title">{opportunityCriteriaCopy.authorization}</SpText><View style={styles.choices}>{portfolioAuthorizationTypes.map((item) => <Pressable key={item} accessibilityRole="radio" accessibilityState={{ checked: criteriaForm.authorizationType === item }} style={choice(criteriaForm.authorizationType === item)} onPress={() => setCriteriaForm((current) => ({ ...current, authorizationType: item }))}><SpText>{portfolioAuthorizationLabels[item]}</SpText></Pressable>)}</View><SpText variant="title">{opportunityCriteriaCopy.motivation}</SpText><TextInput style={inputStyle} value={criteriaForm.motivation} onChangeText={(motivation) => setCriteriaForm((current) => ({ ...current, motivation }))} /></> : <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: criteriaForm.locationRequired }} style={choice(criteriaForm.locationRequired)} onPress={() => setCriteriaForm((current) => ({ ...current, locationRequired: !current.locationRequired }))}><SpText>{criteriaForm.locationRequired ? "✓ " : ""}{opportunityCriteriaCopy.locationRequired}</SpText></Pressable>}
+            <SpText variant="title">{criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.address : "Bölgeler · virgülle ayır"}</SpText><TextInput placeholder="Karşıyaka, Bostanlı" placeholderTextColor={theme.textTertiary} style={inputStyle} value={criteriaForm.locations} onChangeText={(locations) => setCriteriaForm((current) => ({ ...current, locations }))} />
+            <SpText variant="title">Mülk türleri</SpText><View style={styles.choices}>{propertyTypes.map((item) => <Pressable key={item} accessibilityRole="checkbox" accessibilityState={{ checked: criteriaForm.propertyTypes.includes(item) }} onPress={() => setCriteriaForm((current) => ({ ...current, propertyTypes: current.propertyTypes.includes(item) ? current.propertyTypes.filter((value) => value !== item) : [...current.propertyTypes, item] }))} style={choice(criteriaForm.propertyTypes.includes(item))}><SpText variant="bodySmall" color={criteriaForm.propertyTypes.includes(item) ? "deed" : "secondary"}>{propertyTypeLabels[item]}</SpText></Pressable>)}</View>
+            <SpText variant="title">{criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.expectedPrice : "Bütçe"}</SpText><View style={styles.fieldRow}>{criteriaEditing && !isOwnerOpportunity(criteriaEditing.type) ? <TextInput keyboardType="numeric" placeholder="Minimum" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.budgetMin} onChangeText={(budgetMin) => setCriteriaForm((current) => ({ ...current, budgetMin }))} /> : null}<TextInput keyboardType="numeric" placeholder={criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.expectedPrice : "Maksimum"} placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.budgetMax} onChangeText={(budgetMax) => setCriteriaForm((current) => ({ ...current, budgetMax }))} /></View><View style={styles.choices}>{currencyCodes.map((item) => <Pressable key={item} onPress={() => setCriteriaForm((current) => ({ ...current, currency: item }))} style={choice(criteriaForm.currency === item)}><SpText variant="bodySmall" color={criteriaForm.currency === item ? "deed" : "secondary"}>{item}</SpText></Pressable>)}</View>
+            <SpText variant="title">Oda ve alan</SpText><View style={styles.fieldRow}><TextInput keyboardType="numeric" placeholder="Yatak odası" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.bedrooms} onChangeText={(bedrooms) => setCriteriaForm((current) => ({ ...current, bedrooms }))} /><TextInput keyboardType="numeric" placeholder="Salon" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.livingRooms} onChangeText={(livingRooms) => setCriteriaForm((current) => ({ ...current, livingRooms }))} /><TextInput keyboardType="numeric" placeholder={criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.area : "Min. m²"} placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.areaMin} onChangeText={(areaMin) => setCriteriaForm((current) => ({ ...current, areaMin }))} /></View>
+            <SpText variant="title">{criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.features : "Olmazsa olmazlar · virgülle ayır"}</SpText><TextInput placeholder="Havuz, otopark" placeholderTextColor={theme.textTertiary} style={inputStyle} value={criteriaForm.mustHaves} onChangeText={(mustHaves) => setCriteriaForm((current) => ({ ...current, mustHaves }))} />
             <SpText variant="title">Zamanlama</SpText><TextInput placeholder="1 Ekim'de taşınacak" placeholderTextColor={theme.textTertiary} style={inputStyle} value={criteriaForm.timeline} onChangeText={(timeline) => setCriteriaForm((current) => ({ ...current, timeline }))} />
             {error ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText color="ask">{error}</SpText></View> : null}
             <Pressable disabled={pending} onPress={() => void saveCriteria()} style={[styles.primary, { backgroundColor: theme.ask, opacity: pending ? .6 : 1 }]}><SpText style={{ color: theme.onAsk }}>{pending ? "Kaydediliyor…" : "Kriterleri kaydet"}</SpText></Pressable>
@@ -985,10 +994,9 @@ export default function OpportunitiesView() {
                 <SpText color="secondary">
                   Geçmiş silinmez; bu düzeltme denetim izine eklenir.
                 </SpText>
-                <SpText variant="title">Doğru aşama</SpText>
+                <SpText>{opportunityStageLabel(correcting.stage, correcting.type)} → {opportunityStageLabel(targetStage, correcting.type)}</SpText><SpText variant="title">Doğru aşama</SpText>
                 <View style={styles.choices}>
                   {opportunityStages
-                    .filter((stage) => stage !== correcting.stage)
                     .map((stage) => (
                       <Pressable
                         key={stage}
@@ -1064,14 +1072,14 @@ export default function OpportunitiesView() {
                   </View>
                 ) : null}
                 <Pressable
-                  disabled={pending || correctionReason.trim().length < 2}
+                  disabled={pending || targetStage === correcting.stage || correctionReason.trim().length < 2}
                   onPress={() => void correct()}
                   style={[
                     styles.primary,
                     {
                       backgroundColor: theme.ask,
                       opacity:
-                        pending || correctionReason.trim().length < 2 ? 0.6 : 1,
+                        pending || targetStage === correcting.stage || correctionReason.trim().length < 2 ? 0.6 : 1,
                     },
                   ]}
                 >

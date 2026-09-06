@@ -77,6 +77,7 @@ export interface PropertyPreferences {
   transactionType: PropertyTransactionType | null;
   propertyTypes: PropertyType[];
   preferredLocations: string[];
+  locationRequired?: boolean;
   budgetRange: { min: number | null; max: number | null; currency: CurrencyCode } | null;
   bedroomCountMin: number | null;
   livingRoomCountMin: number | null;
@@ -211,7 +212,15 @@ export interface Referral extends TenantOwned, Audited {
   deletedAt: Instant | null;
 }
 
+export interface OwnerOpportunityDetails {
+  address: string;
+  authorizationType: "exclusive" | "open" | "verbal" | "none" | "unknown";
+  motivation: string | null;
+}
+
 export interface Opportunity extends TenantOwned, Audited {
+  criteria?: PropertyPreferences;
+  ownerDetails?: OwnerOpportunityDetails;
   type: OpportunityType;
   subjectContactId: string;
   sourceContactId: string | null;

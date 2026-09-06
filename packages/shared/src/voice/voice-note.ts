@@ -33,6 +33,7 @@ export const voicePropertyPreferencesSchema = z.object({
   transactionType: z.enum(propertyTransactionTypes).nullable(),
   propertyTypes: z.array(z.enum(voicePropertyTypes)).max(5),
   preferredLocations: z.array(z.string().trim().min(1).max(120)).max(8),
+  locationRequired: z.boolean().optional(),
   budgetRange: z.object({
     min: z.number().nonnegative().nullable(),
     max: z.number().positive().nullable(),
@@ -259,6 +260,7 @@ export function mergeVoiceInsightsIntoContactMemory(
       transactionType: shouldMergePreferences ? next.transactionType ?? previous.transactionType : previous.transactionType,
       propertyTypes: shouldMergePreferences ? mergeUnique(next.propertyTypes, previous.propertyTypes, 5) : previous.propertyTypes,
       preferredLocations: shouldMergePreferences ? mergeUnique(next.preferredLocations, previous.preferredLocations, 8) : previous.preferredLocations,
+      locationRequired: shouldMergePreferences ? next.locationRequired ?? previous.locationRequired ?? false : previous.locationRequired ?? false,
       budgetRange: shouldMergePreferences ? next.budgetRange ?? previous.budgetRange : previous.budgetRange,
       bedroomCountMin: shouldMergePreferences ? next.bedroomCountMin ?? previous.bedroomCountMin : previous.bedroomCountMin,
       livingRoomCountMin: shouldMergePreferences ? next.livingRoomCountMin ?? previous.livingRoomCountMin : previous.livingRoomCountMin,

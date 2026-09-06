@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertDealTransition, assertPresentationTransition, dealDraftSchema, dealTransitionSchema } from "./closing.js";
+import { presentationTransitionSchema, assertDealTransition, assertPresentationTransition, dealDraftSchema, dealTransitionSchema } from "./closing.js";
 describe("closing rules", () => {
   const base = { actualAmount: null, commissionAmount: null, occurredAt: 1_000, evidenceNote: "Aşama görüşmeyle doğrulandı", nextActionType: "call" as const, nextActionAt: 2_000 };
   it("requires user confirmation before sent", () => { expect(() => assertPresentationTransition("draft", "sent")).toThrow(); expect(() => assertPresentationTransition("user_approved", "sent")).not.toThrow(); });
@@ -23,4 +23,11 @@ describe("closing rules", () => {
     expect(dealTransitionSchema.safeParse({ ...base, dealId: "d", toStage: "viewing", evidenceNote: "" }).success).toBe(false);
     expect(dealTransitionSchema.safeParse({ ...base, dealId: "d", toStage: "viewing", nextActionType: null, nextActionAt: null }).success).toBe(false);
   });
+});
+
+
+it("requires an explicit real-send attestation, not only an approved draft", () => {
+  expect(presentationTransitionSchema.safeParse({ presentationId: "p", toStatus: "sent" }).success).toBe(false);
+  expect(presentationTransitionSchema.safeParse({ presentationId: "p", toStatus: "sent", userConfirmedSent: false }).success).toBe(false);
+  expect(presentationTransitionSchema.safeParse({ presentationId: "p", toStatus: "sent", userConfirmedSent: true }).success).toBe(true);
 });

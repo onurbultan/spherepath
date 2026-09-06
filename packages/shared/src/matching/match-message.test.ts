@@ -33,3 +33,12 @@ describe("match message fallback", () => {
     expect(matchMessageRequestSchema.safeParse({ contactId: "c1", portfolioItemId: "p1", message: "hack" }).success).toBe(false);
   });
 });
+
+
+it("carries mismatches into a cautious alternative message", () => {
+  const message = buildMatchMessageFallback({ contactName: "Ayşe", headline: "Alaçatı villa", location: "Çeşme Alaçatı", askingPrice: null, listingUrl: null, mismatchReasons: ["Bölge eşleşmiyor: Urla İskele ↔ Çeşme Alaçatı. Alternatif bölge; uyum puanı en fazla %59."] });
+  expect(message).toContain("Urla İskele ↔ Çeşme Alaçatı");
+  expect(message).toContain("değerlendirmek ister misiniz");
+  expect(message).not.toContain("arayışınıza uygun");
+  expect(message).not.toContain("%59");
+});

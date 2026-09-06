@@ -29,6 +29,15 @@ export function suggestOpportunityTypeForRoles(roles: readonly ContactRole[]): O
   return null;
 }
 
+/** Show existing active work on first entry; an explicit tab choice wins in the view. */
+export function defaultOpportunityJourney(opportunities: readonly Pick<Opportunity, "type" | "stage">[]): "owner" | "requirement" {
+  const active = opportunities.filter((item) => item.stage !== "won" && item.stage !== "lost");
+  const candidates = active.length ? active : opportunities;
+  return candidates.length > 0 && candidates.every((item) => item.type === "buyer_requirement" || item.type === "tenant_requirement")
+    ? "requirement"
+    : "owner";
+}
+
 export const opportunityStageLabels: Record<OpportunityStage, string> = {
   new_lead: "Yeni talep",
   first_contact: "Görüşüldü",

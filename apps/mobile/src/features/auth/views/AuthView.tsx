@@ -1,3 +1,4 @@
+import { onboardingCopy } from "@spherepath/shared";
 import { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { ArrowRight, LockKeyhole } from "lucide-react-native";
@@ -11,6 +12,8 @@ import { controlMetrics, largeButtonMetrics } from "@/shared/ui/SpField";
 export function AuthView() {
   const theme = useSpTheme();
   const { signIn, createAccount, resetPassword } = useSession();
+  const [workspaceMode, setWorkspaceMode] = useState<"create" | "join">("create");
+  const [inviteCode, setInviteCode] = useState("");
   const [mode, setMode] = useState<"signin" | "register">("signin");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -22,7 +25,7 @@ export function AuthView() {
     setPending(true);
     setError(null);
     try {
-      if (mode === "register") await createAccount(displayName, email, password);
+      if (mode === "register") await createAccount(displayName, email, password, workspaceMode === "join" ? inviteCode : undefined);
       else await signIn(email, password);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Oturum açılamadı.");
@@ -45,10 +48,11 @@ export function AuthView() {
             <SpText variant="eyebrow" color="deed">GÜVENLİ ÇALIŞMA ALANI</SpText>
             <SpText variant="title">{mode === "signin" ? "Tekrar hoş geldin" : "Hesabını oluştur"}</SpText>
             {mode === "register" ? <TextInput autoCapitalize="words" autoComplete="name" placeholder="Ad soyad" placeholderTextColor={theme.textTertiary} style={inputStyle} value={displayName} onChangeText={setDisplayName} /> : null}
+            {mode === "register" ? <><SpText variant="title">{onboardingCopy.workspaceChoice}</SpText>{(["create", "join"] as const).map((value) => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: workspaceMode === value }} onPress={() => setWorkspaceMode(value)}><SpText color={workspaceMode === value ? "deed" : "secondary"}>{workspaceMode === value ? "✓ " : ""}{value === "create" ? onboardingCopy.createOffice : onboardingCopy.joinOffice}</SpText></Pressable>)}<SpText color="secondary">{workspaceMode === "join" ? onboardingCopy.inviteHint : onboardingCopy.newOfficeHint}</SpText>{workspaceMode === "join" ? <TextInput accessibilityLabel="Ofis davet kodu" placeholder="Ofis davet kodu" maxLength={8} autoCapitalize="characters" style={inputStyle} value={inviteCode} onChangeText={(value) => setInviteCode(value.toUpperCase().replace(/[^A-Z2-9]/gu, ""))} /> : null}</> : null}
             <TextInput autoCapitalize="none" autoComplete="email" keyboardType="email-address" placeholder="E-posta" placeholderTextColor={theme.textTertiary} style={inputStyle} value={email} onChangeText={setEmail} />
             <TextInput autoCapitalize="none" autoComplete={mode === "register" ? "new-password" : "current-password"} placeholder="Şifre" placeholderTextColor={theme.textTertiary} secureTextEntry style={inputStyle} value={password} onChangeText={setPassword} />
             {error ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText variant="bodySmall" color="ask">{error}</SpText></View> : null}
-            <Pressable disabled={pending} onPress={() => void submit()} style={({ pressed }) => [styles.primary, { backgroundColor: theme.ask, opacity: pressed || pending ? .68 : 1 }]}><SpText style={{ color: theme.onAsk }}>{pending ? "Hazırlanıyor…" : mode === "signin" ? "Giriş yap" : "Hesap oluştur"}</SpText><ArrowRight color={theme.onAsk} size={18} /></Pressable>
+            <Pressable disabled={pending || (mode === "register" && workspaceMode === "join" && inviteCode.length !== 8)} onPress={() => void submit()} style={({ pressed }) => [styles.primary, { backgroundColor: theme.ask, opacity: pressed || pending ? .68 : 1 }]}><SpText style={{ color: theme.onAsk }}>{pending ? "Hazırlanıyor…" : mode === "signin" ? "Giriş yap" : "Hesap oluştur"}</SpText><ArrowRight color={theme.onAsk} size={18} /></Pressable>
             {mode === "signin" ? <Pressable onPress={() => { setError(null); void resetPassword(email).then(() => setError("Şifre sıfırlama bağlantısı gönderildi.")).catch((nextError) => setError(nextError instanceof Error ? nextError.message : "Bağlantı gönderilemedi.")); }}><SpText color="deed" style={styles.center}>Şifremi unuttum</SpText></Pressable> : null}
             <Pressable onPress={() => { setMode(mode === "signin" ? "register" : "signin"); setError(null); }}><SpText color="deed" style={styles.center}>{mode === "signin" ? "Yeni misin? Hesap oluştur" : "Zaten hesabın var mı? Giriş yap"}</SpText></Pressable>
           </View>

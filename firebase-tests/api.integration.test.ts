@@ -12,6 +12,7 @@ const auth = getAuth(app);
 const functions = getFunctions(app, "europe-west8");
 let testEnvironment: RulesTestEnvironment;
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const businessPhoneNumberId = Date.now().toString();
 const requirementInsights = { keyThingsToRemember: ["Urla'da kiralık daire arıyor"], propertyContext: "search_preference", propertyPreferences: { transactionType: "rent", propertyTypes: ["apartment"], preferredLocations: ["Urla"], budgetRange: { min: null, max: 60_000, currency: "TRY" }, bedroomCountMin: 2, livingRoomCountMin: 1, roomCountMin: null, areaMinM2: null, areaMaxM2: null, mustHaves: ["Otoparklı"], dealBreakers: [], timeline: null }, propertySituations: [], suggestedActionReason: "Uygun portföyleri mesajla" } as const;
 
 function envelope<T>(data: T, requestId: string, commandId?: string) {
@@ -190,7 +191,7 @@ describe("callable API vertical slice", () => {
     const presentation = (await createPresentation(envelope({ listingId: listing.listing.id, contactId: created.contact.id, message: "Integration listing presentation", channel: "whatsapp" }, "request-presentation", "command-presentation"))).data as { presentationId: string };
     const advancePresentation = httpsCallable(functions, "advancePresentation");
     await advancePresentation(envelope({ presentationId: presentation.presentationId, toStatus: "user_approved" }, "request-presentation-approved", "command-presentation-approved"));
-    await advancePresentation(envelope({ presentationId: presentation.presentationId, toStatus: "sent" }, "request-presentation-sent", "command-presentation-sent"));
+    await advancePresentation(envelope({ presentationId: presentation.presentationId, toStatus: "sent", userConfirmedSent: true }, "request-presentation-sent", "command-presentation-sent"));
 
     const buyerOpportunity = (await createOpportunity(envelope({
       subjectContactId: created.contact.id,
@@ -425,30 +426,30 @@ describe("callable API vertical slice", () => {
     expect(initialWhatsApp.integration.webhookUrl).toContain("whatsappGroupsWebhook");
     const configureWhatsAppGroupIntegration = httpsCallable(functions, "configureWhatsAppGroupIntegration");
     const whatsappRequest = envelope({
-      businessPhoneNumberId: "12784358810",
+      businessPhoneNumberId: businessPhoneNumberId,
       subject: "Spherepath Integration Group",
       description: "Integration group for office pool messages",
       joinApprovalMode: "approval_required",
     }, "request-whatsapp-configure", "command-whatsapp-configure");
     const configuredWhatsApp = (await configureWhatsAppGroupIntegration(whatsappRequest)).data as { integration: { status: string; businessPhoneNumberId: string } };
     const replayedWhatsApp = (await configureWhatsAppGroupIntegration({ ...whatsappRequest, requestId: "request-whatsapp-configure-replay" })).data as { integration: { status: string } };
-    expect(configuredWhatsApp.integration).toMatchObject({ status: "configured", businessPhoneNumberId: "12784358810" });
+    expect(configuredWhatsApp.integration).toMatchObject({ status: "configured", businessPhoneNumberId: businessPhoneNumberId });
     expect(replayedWhatsApp.integration.status).toBe("configured");
-    await testEnvironment.withSecurityRulesDisabled(async (context) => updateDoc(doc(context.firestore(), "whatsappGroupIntegrations", workspace.officeId), { status: "creating", pendingRequestId: "integration-group-request-1" }));
-    const lifecyclePayload = { object: "whatsapp_business_account", entry: [{ changes: [{ field: "group_lifecycle_update", value: { metadata: { phone_number_id: "12784358810" }, groups: [{ type: "group_create", request_id: "integration-group-request-1", group_id: "integration-group-1", invite_link: "https://chat.whatsapp.com/integration" }] } }] }] };
+    await testEnvironment.withSecurityRulesDisabled(async (context) => updateDoc(doc(context.firestore(), "whatsappGroupIntegrations", workspace.officeId), { status: "creating", pendingRequestId: `integration-group-request-1-${runId}` }));
+    const lifecyclePayload = { object: "whatsapp_business_account", entry: [{ changes: [{ field: "group_lifecycle_update", value: { metadata: { phone_number_id: businessPhoneNumberId }, groups: [{ type: "group_create", request_id: `integration-group-request-1-${runId}`, group_id: `integration-group-1-${runId}`, invite_link: "https://chat.whatsapp.com/integration" }] } }] }] };
     const lifecycleRaw = JSON.stringify(lifecyclePayload);
     const lifecycleSignature = `sha256=${createHmac("sha256", "integration-app-secret").update(lifecycleRaw).digest("hex")}`;
     const lifecycleResponse = await fetch(`http://127.0.0.1:5001/${projectId}/europe-west8/whatsappGroupsWebhook`, { method: "POST", headers: { "content-type": "application/json", "x-hub-signature-256": lifecycleSignature }, body: lifecycleRaw });
     expect(lifecycleResponse.status).toBe(200);
     const activeWhatsApp = (await getWhatsAppGroupIntegration(envelope(undefined, "request-whatsapp-active"))).data as { integration: { status: string; groupId: string; inviteLink: string } };
-    expect(activeWhatsApp.integration).toMatchObject({ status: "active", groupId: "integration-group-1", inviteLink: "https://chat.whatsapp.com/integration" });
+    expect(activeWhatsApp.integration).toMatchObject({ status: "active", groupId: `integration-group-1-${runId}`, inviteLink: "https://chat.whatsapp.com/integration" });
     const webhookPayload = {
       object: "whatsapp_business_account",
       entry: [{ changes: [{ field: "messages", value: {
-        metadata: { phone_number_id: "12784358810" },
+        metadata: { phone_number_id: businessPhoneNumberId },
         messages: [
-          { id: "wamid.integration-1", group_id: "integration-group-1", timestamp: String(Math.floor(Date.now() / 1_000)), type: "text", text: { body: "Urla'da bahçeli bir ev var, konumu Kuşçular." } },
-          { id: "wamid.integration-2", group_id: "integration-group-1", timestamp: String(Math.floor(Date.now() / 1_000)), type: "text", text: { body: "Sağlık durumu hakkında ayrıntı paylaşıldı." } },
+          { id: `wamid.integration-1-${runId}`, group_id: `integration-group-1-${runId}`, timestamp: String(Math.floor(Date.now() / 1_000)), type: "text", text: { body: "Urla'da bahçeli bir ev var, konumu Kuşçular." } },
+          { id: `wamid.integration-2-${runId}`, group_id: `integration-group-1-${runId}`, timestamp: String(Math.floor(Date.now() / 1_000)), type: "text", text: { body: "Sağlık durumu hakkında ayrıntı paylaşıldı." } },
         ],
       } }] }],
     };
@@ -568,12 +569,18 @@ describe("callable API vertical slice", () => {
     const getContactDataExport = httpsCallable(functions, "getContactDataExport");
     await expect(getContactDataExport(envelope({ requestId: accessRequest.request.id }, "request-contact-export-before-approval"))).rejects.toThrow();
     const resolveDataSubjectRequest = httpsCallable(functions, "resolveDataSubjectRequest");
-    await resolveDataSubjectRequest(envelope({ requestId: accessRequest.request.id, decision: "approved", resolutionNote: "Identity verified.", correctedContact: null }, "request-data-access-resolve", "command-data-access-resolve"));
+    const accessApproval = (await resolveDataSubjectRequest(envelope({ requestId: accessRequest.request.id, decision: "approved", resolutionNote: "Identity verified.", correctedContact: null }, "request-data-access-resolve", "command-data-access-resolve"))).data as { status: string };
+    expect(accessApproval.status).toBe("approved");
+    await expect(resolveDataSubjectRequest(envelope({ requestId: accessRequest.request.id, decision: "completed", resolutionNote: "Premature completion", correctedContact: null }, "request-premature-delivery", "command-premature-delivery"))).rejects.toThrow();
     const contactExport = (await getContactDataExport(envelope({ requestId: accessRequest.request.id }, "request-contact-export"))).data as { export: { contact: { id: string; memory: { propertyPreferences: { preferredLocations: string[]; budgetRange: { max: number } | null } } }; interactions: unknown[]; opportunities: unknown[] } };
     expect(contactExport.export.contact.id).toBe(created.contact.id);
     expect(contactExport.export.interactions.length).toBeGreaterThan(0);
     expect(contactExport.export.opportunities.length).toBeGreaterThan(0);
     expect(contactExport.export.contact.memory.propertyPreferences).toMatchObject({ preferredLocations: ["Karşıyaka", "Bostanlı"], budgetRange: { max: 45_000 } });
+    const preparedAccess = (await resolveDataSubjectRequest(envelope({ requestId: accessRequest.request.id, decision: "prepared", resolutionNote: "Export prepared for delivery", correctedContact: null }, "request-access-prepared", "command-access-prepared"))).data as { status: string };
+    expect(preparedAccess.status).toBe("processing");
+    const deliveredAccess = (await resolveDataSubjectRequest(envelope({ requestId: accessRequest.request.id, decision: "completed", resolutionNote: "Handed to verified requester", correctedContact: null }, "request-access-delivered", "command-access-delivered"))).data as { status: string };
+    expect(deliveredAccess.status).toBe("completed");
     const deletionContact = (await createContact(envelope({
       fullName: "Deletion Integration Contact",
       phone: "+90 555 111 22 33",
@@ -600,3 +607,46 @@ describe("callable API vertical slice", () => {
     expect(contactsAfterDeletion.contacts.some((item) => item.id === deletionContact.contact.id)).toBe(false);
   }, 60_000);
 });
+
+it("keeps atomic first-customer capture and mirrored tasks consistent across surfaces", async () => {
+  const credential = await createUserWithEmailAndPassword(auth, `audit-${Date.now()}@example.test`, "Test1234!");
+  await httpsCallable(functions, "bootstrapWorkspace")(envelope({ displayName: "Audit Regression" }, "audit-bootstrap", "audit-bootstrap"));
+  await credential.user.getIdToken(true);
+  const { emptyVoiceInsights, reviewedInboxInsights } = await import("../packages/shared/src/index.js");
+  const note = (await httpsCallable(functions, "createInboxItem")(envelope({ source: "typed", text: "Ayşe Kara Urla İskele'de villa arıyor. Telefon: 0555 000 11 22.", requestedKind: "requirement", linkedContactId: null }, "audit-note", "audit-note"))).data as { item: { id: string } };
+  const followUpAt = Date.now() + 86_400_000;
+  const approvedInsights = reviewedInboxInsights({ ...emptyVoiceInsights, contactName: "Ayşe Kara", contactPhone: "05550001122", propertyPreferences: { ...emptyVoiceInsights.propertyPreferences, transactionType: "buy", preferredLocations: ["Urla İskele"], locationRequired: true, propertyTypes: ["villa"], budgetRange: { min: 18_000_000, max: 35_000_000, currency: "TRY" } } }, "buyer_requirement");
+  const capture = envelope({ inboxItemId: note.item.id, action: "person", contact: { fullName: "Ayşe Kara", phone: "05550001122", metAtPlace: "Telefon görüşmesi", source: "inbound_call", role: "buyer", nextActionType: "call", nextActionAt: followUpAt }, approvedInsights, recordInteraction: true, opportunityType: "buyer_requirement" }, "audit-process", "audit-process");
+  const process = httpsCallable(functions, "processInboxItem");
+  const [first, replay] = await Promise.all([process(capture), process({ ...capture, requestId: `audit-replay-${runId}` })]);
+  const firstData = first.data as { entityId: string; item: { appliedActions: Array<{ type: string; entityId: string }> } };
+  expect((replay.data as { entityId: string }).entityId).toBe(firstData.entityId);
+  const opportunityId = firstData.item.appliedActions.find((action) => action.type === "opportunity_created")!.entityId;
+  const readContacts = async () => (await httpsCallable(functions, "listContacts")(envelope(undefined, "audit-contacts"))).data as { contacts: Array<{ id: string; phone: string; relationship: { nextActionType: string | null; nextActionAt: number | null }; memory: { propertySituations: Array<{ propertyPreferences: { preferredLocations: string[]; locationRequired?: boolean } }> } }> };
+  const readOpportunities = async () => (await httpsCallable(functions, "listOpportunities")(envelope(undefined, "audit-opportunities"))).data as { opportunities: Array<{ id: string; nextActionType: string | null; nextActionAt: number | null; ownerDetails?: { address: string }; criteria?: { preferredLocations: string[] } }> };
+  const contacts = (await readContacts()).contacts;
+  expect(contacts).toHaveLength(1);
+  expect(contacts[0]?.phone).toBe("05550001122");
+  expect(contacts[0]?.memory.propertySituations[0]?.propertyPreferences).toMatchObject({ preferredLocations: ["Urla İskele"], locationRequired: true });
+  expect((await readOpportunities()).opportunities).toHaveLength(1);
+  const history = (await httpsCallable(functions, "listContactInteractions")(envelope({ contactId: firstData.entityId }, "audit-history"))).data as { interactions: unknown[] };
+  expect(history.interactions).toHaveLength(1);
+
+  const independentAt = followUpAt + 3 * 86_400_000;
+  const independent = (await httpsCallable(functions, "createOpportunity")(envelope({ subjectContactId: firstData.entityId, type: "seller_listing", nextActionType: "valuation", nextActionAt: independentAt }, "audit-independent", "audit-independent"))).data as { opportunity: { id: string } };
+  await httpsCallable(functions, "updateOpportunityCriteria")(envelope({ opportunityId: independent.opportunity.id, preferences: { ...emptyVoiceInsights.propertyPreferences, preferredLocations: ["Urla Kuşçular"], budgetRange: { min: 32_000_000, max: 32_000_000, currency: "TRY" } }, ownerDetails: { address: "Urla Kuşçular", authorizationType: "verbal", motivation: "Daha küçük eve taşınacak" } }, "audit-owner-criteria", "audit-owner-criteria"));
+  expect((await readOpportunities()).opportunities.find((item) => item.id === independent.opportunity.id)).toMatchObject({ ownerDetails: { address: "Urla Kuşçular" }, criteria: { preferredLocations: ["Urla Kuşçular"] } });
+  expect((await readContacts()).contacts[0]?.memory.propertySituations.find((situation) => situation.propertyPreferences.locationRequired)?.propertyPreferences.preferredLocations).toEqual(["Urla İskele"]);
+
+  const finish = httpsCallable(functions, "completeDailyTask");
+  const rescheduledAt = followUpAt + 86_400_000;
+  await finish(envelope({ taskId: `next-action-${firstData.entityId}`, status: "rescheduled", outcomeNote: null, skippedReason: null, rescheduledAt, rescheduledActionType: "message" }, "audit-reschedule", "audit-reschedule"));
+  expect((await readContacts()).contacts[0]?.relationship).toMatchObject({ nextActionType: "message", nextActionAt: rescheduledAt });
+  expect((await readOpportunities()).opportunities.find((item) => item.id === opportunityId)).toMatchObject({ nextActionType: "message", nextActionAt: rescheduledAt });
+  const completed = envelope({ taskId: `next-action-${firstData.entityId}`, status: "completed", outcomeNote: "Sentetik takip tamamlandı", skippedReason: null, rescheduledAt: null, rescheduledActionType: null }, "audit-completed", "audit-completed");
+  await finish(completed); await finish(completed);
+  expect((await readContacts()).contacts[0]?.relationship).toMatchObject({ nextActionType: null, nextActionAt: null });
+  const after = (await readOpportunities()).opportunities;
+  expect(after.find((item) => item.id === opportunityId)).toMatchObject({ nextActionType: null, nextActionAt: null });
+  expect(after.find((item) => item.id === independent.opportunity.id)).toMatchObject({ nextActionType: "valuation", nextActionAt: independentAt });
+}, 60_000);

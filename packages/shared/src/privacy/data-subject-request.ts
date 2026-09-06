@@ -35,7 +35,7 @@ export const createDataSubjectRequestSchema = z.object({
 
 export const resolveDataSubjectRequestSchema = z.object({
   requestId: z.string().min(1).max(160),
-  decision: z.enum(["approved", "rejected"]),
+  decision: z.enum(["approved", "rejected", "prepared", "completed"]),
   resolutionNote: z.string().trim().min(2).max(2_000),
   correctedContact: contactDraftSchema.nullable(),
 }).strict().superRefine((value, context) => {
@@ -80,3 +80,22 @@ export interface ContactDataExport {
   voiceNotes: Array<Record<string, unknown>>;
   inboxItems: Array<Record<string, unknown>>;
 }
+
+export function accessRequestNextStatus(status: DataSubjectRequestStatus, decision: ResolveDataSubjectRequestInput["decision"]): DataSubjectRequestStatus {
+  if (status === "pending_verification" && decision === "approved") return "approved";
+  if (status === "pending_verification" && decision === "rejected") return "rejected";
+  if (status === "approved" && decision === "prepared") return "processing";
+  if (status === "processing" && decision === "completed") return "completed";
+  throw new Error("Veri talebinin mevcut durumunda bu işlem yapılamaz.");
+}
+export const dataRequestCopy = {
+  due: "Yanıt için son tarih",
+  verification: "Kimliği nasıl doğruladın? Başvuru / doğrulama referansı",
+  verify: "Kimlik doğrulamasını kaydet",
+  prepare: "Veri kopyasını hazırla",
+  delivery: "Veri kopyasını talep sahibine teslim ettim",
+  deliveryNote: "Teslim yöntemi ve referansı",
+  complete: "Teslimi kaydet ve tamamla",
+  awaitingDelivery: "Veri hazır; teslim bekliyor",
+  prepared: "Veri kopyası hazırlandı. Talep sahibine teslim ettikten sonra teslimi kaydet.",
+} as const;

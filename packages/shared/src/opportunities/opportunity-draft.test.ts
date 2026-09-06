@@ -1,9 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { createOpportunity, opportunityDraftSchema, opportunityPath, opportunityStageLabel, suggestOpportunityTypeForRoles } from "./opportunity-draft.js";
+import { createOpportunity, defaultOpportunityJourney, opportunityDraftSchema, opportunityPath, opportunityStageLabel, suggestOpportunityTypeForRoles } from "./opportunity-draft.js";
 import { opportunityCriteriaSummary, opportunityCriteriaUpdateSchema, opportunityTransactionType } from "./opportunity-situation.js";
 import { emptyVoicePropertyPreferences } from "../voice/voice-note.js";
 
 describe("opportunity draft", () => {
+  it("opens the existing requirement journey on first entry", () => {
+    expect(defaultOpportunityJourney([{ type: "buyer_requirement", stage: "new_lead" }])).toBe("requirement");
+    expect(defaultOpportunityJourney([{ type: "tenant_requirement", stage: "appointment" }])).toBe("requirement");
+    expect(defaultOpportunityJourney([{ type: "seller_listing", stage: "lost" }, { type: "buyer_requirement", stage: "new_lead" }])).toBe("requirement");
+  });
+
+  it("keeps the owner default for empty or mixed active work", () => {
+    expect(defaultOpportunityJourney([])).toBe("owner");
+    expect(defaultOpportunityJourney([{ type: "landlord_listing", stage: "new_lead" }])).toBe("owner");
+    expect(defaultOpportunityJourney([{ type: "seller_listing", stage: "new_lead" }, { type: "buyer_requirement", stage: "new_lead" }])).toBe("owner");
+  });
+
   it("creates a new lead with a required next action", () => {
     const opportunity = createOpportunity({
       subjectContactId: "contact-1",

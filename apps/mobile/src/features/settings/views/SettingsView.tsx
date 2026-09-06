@@ -1,12 +1,14 @@
+import { DataRequestActions } from "../components/DataRequestActions";
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from "react-native";
-import { ArrowLeft, Download, LogOut, Save, ShieldCheck, Lock } from "lucide-react-native";
+import { Pressable, ScrollView, Share, StyleSheet, TextInput, View } from "react-native";
+import { ArrowLeft, LogOut, Save, ShieldCheck, Lock } from "lucide-react-native";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   apiQueryKeys,
   countryLabels,
   createDataSubjectRequestSchema,
+  dataRequestCopy,
   dataSubjectRequestTypeLabels,
   dataSubjectRequestStatusLabels,
   dataSubjectRequestTypes,
@@ -35,7 +37,6 @@ import {
   getContactDataExport,
   listDataSubjectRequests,
   loadWorkspaceSettings,
-  resolveDataSubjectRequest,
   saveWorkspaceSettings,
 } from "../resources/settings";
 import { PhoneInput } from "@/shared/ui/MaskedInputs";
@@ -64,6 +65,7 @@ function editableSettings(settings: WorkspaceSettingsView): WorkspaceSettingsDra
     dailyPlanReminderMinute: settings.dailyPlanReminderMinute,
   };
 }
+
 
 export default function SettingsView() {
   const theme = useSpTheme();
@@ -114,24 +116,12 @@ export default function SettingsView() {
     finally { setPending(false); }
   }
 
-  async function approve(requestId: string, type: DataSubjectRequestType) {
-    if (!session) return;
-    if (type === "correction") return Alert.alert("Web uygulaması gerekli", "Düzeltilecek alanları güvenle seçmek için bu talebi web uygulamasından sonuçlandırın.");
-    setPending(true); setError(null);
-    try {
-      await resolveDataSubjectRequest(session, { requestId, decision: "approved", resolutionNote: "Kimlik doğrulandı ve mobil uygulamadan onaylandı.", correctedContact: null });
-      await Promise.all([queryClient.invalidateQueries({ queryKey: apiQueryKeys.dataSubjectRequests }), queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts })]);
-      setMessage(type === "deletion" ? "Silme yayılım işi başlatıldı." : "Talep onaylandı.");
-    } catch (nextError) { setError(messageFrom(nextError)); }
-    finally { setPending(false); }
-  }
-
   async function shareExport(requestId: string) {
     setPending(true); setError(null);
     try {
       const value = await getContactDataExport(requestId);
       await Share.share({ title: "Spherepath kişi veri kopyası", message: JSON.stringify(value, null, 2) });
-    } catch (nextError) { setError(messageFrom(nextError)); }
+    } catch (nextError) { setError(messageFrom(nextError)); throw nextError; }
     finally { setPending(false); }
   }
 
@@ -155,7 +145,7 @@ export default function SettingsView() {
       ))}
     </SpCard> : null}
     {settingsArea === "communication" ? <><WhatsAppGroupSettingsCard />{session?.role === "broker" ? <TelephonySettingsCard /> : <SpCard style={styles.card}><SpText variant="title">Ofis telefon altyapısı</SpText><SpText variant="bodySmall" color="secondary">Santral ve gelen arama eşleştirme ayarlarını ofis yöneticisi yönetir.</SpText></SpCard>}{session?.role === "broker" ? <PhoneNormalizationCard /> : null}</> : null}
-    {settingsArea === "compliance" ? <><SpCard style={styles.card}><SpText variant="eyebrow" color="deed">VERİ SAHİBİ HAKLARI</SpText><SpText variant="title">Yeni talep</SpText><ContactPicker contacts={contacts} value={selectedContactId} onChange={setContactId} placeholder="Kişi ara ve seç" /><View style={styles.row}>{dataSubjectRequestTypes.map((type) => <Pressable key={type} onPress={() => setRequestType(type)} style={[styles.choice, { borderColor: requestType === type ? theme.deed : theme.line }]}><SpText variant="bodySmall" color={requestType === type ? "deed" : "secondary"}>{dataSubjectRequestTypeLabels[type]}</SpText></Pressable>)}</View><TextInput multiline placeholder="Talebin açıklaması" placeholderTextColor={theme.textTertiary} style={[...inputStyle, styles.textarea]} value={requestDetails} onChangeText={setRequestDetails} /><Pressable disabled={pending || !selectedContactId} onPress={() => void createRequest()} style={[styles.secondary, { borderColor: theme.line }]}><SpText color="deed">Talebi kaydet</SpText></Pressable></SpCard>{(requestsQuery.data ?? []).map((item) => <SpCard key={item.id} style={styles.request}><SpText variant="title">{item.contactName}</SpText><SpText variant="bodySmall" color="secondary">{dataSubjectRequestTypeLabels[item.type]} · {dataSubjectRequestStatusLabels[item.status]}</SpText><View style={styles.row}>{item.type === "access" && (item.status === "approved" || item.status === "completed") ? <Pressable onPress={() => void shareExport(item.id)} style={[styles.smallAction, { borderColor: theme.line }]}><Download color={theme.deed} size={15} /><SpText variant="bodySmall" color="deed">Veri kopyasını paylaş</SpText></Pressable> : null}{item.status === "pending_verification" ? <Pressable onPress={() => void approve(item.id, item.type)} style={[styles.smallAction, { borderColor: theme.line }]}><SpText variant="bodySmall" color="deed">Kimliği doğrula ve onayla</SpText></Pressable> : null}</View></SpCard>)}</> : null}
+    {settingsArea === "compliance" ? <><SpCard style={styles.card}><SpText variant="eyebrow" color="deed">VERİ SAHİBİ HAKLARI</SpText><SpText variant="title">Yeni talep</SpText><ContactPicker contacts={contacts} value={selectedContactId} onChange={setContactId} placeholder="Kişi ara ve seç" /><View style={styles.row}>{dataSubjectRequestTypes.map((type) => <Pressable key={type} onPress={() => setRequestType(type)} style={[styles.choice, { borderColor: requestType === type ? theme.deed : theme.line }]}><SpText variant="bodySmall" color={requestType === type ? "deed" : "secondary"}>{dataSubjectRequestTypeLabels[type]}</SpText></Pressable>)}</View><TextInput multiline placeholder="Talebin açıklaması" placeholderTextColor={theme.textTertiary} style={[...inputStyle, styles.textarea]} value={requestDetails} onChangeText={setRequestDetails} /><Pressable disabled={pending || !selectedContactId} onPress={() => void createRequest()} style={[styles.secondary, { borderColor: theme.line }]}><SpText color="deed">Talebi kaydet</SpText></Pressable></SpCard>{(requestsQuery.data ?? []).map((item) => <SpCard key={item.id} style={styles.request}><SpText variant="title">{item.contactName}</SpText><SpText variant="bodySmall" color="secondary">{dataSubjectRequestTypeLabels[item.type]} · {dataSubjectRequestStatusLabels[item.status]}</SpText><SpText variant="bodySmall" color="secondary">{dataRequestCopy.due}: {new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium" }).format(item.dueAt)}</SpText><DataRequestActions item={item} contact={contacts.find((contact) => contact.id === item.contactId)} exportData={() => shareExport(item.id)} /></SpCard>)}</> : null}
     {settingsArea === "start" ? <Pressable onPress={() => void signOut()} style={[styles.secondary, { borderColor: theme.line }]}><LogOut color={theme.textSecondary} size={18} /><SpText color="secondary">Oturumu kapat</SpText></Pressable> : null}
   </ScrollView></SafeAreaView>;
 }

@@ -11,7 +11,8 @@ import { Handshake, MessageSquareText, X } from "lucide-react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
-  apiQueryKeys,
+  presentationConfirmationCopy,
+  commercialQueryKeys, apiQueryKeys,
   canMarketOnChannel,
   contactPrivacyDraftSchema,
   currencyCodes,
@@ -86,6 +87,8 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
   const firstUnpricedListing = listings.find(
     (item) => item.status === "preparing" && item.askingPrice === null,
   );
+  const [sentConfirmationId, setSentConfirmationId] = useState<string | null>(null);
+  const [sentConfirmed, setSentConfirmed] = useState(false);
   const [mode, setMode] = useState<"presentation" | "deal" | null>(null);
   const [listingId, setListingId] = useState("");
   const [contactId, setContactId] = useState("");
@@ -136,12 +139,7 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
   const marketingEligibility = selectedContactRecord
     ? canMarketOnChannel(selectedContactRecord.privacy, channel)
     : { allowed: false, reason: "İlgili kişi seçilmedi." };
-  async function refresh() {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: apiQueryKeys.closing }),
-      queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
-    ]);
-  }
+  async function refresh() { await Promise.all(commercialQueryKeys.map((queryKey) => queryClient.invalidateQueries({ queryKey }))); }
   async function create() {
     if (!session || !mode) return;
     setPending(true);
@@ -219,13 +217,16 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
   async function advancePresentation(
     id: string,
     status: Parameters<typeof nextPresentationStatuses>[0],
+    userConfirmedSent = false,
   ) {
     if (!session) return;
     const next = nextPresentationStatuses(status)[0];
     if (!next) return;
+    if (next === "sent" && !userConfirmedSent) { setSentConfirmed(false); setSentConfirmationId(id); return; }
     setPending(true);
     try {
-      await movePresentation(session, { presentationId: id, toStatus: next });
+      await movePresentation(session, { presentationId: id, toStatus: next, userConfirmedSent });
+      setSentConfirmationId(null);
       await refresh();
     } catch (nextError) {
       setError(messageFrom(nextError));
@@ -339,7 +340,7 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
             >
               <SpText variant="bodySmall">
                 {
-                  presentationStatusLabels[
+                  item.status === "user_approved" ? presentationConfirmationCopy.action : presentationStatusLabels[
                     nextPresentationStatuses(item.status)[0]!
                   ]
                 }
@@ -394,6 +395,7 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
           ) : null}
         </SpCard>
       ))}
+      <Modal visible={sentConfirmationId !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setSentConfirmationId(null)}><SafeAreaView style={[styles.safe, { backgroundColor: theme.card }]}><ScrollView contentContainerStyle={styles.form}><SpText variant="title">{presentationConfirmationCopy.title}</SpText><SpText>{presentationConfirmationCopy.hint}</SpText><Pressable accessibilityRole="checkbox" accessibilityState={{ checked: sentConfirmed }} onPress={() => setSentConfirmed(!sentConfirmed)}><SpText>{sentConfirmed ? "✓ " : ""}{presentationConfirmationCopy.confirmed}</SpText></Pressable>{error ? <SpText color="ask">{error}</SpText> : null}<Pressable disabled={pending || !sentConfirmed} onPress={() => sentConfirmationId && void advancePresentation(sentConfirmationId, "user_approved", true)}><SpText color="deed">{presentationConfirmationCopy.save}</SpText></Pressable><Pressable onPress={() => setSentConfirmationId(null)}><SpText>Vazgeç</SpText></Pressable></ScrollView></SafeAreaView></Modal>
       <Modal
         animationType="slide"
         presentationStyle="pageSheet"

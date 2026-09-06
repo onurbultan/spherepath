@@ -150,3 +150,28 @@ describe("near misses stay visible", () => {
     expect(dealBreaker.eligible).toBe(false);
   });
 });
+
+
+describe("advisor audit geography regressions", () => {
+  const urlaDemand: PropertyPreferences = { ...demand, preferredLocations: ["Urla İskele"], propertyTypes: ["villa"], budgetRange: { min: 18_000_000, max: 35_000_000, currency: "TRY" }, bedroomCountMin: 3, livingRoomCountMin: 1, areaMinM2: 180, mustHaves: ["Bahçe"] };
+  const cesmeVilla: PortfolioItemDraft = { ...item, location: "Çeşme Alaçatı", propertyType: "villa", askingPrice: { amount: 34_000_000, currency: "TRY" }, bedroomCount: 3, livingRoomCount: 1, areaM2: 200, features: ["garden"] };
+  it("never calls the audited Urla–Çeşme mismatch a high-confidence match", () => {
+    const result = scorePortfolioItem(urlaDemand, cesmeVilla);
+    expect(result.eligible).toBe(true);
+    expect(result.score).toBe(59);
+    expect(result.softMismatchKeys).toContain("location");
+    expect(result.reasons).toContainEqual(expect.objectContaining({ key: "location", status: "mismatch", detail: expect.stringContaining("Urla İskele ↔ Çeşme Alaçatı") }));
+  });
+  it("excludes an incompatible mandatory region but keeps the exact region", () => {
+    expect(scorePortfolioItem({ ...urlaDemand, locationRequired: true }, cesmeVilla).eligible).toBe(false);
+    expect(scorePortfolioItem({ ...urlaDemand, locationRequired: true }, { ...cesmeVilla, location: "İzmir Urla İskele" })).toMatchObject({ eligible: true, score: 100 });
+  });
+  it.each([["İzmir Urla", "İzmir Çeşme"], ["Urla İskele", "Urla Kuşçular"], ["Bostanlı", "Karşıyaka Mavişehir"], ["Urla", "Çeşme İskele"]])("does not equate %s with %s through a shared word", (left, right) => {
+    expect(locationsOverlap(left, right)).toBe(false);
+  });
+  it("retains district-wide and accent-insensitive matching", () => {
+    expect(locationsOverlap("Urla civarı", "Kadıovacık, Urla")).toBe(true);
+    expect(locationsOverlap("Cesme Alacati", "Çeşme Alaçatı")).toBe(true);
+    expect(locationsOverlap("Karşıyaka", "Bostanlı, İzmir")).toBe(true);
+  });
+});

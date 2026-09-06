@@ -27,6 +27,49 @@ function extraction(transactionType: "buy" | "sell" | "rent", nextActionType: "m
 }
 
 describe("voice extraction normalization", () => {
+  it.each([
+    ["18–35 milyon TL", 18_000_000, 35_000_000],
+    ["18 milyon ile 35 milyon TL", 18_000_000, 35_000_000],
+    ["18.000.000–35.000.000 TL", 18_000_000, 35_000_000],
+    ["1,5-2 milyon TL", 1_500_000, 2_000_000],
+    ["35-45 bin TL", 35_000, 45_000],
+  ])("preserves both budget bounds in %s independently of the area minimum", (budget, min, max) => {
+    const transcript = `Urla'da villa arıyor. Bütçesi ${budget}. En az 180 m² olmalı.`;
+    const result = normalizeVoiceExtraction(extraction("buy", "message"), transcript);
+    expect(result.insights.propertyPreferences).toMatchObject({ budgetRange: { min, max, currency: "TRY" }, areaMinM2: 180, areaMaxM2: null });
+    expect(result.insights.propertySituations[0]?.propertyPreferences).toMatchObject({ budgetRange: { min, max, currency: "TRY" }, areaMinM2: 180, areaMaxM2: null });
+  });
+
+  it("does not apply an area minimum to a budget maximum", () => {
+    const result = normalizeVoiceExtraction(extraction("buy", "message"), "Urla'da villa arıyor. Bütçesi 35 milyon TL'ye kadar. En az 180 metrekare olmalı.");
+    expect(result.insights.propertyPreferences).toMatchObject({ budgetRange: { min: null, max: 35_000_000 }, areaMinM2: 180, areaMaxM2: null });
+  });
+
+  it("does not apply a budget minimum to an area maximum", () => {
+    const result = normalizeVoiceExtraction(extraction("buy", "message"), "Villa arıyor. Bütçesi en az 18 milyon TL. En fazla 250 m2 olmalı.");
+    expect(result.insights.propertyPreferences).toMatchObject({ budgetRange: { min: 18_000_000, max: null }, areaMinM2: null, areaMaxM2: 250 });
+  });
+
+  it("restores a missing model budget bound from the explicit complete note", () => {
+    const source = extraction("buy", "message");
+    const preferences = { ...source.insights.propertyPreferences, budgetRange: { min: null, max: 35_000_000, currency: "TRY" as const } };
+    source.insights.propertySituations = [{ propertyContext: "search_preference", summary: "Urla'da villa arıyor.", propertyPreferences: preferences }];
+    const result = normalizeVoiceExtraction(source, "Urla'da villa arıyor. Bütçesi 18–35 milyon TL. En az 180 m².");
+    expect(result.insights.propertyPreferences.budgetRange).toEqual({ min: 18_000_000, max: 35_000_000, currency: "TRY" });
+  });
+
+  it("keeps grouped and decimal sale prices within their sentence", () => {
+    const result = normalizeVoiceExtraction(extraction("sell", "message"), "Karşıyaka'da 180 m² evini 8.500.000 TL'ye satmak istiyor. Urla'da 18–35 milyon TL bütçeyle villa arıyor.");
+    expect(result.insights.propertySituations).toHaveLength(2);
+    expect(result.insights.propertySituations[0]?.propertyPreferences).toMatchObject({ transactionType: "sell", budgetRange: { min: 8_500_000, max: 8_500_000 }, areaMinM2: 180, areaMaxM2: 180 });
+    expect(result.insights.propertyPreferences).toMatchObject({ transactionType: "buy", budgetRange: { min: 18_000_000, max: 35_000_000 }, areaMinM2: null });
+  });
+
+  it("does not treat a phone or room configuration as money", () => {
+    const result = normalizeVoiceExtraction(extraction("buy", "message"), "3+1 ve 180–250 m² villa arıyor. Telefon: 05550001122.");
+    expect(result.insights.propertyPreferences).toMatchObject({ budgetRange: null, areaMinM2: 180, areaMaxM2: 250 });
+  });
+
   it("preserves room configuration and both ends of an area range", () => {
     const result = normalizeVoiceExtraction(extraction("rent", "message"), "En az 3+1 ve 250-350 m2 ofis arıyor.");
     expect(result.insights.propertyPreferences).toMatchObject({

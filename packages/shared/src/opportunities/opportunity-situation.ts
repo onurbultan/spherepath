@@ -5,6 +5,11 @@ import { voicePropertyPreferencesSchema, type VoicePropertyPreferences } from ".
 export const opportunityCriteriaUpdateSchema = z.object({
   opportunityId: z.string().trim().min(1).max(160),
   preferences: voicePropertyPreferencesSchema,
+  ownerDetails: z.object({
+    address: z.string().trim().min(3).max(240),
+    authorizationType: z.enum(["exclusive", "open", "verbal", "none", "unknown"]),
+    motivation: z.string().trim().min(2).max(500).nullable(),
+  }).strict().optional(),
 }).strict();
 export type OpportunityCriteriaUpdate = z.infer<typeof opportunityCriteriaUpdateSchema>;
 
@@ -56,3 +61,18 @@ export function opportunityImpliedRole(type: OpportunityType): ContactRole {
     case "tenant_requirement": return "tenant";
   }
 }
+
+export const opportunityCriteriaCopy = {
+  ownerTitle: "MÜLK VE YETKİ BİLGİLERİ",
+  demandTitle: "TALEP KRİTERLERİ",
+  ownerAction: "Mülk bilgilerini düzenle",
+  demandAction: "Kriterleri düzenle",
+  address: "Mülk adresi / bölgesi",
+  expectedPrice: "Beklenen fiyat",
+  authorization: "Yetki durumu",
+  motivation: "Satma / kiraya verme nedeni",
+  locationRequired: "Bölge olmazsa olmaz",
+  area: "Mülkün alanı (m²)",
+  features: "Mülkün özellikleri",
+  duplicate: "Bu kişi için aynı türde açık fırsat var. Ayrı bir iş değilse mevcut fırsattan devam et.",
+} as const;

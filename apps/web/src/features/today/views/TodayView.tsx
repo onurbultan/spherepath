@@ -1,5 +1,7 @@
 "use client";
 
+import { dailyTaskQueryKeys } from "@spherepath/shared";
+
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowRight, CalendarCheck, Check, MessagesSquare, PhoneOff, RefreshCw, Target } from "lucide-react";
@@ -62,7 +64,7 @@ export function TodayView() {
     setTaskError(null);
     try {
       await finishDailyTask(session, outcome);
-      await queryClient.refetchQueries({ queryKey: apiQueryKeys.todayOverview, type: "active" });
+      await Promise.all(dailyTaskQueryKeys.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
       setTaskSuccess(outcome.status === "rescheduled" ? "Görev yeni tarihe ertelendi." : outcome.status === "contact_opt_out" ? "İletişim tercihi kaydedildi; gelecek iletişimler kapatıldı." : outcome.status === "skipped" ? "Görev atlandı ve nedeni kaydedildi." : "Görev tamamlandı.");
       setActiveTask(null);
     } catch (error) {

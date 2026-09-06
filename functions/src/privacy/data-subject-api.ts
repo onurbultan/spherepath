@@ -1,6 +1,7 @@
 import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
+  accessRequestNextStatus,
   createDataSubjectRequestSchema,
   contactDataExportSchema,
   resolveDataSubjectRequestSchema,
@@ -119,12 +120,16 @@ export const resolveDataSubjectRequest = onCall(callableOptions, async (request)
     }
     if (!requestSnapshot.exists || !canManage(requestSnapshot.data()!, claims)) throw new HttpsError("not-found", "Data subject request was not found.");
     const data = requestSnapshot.data()!;
-    if (data.status !== "pending_verification") throw new HttpsError("failed-precondition", "Data subject request was already resolved.");
+    if (data.type !== "access" && (data.status !== "pending_verification" || !["approved", "rejected"].includes(parsed.data.decision))) throw new HttpsError("failed-precondition", "Data subject request was already resolved.");
     const contactRef = firestore.collection("contacts").doc(data.contactId as string);
     const contactSnapshot = await transaction.get(contactRef);
     if (!contactSnapshot.exists || !canManage(contactSnapshot.data()!, claims)) throw new HttpsError("not-found", "Contact was not found.");
     const now = Timestamp.now();
     let nextStatus: DataSubjectRequestStatus = parsed.data.decision === "rejected" ? "rejected" : "completed";
+    if (data.type === "access") {
+      try { nextStatus = accessRequestNextStatus(data.status, parsed.data.decision); }
+      catch { throw new HttpsError("failed-precondition", "Access request transition is invalid."); }
+    }
     if (parsed.data.decision === "approved" && data.type === "profiling_objection") {
       transaction.update(contactRef, { "privacy.profilingObjection": true, updatedAt: now });
     }
@@ -159,11 +164,15 @@ export const resolveDataSubjectRequest = onCall(callableOptions, async (request)
     transaction.update(requestRef, {
       status: nextStatus,
       resolutionNote: parsed.data.resolutionNote,
-      resolvedAt: nextStatus === "processing" ? null : now,
+      resolvedAt: ["processing", "approved"].includes(nextStatus) ? null : now,
+      ...(parsed.data.decision === "approved" ? { identityVerifiedAt: now, verificationNote: parsed.data.resolutionNote } : {}),
+      ...(parsed.data.decision === "prepared" ? { preparedAt: now } : {}),
+      ...(parsed.data.decision === "completed" ? { deliveredAt: now, deliveryNote: parsed.data.resolutionNote } : {}),
       updatedAt: now,
     });
     transaction.create(firestore.collection("auditEvents").doc(), {
       officeId: claims.officeId,
+      ownerUid: claims.uid,
       actorUid: claims.uid,
       action: "data_subject_request_resolved",
       entityType: "data_subject_request",
@@ -198,7 +207,7 @@ export const getContactDataExport = onCall(callableOptions, async (request): Pro
     const requestSnapshot = await firestore.collection("dataSubjectRequests").doc(parsed.data.requestId).get();
     const requestData = requestSnapshot.data();
     if (!requestData || !canManage(requestData, claims)) throw new HttpsError("not-found", "Data subject request was not found.");
-    if (requestData.type !== "access" || !["approved", "completed"].includes(requestData.status as string)) {
+    if (requestData.type !== "access" || !["approved", "processing", "completed"].includes(requestData.status as string)) {
       throw new HttpsError("failed-precondition", "Identity verification and an approved access request are required for export.");
     }
     const contactId = requestData.contactId as string;
@@ -243,6 +252,7 @@ export const getContactDataExport = onCall(callableOptions, async (request): Pro
     };
     await firestore.collection("auditEvents").add({
       officeId: claims.officeId,
+      ownerUid: claims.uid,
       actorUid: claims.uid,
       action: "contact_data_exported",
       entityType: "data_subject_request",

@@ -1,5 +1,7 @@
 "use client";
 
+import { onboardingCopy, dailyTaskQueryKeys } from "@spherepath/shared";
+
 import { useState } from "react";
 import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, MapPin, MessagesSquare, Mic, Pencil, PhoneOff, Pin, RefreshCw, RotateCcw, Send, Shuffle, Sparkles } from "lucide-react";
 import Link from "next/link";
@@ -10,6 +12,7 @@ import { finishDailyTask, loadTodayOverview, replaceDailyTask } from "@/features
 import { TaskResolutionSheet, taskDueLabel, taskRecordHref } from "@/features/today/components/TaskResolutionSheet";
 import { changeInboxItem, createInboxNote, listInboxItems, retryInboxItem, undoInboxItem } from "../resources/inbox";
 import { noteViewModes, useNoteViewMode } from "../resources/note-view";
+import { SpCard } from "@/shared/ui/SpCard";
 import { AppShell } from "@/shared/ui/AppShell";
 import { listContacts } from "@/features/contacts/resources/contacts";
 import { NoteProcessingSheet } from "../components/NoteProcessingSheet";
@@ -179,7 +182,7 @@ export function FeedView() {
     setResolving(true); setTaskError(null);
     try {
       await finishDailyTask(session, outcome);
-      await client.invalidateQueries({ queryKey: apiQueryKeys.todayOverview });
+      await Promise.all(dailyTaskQueryKeys.map((queryKey) => client.invalidateQueries({ queryKey })));
       setActiveTask(null);
     } catch (next) { setTaskError(messageFrom(next)); } finally { setResolving(false); }
   }
@@ -215,7 +218,7 @@ export function FeedView() {
     onLocationSubmit: (id) => void addLocation(id),
   };
 
-  return <AppShell><div className="feed-view">
+  return <AppShell><div className="feed-view">{contacts.data?.length === 0 ? <SpCard><h2>{onboardingCopy.startTitle}</h2><p>{onboardingCopy.startHint}</p><div className="header-actions"><Link className="secondary-action inline-link" href="/contacts?create=1">{onboardingCopy.contact}</Link><Link className="secondary-action inline-link" href="/capture">{onboardingCopy.capture}</Link><Link className="secondary-action inline-link" href="/listings?action=add-listing">{onboardingCopy.listing}</Link></div></SpCard> : null}
     <header className="feed-header"><div><p className="eyebrow">AKIŞ</p><h1>Bugün</h1><p className="context-sentence">Yeni bilgiyi hemen kaydet; sonra beş öncelikli işini bitir.</p></div><button className="topbar-icon-button" onClick={() => void Promise.all([today.refetch(), inbox.refetch()])} aria-label="Yenile"><RefreshCw size={17} /></button></header>
     {loadingError ? <div className="form-error notice" role="alert"><strong>Veriler yüklenemedi.</strong> {messageFrom(loadingError)} <button className="text-button" type="button" onClick={() => void Promise.all([today.refetch(), inbox.refetch()])}>Yeniden dene</button></div> : null}
     <section className="sp-card quick-note" aria-labelledby="quick-note-title"><div className="feed-section-heading"><div><p className="eyebrow">HIZLI KAYIT</p><h2 id="quick-note-title">Aklındakini bırak</h2></div><Sparkles size={20} aria-hidden /></div><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Örn. Urla'da bahçeli bir ev duydum…" aria-label="Hızlı not" /><div className="quick-note-actions"><Link className="secondary-action" href="/capture"><Mic size={17} /> Sesli anlat</Link><button disabled={!text.trim() || saving} className="primary-action" onClick={() => void save()}><Send size={17} />{saving ? "Kaydediliyor…" : "Kaydet"}</button></div></section>

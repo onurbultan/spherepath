@@ -8,7 +8,7 @@ export const presentationStatuses = ["draft", "user_approved", "sent", "delivere
 export const presentationStatusLabels: Record<PresentationStatus, string> = { draft: "Taslak", user_approved: "Kullanıcı onayladı", sent: "Gönderildi", delivered: "Teslim", read: "Okundu", replied: "Yanıtlandı", failed: "Başarısız" };
 export const presentationDraftSchema = z.object({ listingId: z.string().min(1).max(160), contactId: z.string().min(1).max(160), message: z.string().trim().min(3).max(2000), channel: z.enum(marketingChannels) }).strict();
 export type PresentationDraft = z.infer<typeof presentationDraftSchema>;
-export const presentationTransitionSchema = z.object({ presentationId: z.string().min(1).max(160), toStatus: z.enum(presentationStatuses) }).strict();
+export const presentationTransitionSchema = z.object({ presentationId: z.string().min(1).max(160), toStatus: z.enum(presentationStatuses), userConfirmedSent: z.boolean().optional() }).strict().refine((value) => value.toStatus !== "sent" || value.userConfirmedSent === true, "Gönderimi gerçekten yaptığını doğrula.");
 export type PresentationTransition = z.infer<typeof presentationTransitionSchema>;
 const presentationTransitions: Record<PresentationStatus, readonly PresentationStatus[]> = { draft: ["user_approved"], user_approved: ["sent", "failed"], sent: ["replied", "failed"], delivered: ["read", "replied", "failed"], read: ["replied"], replied: [], failed: [] };
 export function assertPresentationTransition(from: PresentationStatus, to: PresentationStatus): void { if (!presentationTransitions[from].includes(to)) throw new Error("Invalid presentation transition."); }
@@ -64,3 +64,11 @@ const dealTransitions: Record<DealStage, readonly DealStage[]> = { presentation:
 export function assertDealTransition(from: DealStage, to: DealStage): void { if (!dealTransitions[from].includes(to)) throw new Error("Invalid deal transition."); }
 export function nextDealStages(stage: DealStage): readonly DealStage[] { return dealTransitions[stage]; }
 export function createDeal(draft: DealDraft, tenant: TenantOwned, now: number): Deal { const parsed = dealDraftSchema.parse(draft); return { ...tenant, ...parsed, stage: "presentation", stageEnteredAt: now, lastStageNote: parsed.source === "presentation" ? "Gönderilmiş sunumdan işlem başlatıldı" : parsed.sourceNote, offerAmount: null, actualAmount: null, commissionAmount: null, currency: null, lostReason: null, closedAt: null, deletedAt: null, createdAt: now, updatedAt: now }; }
+
+export const presentationConfirmationCopy = {
+  action: "Gönderimi doğrula",
+  title: "Mesajı gerçekten gönderdin mi?",
+  hint: "Bu işlem mesaj göndermez. Kendi WhatsApp, SMS veya e-posta uygulamandan gönderdiğin mesajı kaydeder.",
+  confirmed: "Mesajı belirtilen kişiye ve kanala gerçekten gönderdim",
+  save: "Gönderildi olarak kaydet",
+} as const;

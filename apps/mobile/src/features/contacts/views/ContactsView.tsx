@@ -75,10 +75,10 @@ function messageFrom(error: unknown) {
 export default function ContactsView() {
   const theme = useSpTheme();
   const router = useRouter();
-  const { next, contactId, action } = useLocalSearchParams<{ next?: string; contactId?: string; action?: string }>();
+  const { next, contactId, action, create } = useLocalSearchParams<{ create?: string; next?: string; contactId?: string; action?: string }>();
   const { session, signOut } = useSession();
   const queryClient = useQueryClient();
-  const [panelOpen, setPanelOpen] = useState(next === "listings");
+  const [panelOpen, setPanelOpen] = useState(next === "listings" || create === "1");
   const [editing, setEditing] = useState<ContactRecord | null>(null);
   const [draft, setDraft] = useState<ContactDraft>(emptyDraft);
   const [pending, setPending] = useState(false);

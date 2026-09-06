@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Audited, Instant, OpportunityType, TenantOwned } from "../domain/entities.js";
 import { contactDraftSchema } from "../contacts/contact-draft.js";
 import { nextActionTypeLabels, nextActionTypes } from "../interactions/manual-interaction.js";
+import { opportunityCriteriaSummary, opportunityTransactionType } from "../opportunities/opportunity-situation.js";
 import { opportunityTypes } from "../opportunities/opportunity-draft.js";
 import { portfolioItemDraftSchema } from "../matching/portfolio-match.js";
 import { voiceInsightsSchema, type VoiceInsights } from "../voice/voice-note.js";
@@ -269,3 +270,42 @@ export function classifyInboxText(rawText: string, requestedKind: InboxItemKind 
     explicitContact,
   };
 }
+
+/** Only explicit labels or an unambiguous named caller introduce a person. */
+export function inboxContactName(text: string): string {
+  const safe = maskSensitiveInboxText(text).text;
+  const labeled = safe.match(/(?:kişi|isim|ad)\s*:\s*([\p{L}'’-]+(?:\s+[\p{L}'’-]+){1,3}?)(?=\s+(?:telefon|tel)\s*:|[.!?]|$)/iu);
+  const caller = safe.match(/^([\p{Lu}][\p{L}'’-]+(?:\s+[\p{Lu}][\p{L}'’-]+){1,3})\s+(?:(?:bugün|dün)\s+)?(?:aradı|ile görüştüm|ile konuştum)(?=\s|[.!?]|$)/u);
+  return (labeled?.[1] ?? caller?.[1] ?? "").trim();
+}
+
+/** A phone is independent of how the note introduced the person's name. */
+export function inboxContactPhone(text: string): string {
+  const safe = maskSensitiveInboxText(text).text;
+  return safe.match(/(?:telefon|tel)\s*:\s*(\+?\d[\d ()-]{8,20}\d)/iu)?.[1]?.replace(/[^+\d]/gu, "") ?? "";
+}
+
+/** The reviewed primary requirement supersedes its original extracted situation. */
+export function reviewedInboxInsights(insights: VoiceInsights, type: OpportunityType): VoiceInsights {
+  const owner = type === "seller_listing" || type === "landlord_listing";
+  if (owner) return insights;
+  const propertyContext = "search_preference" as const;
+  const preferences = { ...insights.propertyPreferences, transactionType: opportunityTransactionType(type) };
+  const situation = { propertyContext, propertyPreferences: preferences, summary: opportunityCriteriaSummary(type, preferences) };
+  return {
+    ...insights, propertyContext, propertyPreferences: preferences,
+    propertySituations: [situation, ...insights.propertySituations.filter((entry) => entry.propertyContext !== propertyContext)].slice(0, 3),
+  };
+}
+
+export const inboxReviewCopy = {
+  newContact: "Yeni kişiyi burada oluştur",
+  existingContact: "Mevcut kişiyi seç",
+  createRequirement: "Kişi, görüşme ve talebi oluştur",
+  locationRequired: "Bölge olmazsa olmaz",
+  analyzing: "Kişi, talep ve takip bilgileri çıkarılıyor…",
+  budgetMin: "Asgari bütçe",
+  budgetMax: "Azami bütçe",
+  areaMin: "Minimum m²",
+  areaMax: "Maksimum m²",
+} as const;

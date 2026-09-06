@@ -282,19 +282,11 @@ export const analyzeInboxNote = onDocumentCreated(
         ? String(linkedContact.data()?.fullName ?? linkedContact.data()?.label ?? "").trim() || null
         : null;
       const analysis = await analyzeText(data.safeText as string, knownContactName);
-      // Nothing stops the advisor pressing the button while this is still
-      // running. When they do, the contact is created before the reading
-      // exists and no later pass would ever carry it over, so hand it to
-      // them here -- the note is the same note either way.
+      // Analysis prepares a review. Only the advisor-approved command writes contact memory.
       const db = getFirestore();
       await db.runTransaction(async (transaction) => {
         const snapshot = await transaction.get(reference);
         if (!snapshot.exists) return;
-        const applied = (snapshot.data()!.appliedActions ?? []) as DocumentData[];
-        const bornHere = applied.some((action) => action.type === "contact_created" && action.undoneAt === null);
-        const contactId = (snapshot.data()!.linkedContactId ?? null) as string | null;
-        const contactRef = bornHere && contactId ? db.collection("contacts").doc(contactId) : null;
-        const contactSnapshot = contactRef ? await transaction.get(contactRef) : null;
         const current = snapshot.data()!;
         const createdAt = current.createdAt as Timestamp | undefined;
         const updatedAt = current.updatedAt as Timestamp | undefined;
@@ -303,17 +295,7 @@ export const analyzeInboxNote = onDocumentCreated(
           ? inboxKindAfterAnalysis(current.kind as InboxItem["kind"], current.source as InboxItem["source"], (current.linkedContactId ?? null) as string | null, analysis)
           : current.kind as InboxItem["kind"];
         transaction.update(reference, { analysis, analysisStatus: "ready", kind: analyzedKind, updatedAt: Timestamp.now() });
-        if (!contactSnapshot?.exists || contactSnapshot.data()!.deletedAt !== null) return;
-        const now = Date.now();
-        const currentMemory = contactMemorySchema.parse({
-          ...(contactSnapshot.data()!.memory ?? {}),
-          updatedAt: millis(contactSnapshot.data()!.memory?.updatedAt),
-        });
-        const nextMemory = mergeVoiceInsightsIntoContactMemory(currentMemory, voiceInsightsSchema.parse(analysis.insights), now);
-        transaction.update(contactSnapshot.ref, {
-          memory: { ...nextMemory, updatedAt: timestamp(nextMemory.updatedAt) },
-          updatedAt: Timestamp.fromMillis(now),
-        });
+
       });
     } catch (error) {
       // The card still works without it; the note is never lost to this.

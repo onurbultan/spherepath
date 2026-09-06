@@ -1,25 +1,25 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Bell, Download, Lock, MessageCircleMore, Save, ShieldCheck, UserRoundCog, Users } from "lucide-react";
+import { Bell, Lock, MessageCircleMore, Save, ShieldCheck, UserRoundCog, Users } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   apiQueryKeys,
   countryLabels,
   createDataSubjectRequestSchema,
+  dataRequestCopy,
   dataSubjectRequestTypeLabels,
   dataSubjectRequestStatusLabels,
   dataSubjectRequestTypes,
   verbisStatusLabels,
   verbisStatuses,
   workspaceSettingsSchema,
-  type ContactDraft,
   type DataSubjectRequestType,
   type WorkspaceSettingsDraft,
   type WorkspaceSettingsView,
 } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
-import { listContacts, type ContactRecord } from "@/features/contacts/resources/contacts";
+import { listContacts } from "@/features/contacts/resources/contacts";
 import { AppShell } from "@/shared/ui/AppShell";
 import { SpCard } from "@/shared/ui/SpCard";
 import { ContactCombobox } from "@/shared/ui/ContactCombobox";
@@ -31,11 +31,10 @@ import {
   getContactDataExport,
   listDataSubjectRequests,
   loadWorkspaceSettings,
-  resolveDataSubjectRequest,
   saveWorkspaceSettings,
 } from "../resources/settings";
 import { PhoneField } from "@/shared/ui/MaskedFields";
-import { SpInput, SpSelect, SpTextarea } from "@/shared/ui/SpField";
+import { handleFormKeyDown, SpInput, SpSelect, SpTextarea } from "@/shared/ui/SpField";
 
 type SettingsArea = "start" | "communication" | "office" | "compliance";
 
@@ -43,16 +42,7 @@ function messageFrom(error: unknown) {
   return error instanceof Error ? error.message : "Ayarlar güncellenemedi.";
 }
 
-function contactDraft(contact: ContactRecord): ContactDraft {
-  return {
-    fullName: contact.fullName ?? contact.label ?? "İsimsiz kişi",
-    internalLabel: contact.internalLabel ?? (contact.fullName ? contact.label ?? "" : ""),
-    phone: contact.phone ?? "",
-    metAtPlace: contact.metAtPlace ?? "",
-    source: contact.source,
-    role: contact.roles[0] ?? "unknown",
-  };
-}
+
 
 function editableSettings(settings: WorkspaceSettingsView): WorkspaceSettingsDraft {
   return {
@@ -80,6 +70,8 @@ function downloadJson(value: unknown, filename: string) {
   anchor.click();
   URL.revokeObjectURL(url);
 }
+
+import { DataRequestActions } from "../components/DataRequestActions";
 
 export function SettingsView() {
   const { session } = useSession();
@@ -133,39 +125,20 @@ export function SettingsView() {
     finally { setPending(false); }
   }
 
-  async function resolve(requestId: string, decision: "approved" | "rejected", type: DataSubjectRequestType, targetContactId: string) {
-    if (!session) return;
-    const contact = contacts.find((item) => item.id === targetContactId);
-    setPending(true); setError(null); setMessage(null);
-    try {
-      await resolveDataSubjectRequest(session, {
-        requestId,
-        decision,
-        resolutionNote: decision === "approved" ? "Kimlik doğrulandı ve talep uygulandı." : "Kimlik veya kapsam doğrulanamadı.",
-        correctedContact: decision === "approved" && type === "correction" && contact ? contactDraft(contact) : null,
-      });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: apiQueryKeys.dataSubjectRequests }),
-        queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
-      ]);
-      setMessage(type === "deletion" && decision === "approved" ? "Silme yayılım işi başlatıldı." : "Talep sonuçlandırıldı.");
-    } catch (nextError) { setError(messageFrom(nextError)); }
-    finally { setPending(false); }
-  }
-
   async function exportContact(requestId: string, targetContactId: string) {
     setPending(true); setError(null);
     try {
       const value = await getContactDataExport(requestId);
       downloadJson(value, `spherepath-contact-export-${targetContactId}.json`);
-    } catch (nextError) { setError(messageFrom(nextError)); }
+      setMessage("Veri kopyası indirmesi başlatıldı; teslim ayrıca kaydedilir.");
+    } catch (nextError) { setError(messageFrom(nextError)); throw nextError; }
     finally { setPending(false); }
   }
 
   if (settingsQuery.isError) return <AppShell><div className="content-state" role="alert"><strong>Ayarlar yüklenemedi.</strong><span>{messageFrom(settingsQuery.error)}</span><button className="secondary-action" type="button" onClick={() => void settingsQuery.refetch()}>Yeniden dene</button></div></AppShell>;
   if (settingsQuery.isPending || !draft) return <AppShell><div className="content-state">Ayarlar yükleniyor…</div></AppShell>;
   const requests = requestsQuery.data ?? [];
-  const pendingRequests = requests.filter((item) => item.status === "pending_verification");
+  const pendingRequests = requests.filter((item) => ["pending_verification", "approved", "processing"].includes(item.status));
   const iysApprovedCount = contacts.filter((contact) => contact.privacy.iysStatus === "approved").length;
   const noticeVersion = contacts.map((contact) => contact.privacy.noticeVersion).find(Boolean) ?? "—";
 
@@ -183,7 +156,7 @@ export function SettingsView() {
       </nav>
       <div className="settings-main">
         <div className="settings-summary"><SpCard><span>VERBİS</span><strong className="good-text">{verbisStatusLabels[draft.verbisStatus]}</strong><small>{draft.dataControllerName || "Veri sorumlusu belirtilmedi"}</small></SpCard><SpCard><span>Aydınlatma metni</span><strong>{noticeVersion}</strong><small>Kişi kayıtlarında kullanılan sürüm</small></SpCard><SpCard><span>İYS onaylı</span><strong>{iysApprovedCount} / {contacts.length}</strong><div><span style={{ width: `${contacts.length ? Math.round((iysApprovedCount / contacts.length) * 100) : 0}%` }} /></div></SpCard><SpCard><span>Açık talep</span><strong className={pendingRequests.length ? "warm-text" : "good-text"}>{pendingRequests.length} bekliyor</strong><small>{pendingRequests.length ? "Kimlik doğrulama ve yanıt bekliyor" : "Bekleyen talep yok"}</small></SpCard></div>
-    <form className="settings-sections" id="workspace-settings-form" onSubmit={save}>
+    <form onKeyDown={handleFormKeyDown} className="settings-sections" id="workspace-settings-form" onSubmit={save}>
       {settingsArea === "start" ? <>
       <SpCard className="settings-card" id="advisor-profile">
         <div className="settings-title"><UserRoundCog size={20} /><div><p className="eyebrow">PROFİL</p><h2>Danışman ayarları</h2></div></div>
@@ -216,7 +189,7 @@ export function SettingsView() {
     {settingsArea === "communication" ? <WhatsAppGroupSettingsCard /> : null}
     {settingsArea === "compliance" ? <>
     <section className="office-team-section" id="voice-privacy"><div className="section-heading"><div><p className="eyebrow">SES VE GİZLİLİK</p><h2>Görüşme sonrası güvenli not</h2><p>Sesli not yalnız danışmanın görüşme bittikten sonra verdiği özettir; karşı taraf kaydedilmez.</p></div></div><div className="settings-grid"><SpCard className="settings-card"><div className="settings-title"><Lock size={20} /><div><p className="eyebrow">KALICI KORUMALAR</p><h2>Değiştirilemeyen güvenlik sınırları</h2></div></div><ul className="privacy-policy-list"><li>Aktif görüşme sırasında kayıt başlatılmaz; yalnız olduğunuzu ayrıca onaylamanız gerekir.</li><li>Ham ses ve maskelenmemiş döküm kalıcı olarak saklanmaz.</li><li>Hassas veri kategorileri inceleme öncesinde maskelenir.</li><li>Çıkarılan taslak, danışman onayı olmadan kişi veya fırsat kaydına dönüşmez.</li></ul><a className="secondary-action inline-link" href="/capture">Sesli not akışını aç</a></SpCard><SpCard className="settings-card"><div className="settings-title"><ShieldCheck size={20} /><div><p className="eyebrow">VERİ HAKLARI</p><h2>Dışa aktarma ve silme</h2></div></div><p className="privacy-copy">Kişi bazlı JSON dışa aktarımı ve silme talebi aşağıdaki veri sahibi talepleri bölümünden kimlik doğrulamasıyla yürütülür.</p></SpCard></div></section>
-    <section className="privacy-requests" id="data-requests"><div className="section-heading"><div><p className="eyebrow">VERİ SAHİBİ HAKLARI</p><h2>Talep ve yanıt takibi</h2></div></div><div className="settings-grid"><SpCard className="settings-card"><h2>Yeni talep</h2><form className="form-stack" onSubmit={createRequest}><ContactCombobox contacts={contacts} label="Kişi" value={selectedContactId} onChange={setContactId} placeholder="Kişi ara ve seç" /><label>Talep türü<SpSelect value={requestType} onChange={(event) => setRequestType(event.target.value as DataSubjectRequestType)}>{dataSubjectRequestTypes.map((item) => <option key={item} value={item}>{dataSubjectRequestTypeLabels[item]}</option>)}</SpSelect></label><label>Kimlik / başvuru referansı <span className="optional">isteğe bağlı</span><SpInput value={requesterReference} onChange={(event) => setRequesterReference(event.target.value)} /></label><label>Açıklama<SpTextarea value={details} onChange={(event) => setDetails(event.target.value)} /></label><button className="secondary-action" disabled={pending || !selectedContactId} type="submit">Talebi kaydet</button></form></SpCard><div className="request-list">{(requestsQuery.data ?? []).map((item) => <SpCard className="request-card" key={item.id}><div><strong>{item.contactName}</strong><span>{dataSubjectRequestTypeLabels[item.type]} · {dataSubjectRequestStatusLabels[item.status]}</span><small>Son yanıt: {new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium" }).format(item.dueAt)}</small></div><div className="request-actions">{item.type === "access" && (item.status === "approved" || item.status === "completed") ? <button type="button" onClick={() => void exportContact(item.id, item.contactId)}><Download size={15} /> JSON indir</button> : null}{item.status === "pending_verification" ? <><button type="button" onClick={() => void resolve(item.id, "approved", item.type, item.contactId)}>Kimliği doğrula ve onayla</button><button type="button" onClick={() => void resolve(item.id, "rejected", item.type, item.contactId)}>Reddet</button></> : null}</div></SpCard>)}{requestsQuery.data?.length === 0 ? <SpCard><p>Henüz veri sahibi talebi yok.</p></SpCard> : null}</div></div></section>
+    <section className="privacy-requests" id="data-requests"><div className="section-heading"><div><p className="eyebrow">VERİ SAHİBİ HAKLARI</p><h2>Talep ve yanıt takibi</h2></div></div><div className="settings-grid"><SpCard className="settings-card"><h2>Yeni talep</h2><form onKeyDown={handleFormKeyDown} className="form-stack" onSubmit={createRequest}><ContactCombobox contacts={contacts} label="Kişi" value={selectedContactId} onChange={setContactId} placeholder="Kişi ara ve seç" /><label>Talep türü<SpSelect value={requestType} onChange={(event) => setRequestType(event.target.value as DataSubjectRequestType)}>{dataSubjectRequestTypes.map((item) => <option key={item} value={item}>{dataSubjectRequestTypeLabels[item]}</option>)}</SpSelect></label><label>Kimlik / başvuru referansı <span className="optional">isteğe bağlı</span><SpInput value={requesterReference} onChange={(event) => setRequesterReference(event.target.value)} /></label><label>Açıklama<SpTextarea value={details} onChange={(event) => setDetails(event.target.value)} /></label><button className="secondary-action" disabled={pending || !selectedContactId} type="submit">Talebi kaydet</button></form></SpCard><div className="request-list">{(requestsQuery.data ?? []).map((item) => <SpCard className="request-card" key={item.id}><div><strong>{item.contactName}</strong><span>{dataSubjectRequestTypeLabels[item.type]} · {dataSubjectRequestStatusLabels[item.status]}</span><small>{dataRequestCopy.due}: {new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium" }).format(item.dueAt)}</small></div><DataRequestActions item={item} contact={contacts.find((contact) => contact.id === item.contactId)} exportData={() => exportContact(item.id, item.contactId)} /></SpCard>)}{requestsQuery.data?.length === 0 ? <SpCard><p>Henüz veri sahibi talebi yok.</p></SpCard> : null}</div></div></section>
     </> : null}
       </div>
     </div>

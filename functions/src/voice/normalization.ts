@@ -14,26 +14,58 @@ function appendUnique(values: string[], additions: string[]): string[] {
   return result.slice(0, 20);
 }
 
+const numericPattern = String.raw`(?:\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?)`;
+const moneyUnitPattern = String.raw`(?:milyon(?:a|e|dan|den|luk|lük)?|bin|TL|₺|lira)`;
+
+function numericValue(value: string): number {
+  return Number(value.replace(/\.(?=\d{3}(?:\D|$))/gu, "").replace(",", "."));
+}
+
+function moneyMultiplier(unit: string): number {
+  return /^milyon/iu.test(unit) ? 1_000_000 : /^bin$/iu.test(unit) ? 1_000 : 1;
+}
+
+/** A qualifier belongs to the adjacent measurement, never to the entire note. */
+function measurementBound(text: string, match: RegExpMatchArray): "min" | "max" | null {
+  const before = text.slice(0, match.index ?? 0);
+  const after = text.slice((match.index ?? 0) + match[0].length);
+  if (/(?:en az|alt sınır[ıi]?)\s*(?:(?:bütçe(?:si)?|fiyat[ıi]?)\s*:?\s*)?$/iu.test(before)
+    || /^\s*(?:ve\s+)?(?:üzeri|üstü)(?=\s|$|[.,;])/iu.test(after)) return "min";
+  if (/(?:en fazla|en çok|üst sınır[ıi]?)\s*(?:(?:bütçe(?:si)?|fiyat[ıi]?)\s*:?\s*)?$/iu.test(before)
+    || /^\s*(?:['’](?:ye|ya)|TL['’](?:ye|ya))?\s*kadar(?=\s|$|[.,;])/iu.test(after)) return "max";
+  return null;
+}
+
 function amountFrom(text: string, transactionType: VoicePropertyPreferences["transactionType"]): VoicePropertyPreferences["budgetRange"] {
-  const million = text.match(/\b(\d+(?:[.,]\d+)?)\s*milyon(?:a|e|dan|den|luk|lük)?(?=\s|$|[.,;])/iu);
-  const thousand = text.match(/(?:^|\s)(\d+(?:[.,]\d+)?)\s*bin(?=\s|$|[.,;])/iu);
-  const plain = text.match(/\b(\d{6,12})\s*(?:tl|₺|lira)?\b/iu);
-  const value = million?.[1]
-    ? Number(million[1].replace(",", ".")) * 1_000_000
-    : thousand?.[1]
-      ? Number(thousand[1].replace(",", ".")) * 1_000
-    : plain?.[1]
-      ? Number(plain[1])
-      : null;
+  const range = text.match(new RegExp(String.raw`(?<![\p{L}\p{N}])(${numericPattern})\s*(milyon|bin)?\s*(?:[-–—]|ile)\s*(${numericPattern})\s*(${moneyUnitPattern})(?=\s|$|[.,;'’])`, "iu"));
+  if (range?.[1] && range[3] && range[4]) {
+    const min = numericValue(range[1]) * moneyMultiplier(range[2] ?? range[4]);
+    const max = numericValue(range[3]) * moneyMultiplier(range[4]);
+    // An inverted range needs advisor review; do not silently swap its meaning.
+    return min > 0 && max >= min ? { min, max, currency: "TRY" } : null;
+  }
+  const amount = text.match(new RegExp(String.raw`(?<![\p{L}\p{N}])(${numericPattern})\s*(${moneyUnitPattern})(?=\s|$|[.,;'’])`, "iu"))
+    ?? text.match(/(?:bütçe(?:si)?|fiyat[ıi]?)\s*:?\s*(\d{6,12})(?=\s|$|[.,;])/iu);
+  if (!amount?.[1]) return null;
+  const value = numericValue(amount[1]) * moneyMultiplier(amount[2] ?? "TL");
   if (!value || !Number.isFinite(value)) return null;
-  const upperBound = /\b(?:kadar|en fazla|üst sınır)\b/iu.test(text);
-  const lowerBound = /\b(?:en az|alt sınır)\b/iu.test(text);
+  const lowerBound = measurementBound(text, amount) === "min";
   const exactPropertyPrice = transactionType === "sell" || transactionType === "let";
-  return {
-    min: exactPropertyPrice ? value : lowerBound ? value : null,
-    max: exactPropertyPrice ? value : upperBound || !lowerBound ? value : null,
-    currency: "TRY",
-  };
+  return { min: exactPropertyPrice || lowerBound ? value : null, max: exactPropertyPrice || !lowerBound ? value : null, currency: "TRY" };
+}
+
+function areaFrom(text: string): Pick<VoicePropertyPreferences, "areaMinM2" | "areaMaxM2"> {
+  const range = text.match(/\b(\d{2,5})\s*(?:m²|m2|metrekare)?\s*(?:-|–|—|ile)\s*(\d{2,5})\s*(?:m²|m2|metrekare)/iu);
+  if (range?.[1] && range[2]) {
+    const min = Number(range[1]);
+    const max = Number(range[2]);
+    return min <= max ? { areaMinM2: min, areaMaxM2: max } : { areaMinM2: null, areaMaxM2: null };
+  }
+  const area = text.match(/\b(\d{2,5})\s*(?:m²|m2|metrekare)/iu);
+  if (!area?.[1]) return { areaMinM2: null, areaMaxM2: null };
+  const value = Number(area[1]);
+  const bound = measurementBound(text, area);
+  return { areaMinM2: bound === "max" ? null : value, areaMaxM2: bound === "min" ? null : value };
 }
 
 function propertyTypesFrom(text: string): VoicePropertyPreferences["propertyTypes"] {
@@ -63,7 +95,6 @@ function locationsFrom(text: string): string[] {
 
 function preferencesFrom(text: string, transactionType: VoicePropertyPreferences["transactionType"]): VoicePropertyPreferences {
   const room = text.match(/\b(\d{1,2})\s*\+\s*(\d{1,2})\b/u);
-  const areaRange = text.match(/\b(\d{2,5})\s*(?:-|–|—|ile)\s*(\d{2,5})\s*(?:m²|m2|metrekare)/iu);
   return {
     ...emptyVoicePropertyPreferences,
     transactionType,
@@ -72,8 +103,7 @@ function preferencesFrom(text: string, transactionType: VoicePropertyPreferences
     budgetRange: amountFrom(text, transactionType),
     bedroomCountMin: room?.[1] ? Number(room[1]) : null,
     livingRoomCountMin: room?.[2] ? Number(room[2]) : null,
-    areaMinM2: areaRange?.[1] ? Number(areaRange[1]) : null,
-    areaMaxM2: areaRange?.[2] ? Number(areaRange[2]) : null,
+    ...areaFrom(text),
     mustHaves: [
       /\bbahçeli\b/iu.test(text) ? "Bahçeli" : null,
       /\b(?:otopark|garaj)(?:lı|li|lu|lü)?\b/iu.test(text) ? "Otoparklı" : null,
@@ -85,7 +115,7 @@ function preferencesFrom(text: string, transactionType: VoicePropertyPreferences
 }
 
 function deterministicPropertySituations(text: string): VoicePropertySituation[] {
-  const sentences = text.match(/[^.!?]+[.!?]?/gu)?.map((item) => item.trim()).filter(Boolean) ?? [];
+  const sentences = text.split(/(?<=[.!?])\s+/u).map((item) => item.trim()).filter(Boolean);
   const situations: VoicePropertySituation[] = [];
   for (const sentence of sentences) {
     const rentalSearch = /\b(?:kiralamayı|kiralamak|kiracı\s+olmayı|kiralık\b[^.!?]{0,100}\b(?:arıyor|arayışında))\b/iu.test(sentence);
@@ -123,9 +153,11 @@ function normalizeSituation(situation: VoicePropertySituation): VoicePropertySit
       ...situation.propertyPreferences,
       propertyTypes: situation.propertyPreferences.propertyTypes.length ? situation.propertyPreferences.propertyTypes : deterministic.propertyTypes,
       preferredLocations: situation.propertyPreferences.preferredLocations.length ? situation.propertyPreferences.preferredLocations : deterministic.preferredLocations,
-      budgetRange: situation.propertyPreferences.budgetRange ?? deterministic.budgetRange,
+      budgetRange: deterministic.budgetRange ?? situation.propertyPreferences.budgetRange,
       bedroomCountMin: situation.propertyPreferences.bedroomCountMin ?? deterministic.bedroomCountMin,
       livingRoomCountMin: situation.propertyPreferences.livingRoomCountMin ?? deterministic.livingRoomCountMin,
+      areaMinM2: situation.propertyPreferences.areaMinM2 ?? deterministic.areaMinM2,
+      areaMaxM2: situation.propertyPreferences.areaMaxM2 ?? deterministic.areaMaxM2,
       mustHaves: appendUnique(situation.propertyPreferences.mustHaves, deterministic.mustHaves),
     },
   };
@@ -154,7 +186,7 @@ export function normalizeVoiceExtraction(
     ...primarySituation.propertyPreferences,
     propertyTypes: appendUnique(primarySituation.propertyPreferences.propertyTypes, wholeNotePreferences.propertyTypes),
     preferredLocations: appendUnique(primarySituation.propertyPreferences.preferredLocations, wholeNotePreferences.preferredLocations),
-    budgetRange: primarySituation.propertyPreferences.budgetRange ?? wholeNotePreferences.budgetRange,
+    budgetRange: wholeNotePreferences.budgetRange ?? primarySituation.propertyPreferences.budgetRange,
     bedroomCountMin: primarySituation.propertyPreferences.bedroomCountMin ?? wholeNotePreferences.bedroomCountMin,
     livingRoomCountMin: primarySituation.propertyPreferences.livingRoomCountMin ?? wholeNotePreferences.livingRoomCountMin,
     roomCountMin: primarySituation.propertyPreferences.roomCountMin ?? wholeNotePreferences.roomCountMin,
@@ -190,8 +222,7 @@ export function normalizeVoiceExtraction(
 
   const roomConfigurations = [...maskedTranscript.matchAll(/\b(\d{1,2})\s*\+\s*(\d{1,2})\b/gu)];
   const roomConfiguration = roomConfigurations.at(-1);
-  const areaRanges = [...maskedTranscript.matchAll(/\b(\d{2,5})\s*(?:-|–|—|ile)\s*(\d{2,5})\s*(?:m²|m2|metrekare)\b/giu)];
-  const areaRange = areaRanges.at(-1);
+  const area = areaFrom(maskedTranscript);
   const conditionalAcceptance = extraction.interaction.askOutcome === "positive"
     && /\b(?:ancak|fakat|şartıyla|bağlı|görmeden|incelemeden|değerleme(?:yi|sini)?\s+gör(?:meden|dükten)|sonra\s+karar)\b/iu.test(maskedTranscript);
   const earlierMessageStep = /(?:öncesinde|önce)[^.!?]{0,220}\b(?:e-?posta|mail|mesaj|whatsapp|gönder|ilet|paylaş)\w*/iu.test(maskedTranscript);
@@ -241,8 +272,8 @@ export function normalizeVoiceExtraction(
   const normalizedSituations = propertySituations.map((situation) => ({
     ...situation,
     propertyPreferences: {
-      ...situation.propertyPreferences,
-      preferredLocations: cleanLocations(situation.propertyPreferences.preferredLocations),
+      ...(situation === primarySituation ? preferences : situation.propertyPreferences),
+      preferredLocations: cleanLocations(situation === primarySituation ? preferences.preferredLocations : situation.propertyPreferences.preferredLocations),
     },
   }));
 
@@ -268,8 +299,8 @@ export function normalizeVoiceExtraction(
         bedroomCountMin: primarySituation ? preferences.bedroomCountMin : roomConfiguration?.[1] ? Number(roomConfiguration[1]) : preferences.bedroomCountMin,
         livingRoomCountMin: primarySituation ? preferences.livingRoomCountMin : roomConfiguration?.[2] ? Number(roomConfiguration[2]) : preferences.livingRoomCountMin,
         roomCountMin: primarySituation ? preferences.roomCountMin : roomConfiguration ? null : preferences.roomCountMin,
-        areaMinM2: primarySituation ? preferences.areaMinM2 : areaRange?.[1] ? Number(areaRange[1]) : preferences.areaMinM2,
-        areaMaxM2: primarySituation ? preferences.areaMaxM2 : areaRange?.[2] ? Number(areaRange[2]) : preferences.areaMaxM2,
+        areaMinM2: primarySituation ? preferences.areaMinM2 : area.areaMinM2 ?? preferences.areaMinM2,
+        areaMaxM2: primarySituation ? preferences.areaMaxM2 : area.areaMaxM2 ?? preferences.areaMaxM2,
         mustHaves: appendUnique(preferences.mustHaves, explicitMustHaves),
       },
     },

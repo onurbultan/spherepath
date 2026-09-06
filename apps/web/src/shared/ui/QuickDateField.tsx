@@ -100,7 +100,6 @@ export function QuickDateField({
 
   function choose(nextDate: string) {
     onChange(joinDateTimeValue(nextDate, time));
-    setOpen(false);
   }
 
   function applyPreset(days: number, hour: number | null) {
@@ -173,10 +172,12 @@ export function QuickDateField({
                 value={time}
               />
             </label>
+            <button className="secondary-action" type="button" onClick={() => { setOpen(false); trigger.current?.focus(); }}>Tarih ve saati uygula</button>
           </div>
         ) : null}
       </div>
 
+      <input aria-label={`${label} tarih ve saat`} className="sr-only" type="datetime-local" value={value} required={required} disabled={disabled} min={past ? undefined : new Date(today.getTime() - today.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)} onChange={(event) => onChange(event.target.value)} onInvalid={() => setOpen(true)} tabIndex={-1} />
       <div aria-label="Hızlı tarih seçenekleri" className="quick-date-options">
         {presets.map((preset) => (
           <button disabled={disabled} key={preset.label} onClick={() => applyPreset(preset.days, preset.hour)} type="button">

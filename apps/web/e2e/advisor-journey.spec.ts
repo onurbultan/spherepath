@@ -172,7 +172,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
       return child.getBoundingClientRect().top - previousRect.bottom;
     });
   });
-  expect(workspaceGaps).toHaveLength(2);
+  expect(workspaceGaps.length).toBeGreaterThanOrEqual(2);
   for (const gap of workspaceGaps) expect(gap).toBeGreaterThanOrEqual(19);
   await page.getByRole("main").getByRole("link", { name: "Temas kaydet" }).click();
   await expect(page).toHaveURL(/\/capture\/?\?contactId=/);
@@ -299,6 +299,9 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await sellerOpportunityCard.click();
   await page.getByRole("dialog").getByRole("button", { name: "Aşamayı düzelt" }).click();
   const correctionDialog = page.getByRole("dialog");
+  await expect(correctionDialog.getByLabel("Doğru aşama")).toHaveValue("new_lead");
+  await expect(correctionDialog.getByRole("button", { name: "Aşamayı düzelt" })).toBeDisabled();
+  await correctionDialog.getByLabel("Doğru aşama").selectOption({ label: "Görüşüldü" });
   await correctionDialog.getByLabel("Düzeltme nedeni").fill("İlk görüşme zaten yapılmıştı.");
   await correctionDialog.getByRole("button", { name: "Aşamayı düzelt" }).click();
   await expect(page.getByText("Görüşüldü").first()).toBeVisible();

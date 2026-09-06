@@ -1,3 +1,4 @@
+import { dailyTaskQueryKeys } from "@spherepath/shared";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -151,11 +152,7 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
     setTaskPending(true); setTaskError(null);
     try {
       await finishDailyTask(session, outcome);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
-        queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunities }),
-        queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
-      ]);
+      await Promise.all(dailyTaskQueryKeys.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
       setTaskOpen(false);
     } catch (error) { setTaskError(error instanceof Error ? error.message : "Görev güncellenemedi."); }
     finally { setTaskPending(false); }

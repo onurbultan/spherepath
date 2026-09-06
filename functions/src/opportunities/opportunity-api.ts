@@ -296,6 +296,7 @@ export const updateOpportunityCriteria = onCall(callableOptions, async (request)
       }
 
       const type = opportunity.type as Opportunity["type"];
+      if (parsed.data.ownerDetails && !isOwnerOpportunity(type)) throw new HttpsError("invalid-argument", "Owner details require an owner opportunity.");
       const propertyContext = isOwnerOpportunity(type) ? "subject_property" : "search_preference";
       const preferences = { ...parsed.data.preferences, transactionType: opportunityTransactionType(type) };
       const currentMemory = contactMemory(contact);
@@ -314,6 +315,7 @@ export const updateOpportunityCriteria = onCall(callableOptions, async (request)
         },
         updatedAt: now,
       });
+      transaction.update(opportunityRef, { criteria: preferences, ...(parsed.data.ownerDetails ? { ownerDetails: parsed.data.ownerDetails } : {}), updatedAt: now });
       transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "updateOpportunityCriteria", opportunityId: opportunityRef.id, createdAt: now });
     });
     return { opportunityId: parsed.data.opportunityId };

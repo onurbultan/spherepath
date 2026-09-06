@@ -1,7 +1,8 @@
+import { onboardingCopy, dailyTaskQueryKeys } from "@spherepath/shared";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, MapPin, Mic, Pencil, PhoneOff, Pin, RefreshCw, RotateCcw, Send, Shuffle, Sparkles } from "lucide-react-native";
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { type Href, router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiQueryKeys, dailyTaskResolutionLabels, inboxAnalysisHighlights, inboxItemTrace, inboxKindAfterAnalysis, isInboxItemResolved, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -70,7 +71,8 @@ export default function FeedView() {
   async function resolveTask(outcome: DailyTaskOutcome) {
     if (!session) return;
     setResolving(true); setTaskError(null);
-    try { await finishDailyTask(session, outcome); await client.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }); setActiveTask(null); } catch (nextError) { setTaskError(messageFrom(nextError)); } finally { setResolving(false); }
+    try { await finishDailyTask(session, outcome);
+      await Promise.all(dailyTaskQueryKeys.map((queryKey) => client.invalidateQueries({ queryKey }))); setActiveTask(null); } catch (nextError) { setTaskError(messageFrom(nextError)); } finally { setResolving(false); }
   }
   async function retryItem(item: InboxItemRecord) {
     if (!session || item.id.startsWith("queued-")) return;
@@ -110,7 +112,7 @@ export default function FeedView() {
   const upcomingTasks = today.data?.upcomingTasks ?? [];
   const recentInteractions = today.data?.recentInteractions ?? [];
   return <SafeAreaView edges={["top", "left", "right"]} style={[styles.safe, { backgroundColor: theme.background }]}>
-    <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void Promise.all([today.refetch(), inbox.refetch()])} />} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void Promise.all([today.refetch(), inbox.refetch()])} />} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">{contacts.data?.length === 0 ? <SpCard><SpText variant="title">{onboardingCopy.startTitle}</SpText><SpText color="secondary">{onboardingCopy.startHint}</SpText>{[[onboardingCopy.contact, "/(tabs)/contacts?create=1"], [onboardingCopy.capture, "/(tabs)/capture"], [onboardingCopy.listing, "/(tabs)/listings?action=add-listing"]].map(([label, path]) => <Pressable key={path} onPress={() => router.push(path as Href)}><SpText color="deed">{label}</SpText></Pressable>)}</SpCard> : null}
       <View style={styles.header}><View><SpText variant="eyebrow" color="deed">AKIŞ</SpText><SpText variant="hero">Bugün</SpText></View><Pressable accessibilityLabel="Ayarlar" onPress={() => router.push("/(tabs)/settings")} style={[styles.iconButton, { borderColor: theme.line }]}><RefreshCw size={18} color={theme.textSecondary} /></Pressable></View>
 
       <SpCard style={styles.composer}>

@@ -96,7 +96,7 @@ function actionClauses(text: string): string[] {
 }
 
 function describesCompletedInteraction(clause: string): boolean {
-  return /\b(?:görüştüm|görüştük|konuştum|konuştuk|aradım|aradı|arandım|gerçekleşti)\b/iu.test(clause);
+  return /(?:^|[^\p{L}])(?:görüştüm|görüştük|konuştum|konuştuk|aradım|aradı|arandım|gerçekleşti)(?=[^\p{L}]|$)/iu.test(clause);
 }
 
 function explicitDaysFromNow(

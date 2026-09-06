@@ -50,7 +50,7 @@ export const askOutcomeLabels: Record<AskOutcome, string> = {
   unclear: "Belirsiz",
   negative: "Olumsuz",
   not_asked: "Sorulmadı",
-  not_applicable: "Uygun değildi",
+  not_applicable: "Bu görüşmeye uygulanmaz",
 };
 
 export const nextActionTypeLabels: Record<NextActionType, string> = {

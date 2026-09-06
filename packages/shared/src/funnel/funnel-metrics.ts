@@ -189,3 +189,5 @@ export function buildFunnelMetrics(
   };
 }
 
+
+export const funnelCountRatioCopy = "Bu oranlar dönem içindeki kayıt sayılarını karşılaştırır. Aynı kişi birden çok talep açabildiği ve kayıtlar farklı dönemlerde başlayabildiği için %100'ü aşabilir; tekil müşteri dönüşüm oranı değildir.";

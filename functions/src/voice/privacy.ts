@@ -1,5 +1,7 @@
 import {
   emptyVoicePropertyPreferences,
+  inboxContactName,
+  inboxContactPhone,
   voiceExtractionSchema,
   type SensitiveDataCategory,
   type VoiceExtraction,
@@ -132,7 +134,7 @@ export function sanitizeVoiceExtraction(extraction: VoiceExtraction): VoiceExtra
 }
 
 function inferNextAction(text: string): VoiceExtraction["interaction"]["nextActionType"] {
-  if (/\b(ara|aramak|arayıp|arayacağım|arayacağiz|arayacağız|telefon edeceğim)\b/iu.test(text)) return "call";
+  if (/(?:^|[^\p{L}])(ara|aramak|arayıp|arayacağım|arayacağiz|arayacağız|aramamı|aramamızı|telefon edeceğim)(?=[^\p{L}]|$)/iu.test(text)) return "call";
   if (/\b(mesaj|whatsapp|yazacağım|yazacağız)\b/iu.test(text)) return "message";
   if (/\b(randevu|buluşacağım|buluşacağız|görüşeceğiz)\b/iu.test(text)) return "appointment";
   if (/\b(değerleme|ekspertiz)\b/iu.test(text)) return "valuation";
@@ -178,8 +180,8 @@ export function extractVoiceDraft(maskedTranscript: string): VoiceExtraction {
     },
     insights: {
       keyThingsToRemember: [],
-      contactName: null,
-      contactPhone: null,
+      contactName: inboxContactName(visibleText) || null,
+      contactPhone: inboxContactPhone(visibleText) || null,
       propertyPreferences: emptyVoicePropertyPreferences,
       propertySituations: [],
       suggestedActionReason: null,

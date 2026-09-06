@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { ArrowRight, Target, TrendingDown } from "lucide-react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { apiQueryKeys, contactSourceLabels, opportunityStageLabels, reportingPeriodLabels, reportingPeriods, type CurrencyCode, type FunnelOverview, type ReportingPeriod } from "@spherepath/shared";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { funnelCountRatioCopy, apiQueryKeys, contactSourceLabels, opportunityStageLabels, reportingPeriodLabels, reportingPeriods, type CurrencyCode, type FunnelOverview, type ReportingPeriod } from "@spherepath/shared";
 import { loadFunnelOverview } from "../resources/funnel";
 import { AppShell } from "@/shared/ui/AppShell";
 
@@ -25,7 +25,7 @@ const money = (amount: number, currency: CurrencyCode) => new Intl.NumberFormat(
 export function FunnelView() {
   // A mandate or a closing rarely lands inside thirty days, so the shorter window
   // slices the chain mid-history and misreads it as a bottleneck.
-  const [period, setPeriod] = useState<ReportingPeriod>("90d"); const query = useQuery({ queryKey: apiQueryKeys.funnelOverview(period), queryFn: () => loadFunnelOverview(period) });
+  const [period, setPeriod] = useState<ReportingPeriod>("90d"); const query = useQuery({ placeholderData: keepPreviousData, queryKey: apiQueryKeys.funnelOverview(period), queryFn: () => loadFunnelOverview(period) });
   const counts = query.data?.counts;
   const stages = counts ? [
     { label: "Yeni insanlar", value: counts.newPeople, detail: "Tanıştığın kişiler", tone: "blue" },
@@ -47,7 +47,7 @@ export function FunnelView() {
   const percent = (value: number) => `%${Math.round(value * 100)}`;
   return <AppShell><div className="funnel-view">
     <header className="funnel-header"><div className="page-header"><p className="eyebrow">SATIŞ HUNİSİ</p><h1>Nerede takılıyor?</h1><p className="context-sentence">Sayıları değil, bir sonraki hamleni gör.</p></div><div className="funnel-periods" role="radiogroup" aria-label="Ölçüm dönemi">{reportingPeriods.map((item) => <button role="radio" aria-checked={period === item} className={period === item ? "selected" : ""} key={item} onClick={() => setPeriod(item)}>{reportingPeriodLabels[item]}</button>)}</div></header>
-    {query.isPending ? <p className="context-sentence">Huni hazırlanıyor…</p> : query.error ? <p className="form-error notice">Huni yüklenemedi.</p> : <div className="funnel-workspace">
+    {query.isFetching && !query.isPending ? <p role="status" className="context-sentence">Seçilen dönem hesaplanıyor; önceki dönem gösteriliyor…</p> : null}{query.isPending ? <p className="context-sentence" role="status">Kişiler, fırsatlar ve kapanışlar hesaplanıyor…</p> : query.error ? <p className="form-error notice">Huni yüklenemedi.</p> : <div className="funnel-workspace">
       <section className="sp-card earnings-card" aria-label="Dönem kazancı">
         <div className="earnings-heading"><div><p className="eyebrow">{reportingPeriodLabels[period].toLocaleUpperCase("tr-TR")} İÇİNDE</p><h2>Kazancın</h2></div>{target?.periodTarget !== null && target !== undefined ? <span className="earnings-target"><small>Portföy hedefi</small><strong>{target.achieved} / {target.periodTarget}</strong></span> : null}</div>
         {earnings && earnings.totals.length ? <div className="earnings-totals">{earnings.totals.map((total) => <div className="earnings-total" key={total.currency}><strong>{money(total.commission, total.currency)}</strong><small>{total.closedCount} kapanan işlem · {money(total.volume, total.currency)} hacim{total.commissionRate !== null ? ` · %${(total.commissionRate * 100).toFixed(1)} komisyon` : ""}</small></div>)}</div>
@@ -57,9 +57,9 @@ export function FunnelView() {
         {earnings && earnings.incompleteCount > 0 ? <p className="form-error notice">{earnings.incompleteCount} kapanan işlemde tutar veya para birimi eksik; toplamlara katılmadı.</p> : null}
       </section>
       <div className="funnel-analysis">
-      <section className="sp-card funnel-panel" aria-label="Satış hunisi"><div className="funnel-panel-heading"><div><p className="eyebrow">{reportingPeriodLabels[period].toLocaleUpperCase("tr-TR")}</p><h2>Beş adımda durumun</h2></div></div><div className="funnel-stage-list">{stages.map((stage, index) => {
+      <section className="sp-card funnel-panel" aria-label="Satış hunisi"><div className="funnel-panel-heading"><div><p className="eyebrow">{reportingPeriodLabels[period].toLocaleUpperCase("tr-TR")}</p><h2>Beş adımda durumun</h2></div></div><p className="privacy-hint">{funnelCountRatioCopy}</p><div className="funnel-stage-list">{stages.map((stage, index) => {
         const previous = stages[index - 1]; const isBottleneck = index === bottleneckIndex;
-        return <article key={stage.label} className={`funnel-stage tone-${stage.tone}${isBottleneck ? " is-bottleneck" : ""}`}><span className="funnel-step">{index + 1}</span><span className="funnel-stage-copy"><strong>{stage.label}</strong><small>{stage.detail}</small></span>{previous ? <span className="funnel-conversion"><small>Önceki adımdan</small><strong>{conversion(stage.value, previous.value)}</strong></span> : null}<span className="funnel-value">{stage.value}</span>{isBottleneck ? <span className="bottleneck-label"><TrendingDown size={15} /> Buraya geçemiyor</span> : null}</article>;
+        return <article key={stage.label} className={`funnel-stage tone-${stage.tone}${isBottleneck ? " is-bottleneck" : ""}`}><span className="funnel-step">{index + 1}</span><span className="funnel-stage-copy"><strong>{stage.label}</strong><small>{stage.detail}</small></span>{previous ? <span className="funnel-conversion"><small>{stage.label} / {previous.label}</small><strong>{conversion(stage.value, previous.value)}</strong></span> : null}<span className="funnel-value">{stage.value}</span>{isBottleneck ? <span className="bottleneck-label"><TrendingDown size={15} /> Buraya geçemiyor</span> : null}</article>;
       })}</div></section>
       <section className="sp-card coaching-card"><div className="coaching-heading"><span className="coaching-icon"><Target size={21} /></span><div><p className="eyebrow">ŞİMDİKİ DARBOĞAZ</p><h2>{query.data?.coaching.title}</h2></div></div><p>{query.data?.coaching.explanation}</p><blockquote><small>Bir sonraki görüşmede söyle</small><strong>“{query.data?.coaching.script}”</strong></blockquote>{query.data?.coaching.subject ? <p className="coaching-subject"><strong>{query.data.coaching.subject.name}</strong><small>{query.data.coaching.subject.detail}</small></p> : null}{query.data ? <Link className="primary-action" href={coachingHref(query.data.coaching)}>{query.data.coaching.subject ? "Bu kaydı aç" : "Şimdi harekete geç"} <ArrowRight size={17} /></Link> : null}</section>
       </div>

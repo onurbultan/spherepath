@@ -5,6 +5,7 @@ import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/
 
 const projectId = "spherepath-96ecd";
 const apps: FirebaseApp[] = [];
+const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 function testApp(name: string) {
   const app = initializeApp({ apiKey: "demo-key", projectId, authDomain: `${projectId}.firebaseapp.com` }, name);
@@ -17,7 +18,7 @@ function testApp(name: string) {
 }
 
 function envelope<T>(data: T, requestId: string, commandId?: string) {
-  return { data, requestId, commandId };
+  return { data, requestId: `${requestId}-${runId}`, commandId: commandId ? `${commandId}-${runId}` : undefined };
 }
 
 afterAll(async () => {

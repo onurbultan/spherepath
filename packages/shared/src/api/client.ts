@@ -172,3 +172,8 @@ export const apiQueryKeys = {
   officeTeam: ["workspace", "team"] as const,
   dataSubjectRequests: ["privacy", "requests"] as const,
 };
+
+/** Every surface showing open work must observe the same command result. */
+export const dailyTaskQueryKeys = [apiQueryKeys.todayOverview, apiQueryKeys.contacts, apiQueryKeys.opportunities, apiQueryKeys.closing, apiQueryKeys.callAnnouncements] as const;
+
+export const commercialQueryKeys = [...dailyTaskQueryKeys, apiQueryKeys.listings, apiQueryKeys.portfolioItems, apiQueryKeys.portfolioMatches, apiQueryKeys.matchNotifications, ["funnel"] as const] as const;

@@ -37,7 +37,7 @@ interface SessionContextValue {
   status: "loading" | "signedOut" | "ready" | "error";
   error: string | null;
   signIn(email: string, password: string): Promise<void>;
-  createAccount(displayName: string, email: string, password: string): Promise<void>;
+  createAccount(displayName: string, email: string, password: string, inviteCode?: string): Promise<void>;
   resetPassword(email: string): Promise<void>;
   /** Joining an office rewrites the claims, so the token has to be re-read before the next call. */
   refreshSession(): Promise<void>;
@@ -46,15 +46,15 @@ interface SessionContextValue {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
-async function workspaceFor(user: FirebaseUser, displayName?: string): Promise<WorkspaceSession> {
+async function workspaceFor(user: FirebaseUser, displayName?: string, inviteCode?: string): Promise<WorkspaceSession> {
   let token = await getIdTokenResult(user);
   let officeId = token.claims.officeId;
   let role = token.claims.role;
 
   if (typeof officeId !== "string" || (role !== "agent" && role !== "broker") || displayName) {
-    await apiClient.command<{ displayName?: string }, { officeId: string; role: "agent" | "broker" }>(
+    await apiClient.command<{ displayName?: string; inviteCode?: string }, { officeId: string; role: "agent" | "broker" }>(
       "bootstrapWorkspace",
-      displayName ? { displayName } : {},
+      { ...(displayName ? { displayName } : {}), ...(inviteCode ? { inviteCode } : {}) },
       createCommandId(user.uid),
     );
     token = await getIdTokenResult(user, true);
@@ -122,14 +122,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const createAccount = useCallback(async (displayName: string, email: string, password: string) => {
+  const createAccount = useCallback(async (displayName: string, email: string, password: string, inviteCode?: string) => {
     const { auth } = firebaseServices();
     registrationInProgress.current = true;
     let credential: Awaited<ReturnType<typeof createUserWithEmailAndPassword>> | null = null;
     try {
       credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       await updateProfile(credential.user, { displayName: displayName.trim() });
-      setSession(await workspaceFor(credential.user, displayName));
+      setSession(await workspaceFor(credential.user, displayName, inviteCode));
       setError(null);
       setStatus("ready");
     } catch (nextError) {

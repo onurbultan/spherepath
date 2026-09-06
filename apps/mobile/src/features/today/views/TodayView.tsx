@@ -1,3 +1,4 @@
+import { dailyTaskQueryKeys } from "@spherepath/shared";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { CalendarCheck, Check, PhoneOff, RefreshCw, Settings, Target } from "lucide-react-native";
@@ -28,7 +29,7 @@ export default function TodayView() {
   async function resolveTask(outcome: DailyTaskOutcome) {
     if (!session) return;
     setPending(true); setError(null);
-    try { await finishDailyTask(session, outcome); setActiveTask(null); await queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }); } catch (nextError) { setError(messageFrom(nextError)); } finally { setPending(false); }
+    try { await finishDailyTask(session, outcome); setActiveTask(null); await Promise.all(dailyTaskQueryKeys.map((queryKey) => queryClient.invalidateQueries({ queryKey }))); } catch (nextError) { setError(messageFrom(nextError)); } finally { setPending(false); }
   }
 
   const focusRoute = query.data?.focus.targetOpportunityId

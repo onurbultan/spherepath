@@ -1,6 +1,6 @@
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { buildTodayOverview, dailyTaskOutcomeSchema, istanbulDayKey, replaceDailyPlanItemSchema, replaceDailyPlanTask, selectDailyPlanTasks, todayOverviewQuerySchema, topUpDailyPlanTasks, type DailyTaskOutcome, type OpportunityStage, type OpportunityType, type ReplaceDailyPlanItemInput, type TodayOverview, type TodayTask } from "../../../packages/shared/src/index";
+import { isMirroredOpenAction, buildTodayOverview, dailyTaskOutcomeSchema, istanbulDayKey, replaceDailyPlanItemSchema, replaceDailyPlanTask, selectDailyPlanTasks, todayOverviewQuerySchema, topUpDailyPlanTasks, type DailyTaskOutcome, type OpportunityStage, type OpportunityType, type ReplaceDailyPlanItemInput, type TodayOverview, type TodayTask } from "../../../packages/shared/src/index";
 import { requireSpherepathClaims } from "../auth/claims.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 
@@ -317,7 +317,7 @@ export const completeDailyTask = onCall(
         if (parsed.data.status === "contact_opt_out" && (!resolvedContactRef || !resolvedContactData)) {
           throw new HttpsError("failed-precondition", "The task is not linked to a manageable contact.");
         }
-        const relatedOpportunities = parsed.data.status === "contact_opt_out" && resolvedContactRef
+        const relatedOpportunities = (parsed.data.status === "contact_opt_out" || contactPrefix === "next-action-") && resolvedContactRef
           ? await transaction.get(db.collection("opportunities").where("subjectContactId", "==", resolvedContactRef.id).limit(100))
           : null;
 
@@ -348,6 +348,25 @@ export const completeDailyTask = onCall(
             "relationship.nextActionType": parsed.data.status === "rescheduled" ? parsed.data.rescheduledActionType : null,
             updatedAt: now,
           });
+        }
+        if (contactPrefix === "next-action-" && parsed.data.status !== "contact_opt_out") {
+          for (const snapshot of relatedOpportunities?.docs ?? []) {
+            const opportunity = snapshot.data();
+            if (opportunity.officeId === claims.officeId
+              && (opportunity.ownerUid === claims.uid || claims.role === "broker")
+              && !(opportunity.deletedAt instanceof Timestamp)
+              && opportunity.stage !== "won" && opportunity.stage !== "lost"
+              && isMirroredOpenAction(
+                { type: targetData.relationship?.nextActionType ?? null, at: millis(targetData.relationship?.nextActionAt) },
+                { type: opportunity.nextActionType ?? null, at: millis(opportunity.nextActionAt) },
+              )) {
+              transaction.update(snapshot.ref, {
+                nextActionAt: parsed.data.status === "rescheduled" ? Timestamp.fromMillis(parsed.data.rescheduledAt!) : null,
+                nextActionType: parsed.data.status === "rescheduled" ? parsed.data.rescheduledActionType : null,
+                updatedAt: now,
+              });
+            }
+          }
         }
         if (parsed.data.status === "contact_opt_out" && resolvedContactRef) {
           transaction.update(resolvedContactRef, {

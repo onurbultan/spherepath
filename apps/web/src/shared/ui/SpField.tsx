@@ -1,6 +1,6 @@
 "use client";
 
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import type { KeyboardEvent, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
 /**
  * The form control layer. Every field on every screen comes from here, so its
@@ -65,4 +65,15 @@ export function SpField({
       {error ? <small className="sp-field-error" role="alert">{error}</small> : null}
     </label>
   );
+}
+
+export function handleFormKeyDown(event: KeyboardEvent<HTMLFormElement>) {
+  if (event.key !== "Enter" || event.nativeEvent.isComposing || event.defaultPrevented) return;
+  const target = event.target as HTMLElement;
+  if (event.ctrlKey || event.metaKey) {
+    event.preventDefault();
+    event.currentTarget.requestSubmit();
+  } else if (target.tagName === "INPUT" && !["submit", "button", "checkbox", "radio"].includes((target as HTMLInputElement).type)) {
+    event.preventDefault();
+  }
 }

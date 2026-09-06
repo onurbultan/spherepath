@@ -114,3 +114,12 @@ describe("voice action timing", () => {
     expect(result.interaction.actionTime).toBe("10:30");
   });
 });
+
+
+it("keeps a callback request separate from the earlier incoming call", () => {
+  const text = "Ayşe Kara bugün aradı. Yarın 14:00’te tekrar aramamı istedi. Telefon: 0555 000 11 22.";
+  const result = normalizeVoiceActionTiming(extractVoiceDraft(text), text, new Date("2026-09-06T09:00:00Z"));
+  expect(result.interaction).toMatchObject({ nextActionType: "call", daysFromNow: 1, actionTime: "14:00" });
+  expect(result.insights).toMatchObject({ contactName: "Ayşe Kara", contactPhone: "05550001122" });
+  expect(extractVoiceDraft("Ayşe Kara bugün aradı.").interaction.nextActionType).toBeNull();
+});

@@ -174,6 +174,7 @@ function overlaps(left: string, right: string): boolean {
 /** Common market-area aliases let a district demand match a portfolio in one of its neighbourhoods. */
 const locationFamilies: Record<string, readonly string[]> = {
   karsiyaka: ["karsiyaka", "bostanli", "mavisehir", "alaybey", "donanmaci", "tersane"],
+  cesme: ["cesme", "alacati", "ilica"],
   urla: ["urla", "kadiovacik", "icmeler", "kuscular", "cesmealti", "iskele", "zeytinalani"],
   kadikoy: ["kadikoy", "moda", "caddebostan", "feneryolu", "suadiye", "erenkoy", "kozyatagi"],
   konak: ["konak", "alsancak", "guzelyali", "hatay", "esrefpasa"],
@@ -181,13 +182,22 @@ const locationFamilies: Record<string, readonly string[]> = {
 
 function locationFamily(value: string): string | null {
   const valueTokens = tokens(value);
+  const explicitDistrict = Object.keys(locationFamilies).find((district) => valueTokens.has(district));
+  if (explicitDistrict) return explicitDistrict;
   return Object.entries(locationFamilies).find(([, aliases]) => aliases.some((alias) => valueTokens.has(alias)))?.[0] ?? null;
 }
 
 export function locationsOverlap(left: string, right: string): boolean {
-  if (overlaps(left, right)) return true;
-  const leftFamily = locationFamily(left);
-  return leftFamily !== null && leftFamily === locationFamily(right);
+  const ignored = new Set(["turkiye", "mahallesi", "mah", "ilcesi", "ilce", "civari", "cevresi", "bolgesi", "bolge"]);
+  const requested = [...tokens(left)].filter((token) => !ignored.has(token));
+  const available = tokens(right);
+  if (requested.length && requested.every((token) => available.has(token))) return true;
+  // District-wide requests include known neighbourhoods. A specific
+  // neighbourhood never expands to every other neighbourhood in that district.
+  const district = requested.filter((token) => !["izmir", "istanbul", "ankara"].includes(token));
+  return district.length === 1 && district[0] !== undefined
+    && Object.hasOwn(locationFamilies, district[0])
+    && district[0] === locationFamily(right);
 }
 
 function itemSearchText(item: PortfolioItemDraft): string {
@@ -284,7 +294,10 @@ export function scorePortfolioItem(preferences: PropertyPreferences, item: Portf
 
   if (!preferences.preferredLocations.length) addReason(reasons, "location", "unknown", "Talepte bölge belirtilmemiş.");
   else if (preferences.preferredLocations.some((location) => locationsOverlap(location, item.location))) addReason(reasons, "location", "match", `${item.location} aranan bölgelerle örtüşüyor.`);
-  else addReason(reasons, "location", "mismatch", `${item.location} aranan bölgelerle örtüşmüyor.`);
+  else {
+    if (preferences.locationRequired) hardMismatch = true;
+    addReason(reasons, "location", "mismatch", `Bölge eşleşmiyor: ${preferences.preferredLocations.join(", ")} ↔ ${item.location}.${preferences.locationRequired ? " Bölge olmazsa olmaz." : " Alternatif bölge; uyum puanı en fazla %59."}`);
+  }
 
   const budget = preferences.budgetRange;
   if (!budget || !item.askingPrice || budget.currency !== item.askingPrice.currency) addReason(reasons, "budget", "unknown", "Fiyat ve bütçe aynı para biriminde karşılaştırılamıyor.");
@@ -333,7 +346,7 @@ export function scorePortfolioItem(preferences: PropertyPreferences, item: Portf
     softMismatchKeys: reasons.filter((reason) => reason.status === "mismatch" && !disqualifying.has(reason.key)).map((reason) => reason.key),
     // Unknown criteria are not treated as matches. This keeps a partially known
     // candidate from being presented as a misleading 100% fit.
-    score: totalWeight ? Math.round((matchedWeight / totalWeight) * 100) : 0,
+    score: Math.min(reasons.some((reason) => reason.key === "location" && reason.status === "mismatch") ? 59 : 100, totalWeight ? Math.round((matchedWeight / totalWeight) * 100) : 0),
     coverage: totalWeight ? Math.round((assessedWeight / totalWeight) * 100) : 0,
     reasons,
   };

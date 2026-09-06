@@ -16,6 +16,12 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   apiQueryKeys,
+  defaultOpportunityJourney,
+  emptyVoicePropertyPreferences,
+  opportunityCriteriaCopy,
+  portfolioAuthorizationLabels,
+  portfolioAuthorizationTypes,
+  type OwnerOpportunityDetails,
   currencyCodes,
   isOwnerOpportunity,
   nextActionTypeLabels,
@@ -57,7 +63,7 @@ import {
   updateOpportunityCriteria,
   type OpportunityRecord,
 } from "../resources/opportunities";
-import { SpInput, SpSelect, SpTextarea } from "@/shared/ui/SpField";
+import { handleFormKeyDown, SpInput, SpSelect, SpTextarea } from "@/shared/ui/SpField";
 import { MoneyField } from "@/shared/ui/MaskedFields";
 import {
   opportunitiesForJourney,
@@ -110,6 +116,9 @@ const stageTone: Partial<Record<OpportunityStage, string>> = {
 type OpportunityOutcomeFilter = "open" | "won" | "lost";
 
 interface CriteriaForm {
+  locationRequired: boolean;
+  authorizationType: OwnerOpportunityDetails["authorizationType"];
+  motivation: string;
   locations: string;
   propertyTypes: PropertyType[];
   budgetMin: string;
@@ -123,8 +132,8 @@ interface CriteriaForm {
 }
 
 function preferencesFor(opportunity: OpportunityRecord) {
-  return opportunitySituation(opportunity.subjectContactMemory, opportunity.type)?.propertyPreferences
-    ?? opportunity.subjectContactMemory.propertyPreferences;
+  return opportunity.criteria ?? opportunitySituation(opportunity.subjectContactMemory, opportunity.type)?.propertyPreferences
+    ?? (isOwnerOpportunity(opportunity.type) ? emptyVoicePropertyPreferences : opportunity.subjectContactMemory.propertyPreferences);
 }
 
 function withCurrentContactMemory(opportunity: OpportunityRecord, contacts: readonly ContactRecord[]): OpportunityRecord {
@@ -147,6 +156,7 @@ function budgetLabel(
     currency: budget.currency,
     maximumFractionDigits: 0,
   });
+  if (budget.min !== null && budget.min === budget.max) return formatter.format(budget.min);
   if (budget.min !== null && budget.max !== null)
     return `${formatter.format(budget.min)} – ${formatter.format(budget.max)}`;
   if (budget.min !== null) return `${formatter.format(budget.min)} ve üzeri`;
@@ -157,9 +167,7 @@ function opportunityHighlights(opportunity: OpportunityRecord): string[] {
   const memory = opportunity.subjectContactMemory;
   // A contact selling one property while buying another keeps both situations;
   // showing the wrong one made two opportunities look identical on screen.
-  const situation = opportunitySituation(memory, opportunity.type);
-  const preferences =
-    situation?.propertyPreferences ?? memory.propertyPreferences;
+  const preferences = preferencesFor(opportunity);
   const highlights = [
     preferences.propertyTypes.length
       ? preferences.propertyTypes
@@ -173,7 +181,7 @@ function opportunityHighlights(opportunity: OpportunityRecord): string[] {
     preferences.bedroomCountMin !== null
       ? `${preferences.bedroomCountMin}+${preferences.livingRoomCountMin ?? 0} oda`
       : null,
-    preferences.areaMinM2 !== null ? `En az ${preferences.areaMinM2} m²` : null,
+    preferences.areaMinM2 !== null ? `${isOwnerOpportunity(opportunity.type) ? "Mülk alanı:" : "En az"} ${preferences.areaMinM2} m²` : null,
     preferences.mustHaves[0]
       ? `Olmazsa olmaz: ${preferences.mustHaves[0]}`
       : null,
@@ -181,7 +189,7 @@ function opportunityHighlights(opportunity: OpportunityRecord): string[] {
   ].filter((item): item is string => Boolean(item));
   return highlights.length
     ? highlights.slice(0, 6)
-    : memory.keyThingsToRemember.slice(0, 2);
+    : isOwnerOpportunity(opportunity.type) ? [] : memory.keyThingsToRemember.slice(0, 2);
 }
 
 export function OpportunitiesView() {
@@ -208,7 +216,7 @@ export function OpportunitiesView() {
   const [correcting, setCorrecting] = useState<OpportunityRecord | null>(null);
   const [selected, setSelected] = useState<OpportunityRecord | null>(null);
   const [criteriaEditing, setCriteriaEditing] = useState<OpportunityRecord | null>(null);
-  const [criteriaForm, setCriteriaForm] = useState<CriteriaForm>({ locations: "", propertyTypes: [], budgetMin: "", budgetMax: "", currency: "TRY", bedrooms: "", livingRooms: "", areaMin: "", mustHaves: "", timeline: "" });
+  const [criteriaForm, setCriteriaForm] = useState<CriteriaForm>({ locationRequired: false, authorizationType: "unknown", motivation: "", locations: "", propertyTypes: [], budgetMin: "", budgetMax: "", currency: "TRY", bedrooms: "", livingRooms: "", areaMin: "", mustHaves: "", timeline: "" });
   const [dismissedDeepLink, setDismissedDeepLink] = useState<string | null>(
     null,
   );
@@ -219,7 +227,7 @@ export function OpportunitiesView() {
           (opportunity) => opportunity.id === requestedOpportunityId,
         ) ?? null)
       : null;
-  const activeSelected = selected ?? linkedOpportunity;
+  const activeSelected = selected ? opportunities.find((item) => item.id === selected.id) ?? selected : linkedOpportunity;
   const detailQuery = useQuery({
     queryKey: apiQueryKeys.opportunityDetail(activeSelected?.id ?? "none"),
     queryFn: () => getOpportunityDetail(activeSelected!.id),
@@ -243,8 +251,9 @@ export function OpportunitiesView() {
   const [view, setView] = useState<"board" | "list">("board");
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<OpportunityType | "all">("all");
-  const [journeyFilter, setJourneyFilter] =
-    useState<OpportunityJourneyFilter>("owner");
+  const [chosenJourney, setJourneyFilter] =
+    useState<OpportunityJourneyFilter | null>(null);
+  const journeyFilter = chosenJourney ?? defaultOpportunityJourney(opportunities);
   const [actionFilter, setActionFilter] = useState<
     "all" | "missing" | "overdue"
   >("all");
@@ -425,7 +434,10 @@ export function OpportunitiesView() {
     const preferences = preferencesFor(current);
     setCriteriaEditing(current);
     setCriteriaForm({
-      locations: preferences.preferredLocations.join(", "),
+      locationRequired: preferences.locationRequired ?? false,
+      authorizationType: current.ownerDetails?.authorizationType ?? "unknown",
+      motivation: current.ownerDetails?.motivation ?? "",
+      locations: current.ownerDetails?.address ?? preferences.preferredLocations.join(", "),
       propertyTypes: preferences.propertyTypes,
       budgetMin: preferences.budgetRange?.min?.toString() ?? "",
       budgetMax: preferences.budgetRange?.max?.toString() ?? "",
@@ -448,12 +460,14 @@ export function OpportunitiesView() {
     const budgetMax = parseMoneyInput(criteriaForm.budgetMax);
     const parsed = opportunityCriteriaUpdateSchema.safeParse({
       opportunityId: criteriaEditing.id,
+      ...(isOwnerOpportunity(criteriaEditing.type) ? { ownerDetails: { address: criteriaForm.locations, authorizationType: criteriaForm.authorizationType, motivation: criteriaForm.motivation.trim() || null } } : {}),
       preferences: {
         ...current,
         transactionType: opportunityTransactionType(criteriaEditing.type),
         propertyTypes: criteriaForm.propertyTypes,
         preferredLocations: criteriaForm.locations.split(",").map((item) => item.trim()).filter(Boolean),
-        budgetRange: budgetMin !== null || budgetMax !== null ? { min: budgetMin, max: budgetMax, currency: criteriaForm.currency } : null,
+        locationRequired: criteriaForm.locationRequired,
+        budgetRange: budgetMin !== null || budgetMax !== null ? { min: isOwnerOpportunity(criteriaEditing.type) ? budgetMax : budgetMin, max: budgetMax, currency: criteriaForm.currency } : null,
         bedroomCountMin: optionalNumber(criteriaForm.bedrooms),
         livingRoomCountMin: optionalNumber(criteriaForm.livingRooms),
         roomCountMin: optionalNumber(criteriaForm.bedrooms),
@@ -547,8 +561,8 @@ export function OpportunitiesView() {
     const completedOpportunity = moving;
     try {
       await moveOpportunity(session, parsed.data);
-      setMoving(null);
       await invalidate();
+      setMoving(null);
       if (
         targetStage === "won" &&
         isOwnerOpportunity(completedOpportunity.type)
@@ -566,9 +580,7 @@ export function OpportunitiesView() {
 
   function openCorrection(opportunity: OpportunityRecord) {
     setCorrecting(opportunity);
-    setTargetStage(
-      opportunity.stage === "new_lead" ? "first_contact" : "new_lead",
-    );
+    setTargetStage(opportunity.stage);
     setActionType(opportunity.nextActionType ?? "call");
     setActionAt(localDateTimeFrom(opportunity.nextActionAt));
     setCorrectionReason("");
@@ -598,8 +610,8 @@ export function OpportunitiesView() {
     const completedOpportunity = correcting;
     try {
       await correctOpportunity(session, parsed.data);
-      setCorrecting(null);
       await invalidate();
+      setCorrecting(null);
       if (
         targetStage === "won" &&
         isOwnerOpportunity(completedOpportunity.type)
@@ -650,7 +662,7 @@ export function OpportunitiesView() {
           </div>
           <button
             className="secondary-action inline-action"
-            disabled={!nextOpportunity}
+            disabled={pending || !nextOpportunity}
             onClick={() => nextOpportunity && openMove(nextOpportunity)}
             type="button"
           >
@@ -1072,7 +1084,7 @@ export function OpportunitiesView() {
                     onClick={() => openCriteriaEditor(withCurrentContactMemory(detailQuery.data?.opportunity ?? activeSelected, contacts))}
                     type="button"
                   >
-                    Kriterleri düzenle
+                    {isOwnerOpportunity(activeSelected.type) ? opportunityCriteriaCopy.ownerAction : opportunityCriteriaCopy.demandAction}
                   </button>
                   <button
                     className="secondary-action inline-action"
@@ -1116,23 +1128,23 @@ export function OpportunitiesView() {
         <div className="sheet-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target && !pending) setCriteriaEditing(null); }}>
           <section className="form-sheet" role="dialog" aria-modal="true" aria-labelledby="criteria-title">
             <div className="sheet-heading">
-              <div><p className="eyebrow">TALEP KRİTERLERİ</p><h2 id="criteria-title">{criteriaEditing.subjectContactName}</h2><p className="context-sentence">Bu bilgiler eşleşme motorunda ve fırsat detayında birlikte kullanılır.</p></div>
+              <div><p className="eyebrow">{isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.ownerTitle : opportunityCriteriaCopy.demandTitle}</p><h2 id="criteria-title">{criteriaEditing.subjectContactName}</h2><p className="context-sentence">Bu bilgiler eşleşme motorunda ve fırsat detayında birlikte kullanılır.</p></div>
               <button className="icon-action" aria-label="Kapat" disabled={pending} onClick={() => setCriteriaEditing(null)} type="button"><X size={20} /></button>
             </div>
-            <form className="form-stack" onSubmit={saveCriteria}>
-              <label>Bölgeler <small>virgülle ayır</small><SpInput value={criteriaForm.locations} onChange={(event) => setCriteriaForm((current) => ({ ...current, locations: event.target.value }))} placeholder="Karşıyaka, Bostanlı" /></label>
-              <fieldset><legend>Mülk türleri</legend><div className="chip-row">{propertyTypes.map((item) => <button className={`choice-chip ${criteriaForm.propertyTypes.includes(item) ? "selected" : ""}`} key={item} onClick={() => setCriteriaForm((current) => ({ ...current, propertyTypes: current.propertyTypes.includes(item) ? current.propertyTypes.filter((value) => value !== item) : [...current.propertyTypes, item] }))} type="button">{propertyTypeLabels[item]}</button>)}</div></fieldset>
+            <form onKeyDown={handleFormKeyDown} className="form-stack" onSubmit={saveCriteria}>{isOwnerOpportunity(criteriaEditing.type) ? <><label>{opportunityCriteriaCopy.authorization}<SpSelect value={criteriaForm.authorizationType} onChange={(event) => setCriteriaForm((current) => ({ ...current, authorizationType: event.target.value as OwnerOpportunityDetails["authorizationType"] }))}>{portfolioAuthorizationTypes.map((item) => <option key={item} value={item}>{portfolioAuthorizationLabels[item]}</option>)}</SpSelect></label><label>{opportunityCriteriaCopy.motivation}<SpTextarea value={criteriaForm.motivation} onChange={(event) => setCriteriaForm((current) => ({ ...current, motivation: event.target.value }))} /></label></> : <label className="check-label"><SpInput type="checkbox" checked={criteriaForm.locationRequired} onChange={(event) => setCriteriaForm((current) => ({ ...current, locationRequired: event.target.checked }))} />{opportunityCriteriaCopy.locationRequired}</label>}
+              <label>{isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.address : "Bölgeler · virgülle ayır"}<SpInput value={criteriaForm.locations} onChange={(event) => setCriteriaForm((current) => ({ ...current, locations: event.target.value }))} placeholder="Karşıyaka, Bostanlı" /></label>
+              <fieldset><legend>Mülk türleri</legend><div className="chip-row">{propertyTypes.map((item) => <button className={`choice-chip ${criteriaForm.propertyTypes.includes(item) ? "selected" : ""}`} key={item} aria-pressed={criteriaForm.propertyTypes.includes(item)} onClick={() => setCriteriaForm((current) => ({ ...current, propertyTypes: current.propertyTypes.includes(item) ? current.propertyTypes.filter((value) => value !== item) : [...current.propertyTypes, item] }))} type="button">{propertyTypeLabels[item]}</button>)}</div></fieldset>
               <div className="form-row">
-                <label>Minimum bütçe<MoneyField currency={criteriaForm.currency} value={criteriaForm.budgetMin} onChange={(value) => setCriteriaForm((current) => ({ ...current, budgetMin: value }))} /></label>
-                <label>Maksimum bütçe<MoneyField currency={criteriaForm.currency} value={criteriaForm.budgetMax} onChange={(value) => setCriteriaForm((current) => ({ ...current, budgetMax: value }))} /></label>
+                {!isOwnerOpportunity(criteriaEditing.type) ? <label>Minimum bütçe<MoneyField currency={criteriaForm.currency} value={criteriaForm.budgetMin} onChange={(value) => setCriteriaForm((current) => ({ ...current, budgetMin: value }))} /></label> : null}
+                <label>{isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.expectedPrice : "Maksimum bütçe"}<MoneyField currency={criteriaForm.currency} value={criteriaForm.budgetMax} onChange={(value) => setCriteriaForm((current) => ({ ...current, budgetMax: value }))} /></label>
                 <label>Para birimi<SpSelect value={criteriaForm.currency} onChange={(event) => setCriteriaForm((current) => ({ ...current, currency: event.target.value as CurrencyCode }))}>{currencyCodes.map((item) => <option key={item}>{item}</option>)}</SpSelect></label>
               </div>
               <div className="form-row">
                 <label>Yatak odası<SpInput min="0" type="number" value={criteriaForm.bedrooms} onChange={(event) => setCriteriaForm((current) => ({ ...current, bedrooms: event.target.value }))} /></label>
                 <label>Salon<SpInput min="0" type="number" value={criteriaForm.livingRooms} onChange={(event) => setCriteriaForm((current) => ({ ...current, livingRooms: event.target.value }))} /></label>
-                <label>Minimum m²<SpInput min="1" type="number" value={criteriaForm.areaMin} onChange={(event) => setCriteriaForm((current) => ({ ...current, areaMin: event.target.value }))} /></label>
+                <label>{isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.area : "Minimum m²"}<SpInput min="1" type="number" value={criteriaForm.areaMin} onChange={(event) => setCriteriaForm((current) => ({ ...current, areaMin: event.target.value }))} /></label>
               </div>
-              <label>Olmazsa olmazlar <small>virgülle ayır</small><SpInput value={criteriaForm.mustHaves} onChange={(event) => setCriteriaForm((current) => ({ ...current, mustHaves: event.target.value }))} placeholder="Havuz, otopark" /></label>
+              <label>{isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.features : "Olmazsa olmazlar · virgülle ayır"}<SpInput value={criteriaForm.mustHaves} onChange={(event) => setCriteriaForm((current) => ({ ...current, mustHaves: event.target.value }))} placeholder="Havuz, otopark" /></label>
               <label>Zamanlama<SpInput value={criteriaForm.timeline} onChange={(event) => setCriteriaForm((current) => ({ ...current, timeline: event.target.value }))} placeholder="1 Ekim'de taşınacak" /></label>
               {error ? <p className="form-error">{error}</p> : null}
               <button className="primary-action auth-submit" disabled={pending} type="submit">{pending ? "Kaydediliyor…" : "Kriterleri kaydet"}</button>
@@ -1163,7 +1175,7 @@ export function OpportunitiesView() {
                 <X size={20} />
               </button>
             </div>
-            <form className="form-stack" onSubmit={create}>
+            <form onKeyDown={handleFormKeyDown} className="form-stack" onSubmit={create}>
               <ContactCombobox
                 contacts={contacts}
                 value={selectedContactId}
@@ -1252,7 +1264,7 @@ export function OpportunitiesView() {
                 <X size={20} />
               </button>
             </div>
-            <form className="form-stack" onSubmit={move}>
+            <form onKeyDown={handleFormKeyDown} className="form-stack" onSubmit={move}>
               <label>
                 Yeni aşama
                 <SpSelect
@@ -1372,7 +1384,7 @@ export function OpportunitiesView() {
                 <X size={20} />
               </button>
             </div>
-            <form className="form-stack" onSubmit={correct}>
+            <form onKeyDown={handleFormKeyDown} className="form-stack" onSubmit={correct}>
               <label>
                 Doğru aşama
                 <SpSelect
@@ -1382,7 +1394,6 @@ export function OpportunitiesView() {
                   }
                 >
                   {opportunityStages
-                    .filter((stage) => stage !== correcting.stage)
                     .map((stage) => (
                       <option key={stage} value={stage}>
                         {opportunityStageLabel(stage, correcting.type)}
@@ -1452,7 +1463,8 @@ export function OpportunitiesView() {
                 Eski aşama silinmez; düzeltme nedeni zaman çizelgesine eklenir.
               </p>
               {error ? <p className="form-error">{error}</p> : null}
-              <button className="primary-action auth-submit" disabled={pending}>
+              <p className="privacy-hint">{opportunityStageLabel(correcting.stage, correcting.type)} → {opportunityStageLabel(targetStage, correcting.type)}</p>
+              <button className="primary-action auth-submit" disabled={pending || targetStage === correcting.stage || correctionReason.trim().length < 2}>
                 Aşamayı düzelt
               </button>
             </form>

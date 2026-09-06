@@ -17,6 +17,7 @@ export interface MatchMessageDraft {
 }
 
 export interface MatchMessageSubject {
+  mismatchReasons?: string[];
   contactName: string;
   headline: string;
   location: string;
@@ -34,6 +35,7 @@ const money = (amount: number, currency: CurrencyCode): string =>
 export function buildMatchMessageFallback(subject: MatchMessageSubject): string {
   const price = subject.askingPrice ? ` Fiyatı ${money(subject.askingPrice.amount, subject.askingPrice.currency)}.` : "";
   const listing = subject.listingUrl ? ` İlan: ${subject.listingUrl}` : "";
+  if (subject.mismatchReasons?.length) return `Merhaba ${subject.contactName}, aradığınız kriterlerden farklı bir alternatif var: ${subject.headline}. ${subject.location}.${price} ${subject.mismatchReasons.map((reason) => reason.replace(/\. Alternatif bölge; uyum puanı en fazla %\d+\./gu, ".")).join(" ")} Bu farklılıklara rağmen değerlendirmek ister misiniz?${listing}`;
   return `Merhaba ${subject.contactName}, arayışınıza uygun olabileceğini düşündüğüm bir portföy var: ${subject.headline}. ${subject.location}.${price}${listing}`;
 }
 

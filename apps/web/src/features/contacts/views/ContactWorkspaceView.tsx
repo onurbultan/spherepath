@@ -1,5 +1,7 @@
 "use client";
 
+import { dailyTaskQueryKeys } from "@spherepath/shared";
+
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowLeft, BriefcaseBusiness, Building2, MessageSquarePlus, Pencil, ShieldCheck, UserRound } from "lucide-react";
@@ -67,11 +69,7 @@ export function ContactWorkspaceView({ contactId }: { contactId: string }) {
     setResolvingTask(true); setTaskError(null);
     try {
       await finishDailyTask(session, outcome);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
-        queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunities }),
-        queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
-      ]);
+      await Promise.all(dailyTaskQueryKeys.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
       setTaskOpen(false);
     } catch (error) { setTaskError(error instanceof Error ? error.message : "Görev güncellenemedi."); }
     finally { setResolvingTask(false); }

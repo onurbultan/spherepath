@@ -119,9 +119,9 @@ function MatchCard({ match, nearMiss }: { match: PortfolioMatchRecord; nearMiss?
       {match.situationSummary ? <SpText variant="caption" color="secondary">{match.situationSummary}</SpText> : null}
       {/* The reasons are what make a match arguable rather than magic. */}
       <View style={styles.reasons}>
-        {match.reasons.filter((reason) => reason.status !== "unknown").slice(0, 4).map((reason) => (
+        {[...match.reasons.filter((reason) => reason.status === "mismatch"), ...match.reasons.filter((reason) => reason.status !== "mismatch")].map((reason) => (
           <View key={reason.key} style={[styles.reason, { backgroundColor: reason.status === "match" ? theme.deedBg : theme.askBg }]}>
-            <SpText variant="caption" color={reason.status === "match" ? "deed" : "ask"}>{reason.detail}</SpText>
+            <SpText variant="caption" color={reason.status === "match" ? "deed" : "ask"}>{reason.detail} ({reason.status === "match" ? reason.weight : 0}/{reason.weight} puan)</SpText>
           </View>
         ))}
       </View>

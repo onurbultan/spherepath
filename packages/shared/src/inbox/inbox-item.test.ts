@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyVoiceInsights } from "../voice/voice-note";
-import { classifyInboxText, inboxAnalysisHighlights, inboxKindAfterAnalysis, inboxOpportunityType, isInboxItemResolved, maskSensitiveInboxText, processInboxItemSchema, updateInboxItemSchema, type InboxAppliedAction, type InboxItemAnalysis } from "./inbox-item";
+import { inboxContactName, inboxContactPhone, reviewedInboxInsights, classifyInboxText, inboxAnalysisHighlights, inboxKindAfterAnalysis, inboxOpportunityType, isInboxItemResolved, maskSensitiveInboxText, processInboxItemSchema, updateInboxItemSchema, type InboxAppliedAction, type InboxItemAnalysis } from "./inbox-item";
 
 describe("inbox classification", () => {
   it("suggests a requirement and detects a location", () => {
@@ -134,4 +134,29 @@ describe("what the card can show", () => {
   it("says nothing before the note has been read", () => {
     expect(inboxAnalysisHighlights(null)).toEqual([]);
   });
+});
+
+
+describe("reviewed first customer capture", () => {
+  it("retains a phone even without an explicit name label", () => {
+    expect(inboxContactPhone("Ayşe Kara bugün aradı. Telefon: 0555 000 11 22.")).toBe("05550001122");
+    expect(inboxContactPhone("Ayşe Kara aradı; numarasını söylemedi.")).toBe("");
+  });
+  it("writes corrected search criteria into the matching situation too", () => {
+    const originalPreferences = { ...emptyVoiceInsights.propertyPreferences, transactionType: "buy" as const, preferredLocations: ["Çeşme"] };
+    const reviewed = reviewedInboxInsights({ ...emptyVoiceInsights, propertyPreferences: { ...originalPreferences, preferredLocations: ["Urla İskele"], locationRequired: true }, propertySituations: [{ propertyContext: "search_preference", summary: "Old reading", propertyPreferences: originalPreferences }] }, "buyer_requirement");
+    expect(reviewed.propertySituations).toHaveLength(1);
+    expect(reviewed.propertySituations[0]?.propertyPreferences.preferredLocations).toEqual(["Urla İskele"]);
+    expect(reviewed.propertySituations[0]?.propertyPreferences.locationRequired).toBe(true);
+  });
+  it("does not overwrite a seller's detailed property with empty collapsed search fields", () => {
+    const insights = { ...emptyVoiceInsights, propertySituations: [{ propertyContext: "subject_property" as const, summary: "Balıklıova'da satılık villa", propertyPreferences: { ...emptyVoiceInsights.propertyPreferences, transactionType: "sell" as const, preferredLocations: ["Balıklıova"] } }] };
+    expect(reviewedInboxInsights(insights, "seller_listing")).toEqual(insights);
+  });
+});
+
+
+it("extracts only an explicit named caller without inventing a person", () => {
+  expect(inboxContactName("Ayşe Kara bugün aradı. Urla’da villa arıyor.")).toBe("Ayşe Kara");
+  expect(inboxContactName("Urla İskele güzel bir bölge. Ev arıyor.")).toBe("");
 });

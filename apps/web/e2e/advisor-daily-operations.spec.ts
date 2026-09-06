@@ -40,7 +40,7 @@ async function advanceSeller(page: Page, note: string, action: string, datePrese
   await page.getByRole("button", { name: "Mehmet Yılmaz: ilerlet" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Geçiş notu isteğe bağlı").fill(note);
-  await dialog.getByLabel("Sonraki adım").selectOption({ label: action });
+  await dialog.getByRole("combobox", { name: "Sonraki adım", exact: true }).selectOption({ label: action });
   await dialog.getByRole("button", { name: datePreset }).click();
   await dialog.getByRole("button", { name: "Aşamayı kaydet" }).click();
   await expect(dialog).toBeHidden();
