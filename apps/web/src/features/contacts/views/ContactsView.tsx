@@ -1,14 +1,20 @@
 "use client";
+import { getClosingOverview } from "@/features/closing/resources/closing";
+
+import Link from "next/link";
+import { contactImportCopy } from "@spherepath/shared";
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ChevronLeft, ChevronRight, ContactRound, Download, MessageSquarePlus, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, UserRoundPlus, X } from "lucide-react";
+import { Archive, ChevronLeft, ChevronRight, ContactRound, Download, MessageSquarePlus, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, UserRoundPlus, X } from "lucide-react";
 import {
+  contactNextStep,
   apiQueryKeys,
   contactDraftSchema,
   contactRoleLabels,
   contactRoles,
+  contactMemoryLine,
   contactSourceLabels,
   contactSources,
   contactPrivacyDraftSchema,
@@ -31,6 +37,7 @@ import { useSheetDismiss } from "@/shared/ui/useSheetDismiss";
 import { QuickDateField } from "@/shared/ui/QuickDateField";
 import { useSession } from "@/features/auth/resources/session";
 import { archiveContact, listContacts, saveContact, saveContactPrivacy, type ContactRecord } from "../resources/contacts";
+import { listOpportunities } from "@/features/opportunities/resources/opportunities";
 import { listReferrals, saveReferral } from "@/features/referrals/resources/referrals";
 import { PhoneField } from "@/shared/ui/MaskedFields";
 import { handleFormKeyDown, SpInput, SpSelect } from "@/shared/ui/SpField";
@@ -76,9 +83,43 @@ function relativeDate(value: number | null, now = DEFAULT_REFERENCE_TIME): strin
 }
 
 function nextActionLabel(contact: ContactRecord): string {
-  const type = contact.relationship.nextActionType;
-  if (!type || contact.relationship.nextActionAt === null) return "Sonraki adım belirlenmedi";
-  return `${nextActionTypeLabels[type]} · ${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(contact.relationship.nextActionAt)}`;
+  const type = contact.nextActionSummary?.type;
+  if (!type || (contact.nextActionSummary?.at ?? null) === null) return "Sonraki adım belirlenmedi";
+  return `${nextActionTypeLabels[type]} · ${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(contact.nextActionSummary!.at!)}`;
+}
+
+/** The verb alone: the date beside it says when, so it must not repeat it. */
+function nextActionVerb(contact: ContactRecord): string {
+  const type = contact.nextActionSummary?.type;
+  return type && (contact.nextActionSummary?.at ?? null) !== null ? nextActionTypeLabels[type] : "Sonraki adım belirlenmedi";
+}
+
+function nextActionWhen(contact: ContactRecord, now: number): string | null {
+  const at = (contact.nextActionSummary?.at ?? null);
+  if (at === null || contact.nextActionSummary?.type === null) return null;
+  const due = new Date(at);
+  const today = new Date(now);
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  const time = new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(due);
+  if (at < now) {
+    const days = Math.floor((now - at) / 86_400_000);
+    return days >= 1 ? `${days} gün gecikti` : `bugün ${time} · gecikti`;
+  }
+  if (due.toDateString() === today.toDateString()) return `bugün ${time}`;
+  if (due.toDateString() === tomorrow.toDateString()) return `yarın ${time}`;
+  return new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short" }).format(due);
+}
+
+/**
+ * A column that is green on every row carries no information and costs the
+ * width of a real one. Compliance appears on a row only when there is
+ * something to do about it.
+ */
+function complianceFlag(contact: ContactRecord): { label: string; tone: "ask" | "warm" } | null {
+  if (contact.privacy.marketingConsent === "withdrawn") return { label: "İletişim istemiyor", tone: "ask" };
+  if (contact.privacy.noticeStatus !== "completed") return { label: "Aydınlatma bekliyor", tone: "warm" };
+  if (!contact.phone) return { label: "Telefon eksik", tone: "warm" };
+  return null;
 }
 
 export function ContactsView() {
@@ -116,7 +157,9 @@ export function ContactsView() {
     queryFn: listContacts,
     enabled: Boolean(session),
   });
-  const contacts = contactsQuery.data ?? [];
+  const closingQuery = useQuery({ queryKey: apiQueryKeys.closing, queryFn: getClosingOverview, enabled: Boolean(session) });
+  const opportunitiesQuery = useQuery({ queryKey: apiQueryKeys.opportunities, queryFn: listOpportunities, enabled: Boolean(session) });
+  const contacts = (contactsQuery.data ?? []).map((contact) => ({ ...contact, nextActionSummary: contactNextStep(contact, opportunitiesQuery.data ?? [], closingQuery.data?.deals ?? []) }));
   const requestedContactId = searchParams.get("contactId");
   // The workspace page has no form of its own, so its edit action sends the
   // advisor back here with the sheet already open on the right contact.
@@ -168,11 +211,15 @@ export function ContactsView() {
       contact.label,
       contact.internalLabel,
       contact.phone,
+      ...(contact.additionalPhones ?? []),
+      ...(contact.emails ?? []),
       contact.metAtPlace,
+      contactSourceLabels[contact.source],
+      contactMemoryLine(contact.memory),
       ...contact.memory.keyThingsToRemember,
       ...contact.memory.propertyPreferences.preferredLocations,
     ].filter(Boolean).some((value) => String(value).toLocaleLowerCase("tr-TR").includes(normalizedSearch));
-  }).sort((left, right) => sortBy === "name" ? (left.fullName ?? left.label ?? "").localeCompare(right.fullName ?? right.label ?? "", "tr") : sortBy === "next" ? (left.relationship.nextActionAt ?? Number.MAX_SAFE_INTEGER) - (right.relationship.nextActionAt ?? Number.MAX_SAFE_INTEGER) : (right.relationship.lastTouchAt ?? 0) - (left.relationship.lastTouchAt ?? 0));
+  }).sort((left, right) => sortBy === "name" ? (left.fullName ?? left.label ?? "").localeCompare(right.fullName ?? right.label ?? "", "tr") : sortBy === "next" ? (left.nextActionSummary?.at ?? Number.MAX_SAFE_INTEGER) - (right.nextActionSummary?.at ?? Number.MAX_SAFE_INTEGER) : (right.relationship.lastTouchAt ?? 0) - (left.relationship.lastTouchAt ?? 0));
   const referralsQuery = useQuery({ queryKey: apiQueryKeys.referrals, queryFn: listReferrals, enabled: Boolean(session) });
   const pageSize = 25;
   const pageCount = Math.max(1, Math.ceil(visibleContacts.length / pageSize));
@@ -324,8 +371,8 @@ export function ContactsView() {
   return (
     <AppShell>
       <header className="page-header contacts-header">
-        <div><p className="eyebrow">İLİŞKİ AĞI</p><h1>Kişiler</h1><p className="context-sentence">Tanıştığın kişileri, kaynağını, uyum durumunu ve sıradaki ilişki adımını tek tabloda tut.</p></div>
-        <div className="header-actions"><button className="secondary-action inline-action" disabled={!contacts.length} type="button" onClick={() => downloadContacts(visibleContacts)}><Download size={16} aria-hidden /> Dışa aktar</button><button className="primary-action inline-action" type="button" onClick={openCreate}><Plus size={18} aria-hidden /> Yeni kişi</button></div>
+        <div><p className="eyebrow">İLİŞKİ AĞI</p><h1>Kişiler</h1><p className="context-sentence">Her satır kişinin neden önemli olduğunu ve sıradaki adımı söyler.</p></div>
+        <div className="header-actions"><Link className="secondary-action inline-action" href="/contact-imports">{contactImportCopy.title}</Link><button className="secondary-action inline-action" disabled={!contacts.length} type="button" onClick={() => downloadContacts(visibleContacts)}><Download size={16} aria-hidden /> Dışa aktar</button><button className="primary-action inline-action" type="button" onClick={openCreate}><Plus size={18} aria-hidden /> Yeni kişi</button></div>
       </header>
       {downloadMessage ? <p className="success-notice" role="status">{downloadMessage}</p> : null}
 
@@ -342,7 +389,6 @@ export function ContactsView() {
         <div className="contact-toolbar">
           <label className="contact-search"><Search size={17} aria-hidden /><span className="sr-only">Kişilerde ara</span><SpInput aria-label="Kişilerde ara" placeholder="Ad, telefon, bölge veya hatırlanacak bilgi" type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></label>
           <label><span>Rol</span><SpSelect aria-label="Role göre filtrele" value={roleFilter} onChange={(event) => { setRoleFilter(event.target.value as ContactDraft["role"] | "all"); setPage(1); }}><option value="all">Tümü</option>{contactRoles.map((role) => <option key={role} value={role}>{contactRoleLabels[role]}</option>)}</SpSelect></label>
-          <label><span>Kaynak</span><SpSelect aria-label="Kaynağa göre filtrele" value={sourceFilter} onChange={(event) => { setSourceFilter(event.target.value as ContactDraft["source"] | "all"); setPage(1); }}><option value="all">Tümü</option>{contactSources.map((source) => <option key={source} value={source}>{contactSourceLabels[source]}</option>)}</SpSelect></label>
           <label><span>Son temas</span><SpSelect aria-label="Son temasa göre filtrele" value={recencyFilter} onChange={(event) => { setRecencyFilter(event.target.value as "all" | "30"); setPage(1); }}><option value="all">Tümü</option><option value="30">Son 30 gün</option></SpSelect></label>
           <label><span>Sırala</span><SpSelect aria-label="Kişileri sırala" value={sortBy} onChange={(event) => { setSortBy(event.target.value as typeof sortBy); setPage(1); }}><option value="recent">Son görüşülen</option><option value="next">Yaklaşan adım</option><option value="name">Ada göre</option></SpSelect></label>
           <strong>{visibleContacts.length} kişi</strong>
@@ -358,17 +404,35 @@ export function ContactsView() {
         <>
           {selectedIds.size ? <div className="contact-bulk-bar" role="status"><strong>{selectedIds.size} kişi seçildi</strong><span>Seçili kayıtlarla çalış</span><button className="secondary-action inline-action" onClick={() => downloadContacts(contacts.filter((contact) => selectedIds.has(contact.id)), "selected-contacts")} type="button"><Download size={15} /> Seçileni dışa aktar</button><button className="text-button" onClick={() => setSelectedIds(new Set())} type="button">Seçimi temizle</button></div> : null}
           <section className="contact-table-card" aria-label="Kişiler">
-            <div className="contact-table-header"><label className="contact-select"><SpInput aria-label="Bu sayfadaki kişileri seç" checked={pagedContacts.length > 0 && pagedContacts.every((contact) => selectedIds.has(contact.id))} type="checkbox" onChange={(event) => togglePage(event.target.checked)} /></label><span>Kişi</span><span>Rol</span><span>Kaynak</span><span>Son temas</span><span>Sonraki adım</span><span>Uyum</span><span /></div>
+            <div className="contact-table-header"><label className="contact-select"><SpInput aria-label="Bu sayfadaki kişileri seç" checked={pagedContacts.length > 0 && pagedContacts.every((contact) => selectedIds.has(contact.id))} type="checkbox" onChange={(event) => togglePage(event.target.checked)} /></label><span>Kişi ve neden önemli</span><span>Rol</span><span>Sonraki adım</span><span /></div>
             {pagedContacts.map((contact) => {
               const contactName = contact.fullName ?? contact.label ?? "İsimsiz kişi";
+              const overdue = (contact.nextActionSummary?.at ?? null) !== null && (contact.nextActionSummary?.at ?? Infinity) < referenceTime;
+              const flag = complianceFlag(contact);
+              // What this person is trying to do. Without it the row is a name
+              // and a phone number, and the advisor opens the record to find out
+              // why they are on the list at all.
+              const memory = contactMemoryLine(contact.memory)
+                ?? [contactSourceLabels[contact.source], contact.metAtPlace].filter(Boolean).join(" · ");
+              const when = nextActionWhen(contact, referenceTime);
               return <div className={`contact-table-row ${selectedIds.has(contact.id) ? "selected" : ""}`} key={contact.id}>
                 <label className="contact-select"><SpInput aria-label={`${contactName} kişisini seç`} checked={selectedIds.has(contact.id)} type="checkbox" onChange={(event) => toggleSelected(contact.id, event.target.checked)} /></label>
-                <button className="contact-table-person contact-row-open" onClick={() => router.push(`/contacts/__contact__?contactId=${encodeURIComponent(contact.id)}`)} type="button"><span className="contact-avatar">{contactName.slice(0, 1).toLocaleUpperCase("tr-TR")}</span><span><strong>{contactName}</strong><small>{contact.phone ?? "Telefon eklenmedi"}</small></span></button>
+                <button className="contact-table-person contact-row-open" onClick={() => router.push(`/contacts/__contact__?contactId=${encodeURIComponent(contact.id)}`)} type="button">
+                  <span className="contact-avatar">{contactName.slice(0, 1).toLocaleUpperCase("tr-TR")}</span>
+                  <span className="contact-row-lines">
+                    <span className="contact-row-identity">
+                      <strong>{contactName}</strong>
+                      <small>{contact.phone ?? "Telefon eklenmedi"}</small>
+                      {flag ? <span className={`contact-row-flag tone-${flag.tone}`}><ShieldAlert size={12} aria-hidden />{flag.label}</span> : null}
+                    </span>
+                    <small className="contact-row-memory">{memory || "Henüz not yok"}</small>
+                  </span>
+                </button>
                 <span className="contact-row-role">{(contact.roles.length ? contact.roles : ["unknown" as const]).map((role) => contactRoleLabels[role]).join(" · ")}</span>
-                <span className="contact-row-source">{contactSourceLabels[contact.source]}</span>
-                <span className="contact-row-last-touch">{relativeDate(contact.relationship.lastTouchAt, referenceTime)}</span>
-                <span className={`contact-row-next-action ${contact.relationship.nextActionAt !== null && contact.relationship.nextActionAt < referenceTime ? "overdue-text" : ""}`}>{nextActionLabel(contact)}</span>
-                <span className="contact-row-compliance">{contact.phone ? null : <span className="compliance-pill missing-phone" title="Bu kişi aranamaz ve gelen çağrısı eşleşmez">Telefon eksik</span>}<span className={`compliance-pill ${contact.privacy.marketingConsent === "withdrawn" ? "withdrawn" : contact.privacy.noticeStatus === "completed" ? "compliant" : "pending"}`}>{contact.privacy.marketingConsent === "withdrawn" ? "İletişim istemiyor" : contact.privacy.iysStatus === "approved" ? "İYS onaylı" : contact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</span></span>
+                <span className="contact-row-next">
+                  <strong className={overdue ? "overdue-text" : (contact.nextActionSummary?.at ?? null) === null ? "is-unset" : undefined}>{nextActionVerb(contact)}</strong>
+                  <small className={overdue ? "overdue-text" : undefined}>{[when, contact.relationship.lastTouchAt === null ? "temas yok" : `son temas ${relativeDate(contact.relationship.lastTouchAt, referenceTime).toLocaleLowerCase("tr-TR")}`].filter(Boolean).join(" · ")}</small>
+                </span>
                 <details className="contact-action-menu"><summary aria-label={`${contactName} işlemlerini aç`}><MoreHorizontal size={16} /></summary><div><button onClick={() => router.push(`/capture?contactId=${encodeURIComponent(contact.id)}`)} aria-label="Temas kaydet" type="button"><MessageSquarePlus size={14} /> Temas kaydet</button><button onClick={() => setReferralSource(contact)} aria-label="Referans ekle" type="button"><UserRoundPlus size={14} /> Referans ekle</button><button onClick={() => { setPrivacyEditing(contact); setPrivacy(privacyDraft(contact)); }} aria-label="Uyumu düzenle" type="button"><ShieldCheck size={14} /> Uyumu düzenle</button><button onClick={() => openEdit(contact)} aria-label="Kişiyi düzenle" type="button"><Pencil size={14} /> Kişiyi düzenle</button><button onClick={() => requestArchive(contact)} aria-label="Arşivle" type="button"><Archive size={14} /> Arşivle</button></div></details>
               </div>;
             })}

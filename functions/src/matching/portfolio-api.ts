@@ -1,7 +1,10 @@
 import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/firestore";
+import { readQueryPages } from "../api/paged-query.js";
 import { logger } from "firebase-functions";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
+  listingMatchCandidate, voicePropertyPreferencesSchema, opportunityCriteriaSummary,
+  type Listing, type OpportunityType,
   buildMatchMessageFallback,
   contactMemorySchema,
   customerFacingContactName,
@@ -41,8 +44,7 @@ async function displayNamesFor(ownerUids: string[]): Promise<Map<string, string>
 }
 
 async function loadOfficePortfolio(officeId: string): Promise<PortfolioItemRecord[]> {
-  const snapshot = await getFirestore().collection("portfolioItems").where("officeId", "==", officeId).limit(500).get();
-  const documents = snapshot.docs.filter((document) => document.data().availability === "available");
+  const documents = (await readQueryPages(getFirestore().collection("portfolioItems").where("officeId", "==", officeId))).filter((document) => document.data().availability === "available");
   const names = await displayNamesFor(documents.map((document) => document.data().ownerUid as string));
   return documents
     .map((document) => toRecord(document.id, document.data(), names.get(document.data().ownerUid as string) ?? "Ofis danışmanı"))
@@ -60,58 +62,76 @@ const matchScoreFloor = 60;
 const nearMissScoreFloor = 35;
 const minimumCoverage = 40;
 
-async function loadPortfolioMatches(claims: SpherepathClaims): Promise<OwnedPortfolioMatch[]> {
-  const firestore = getFirestore();
-  let query: FirebaseFirestore.Query = firestore.collection("contacts").where("officeId", "==", claims.officeId);
-  if (claims.role !== "broker") query = query.where("ownerUid", "==", claims.uid);
-  const [contactsSnapshot, portfolioItems] = await Promise.all([query.limit(200).get(), loadOfficePortfolio(claims.officeId)]);
+async function loadMatchCandidates(claims: SpherepathClaims): Promise<PortfolioItemRecord[]> {
+  const db = getFirestore();
+  let listingQuery: FirebaseFirestore.Query = db.collection("listings").where("officeId", "==", claims.officeId);
+  if (claims.role !== "broker") listingQuery = listingQuery.where("ownerUid", "==", claims.uid);
+  const [pool, listings] = await Promise.all([loadOfficePortfolio(claims.officeId), readQueryPages(listingQuery)]);
+  const names = await displayNamesFor(listings.map((doc) => doc.data().ownerUid as string));
+  const sourceIds = [...new Set(listings.map((doc) => doc.data().opportunityId as string).filter(Boolean))];
+  const sources = sourceIds.length ? await db.getAll(...sourceIds.map((id) => db.collection("opportunities").doc(id))) : [];
+  const sourceTypes = new Map(sources.filter((doc) => doc.data()?.officeId === claims.officeId).map((doc) => [doc.id, doc.data()?.type]));
+  const owned = listings.flatMap((doc) => {
+    const data = doc.data();
+    const sourceType = sourceTypes.get(data.opportunityId as string);
+    if (sourceType !== "seller_listing" && sourceType !== "landlord_listing") return [];
+    const candidate = listingMatchCandidate({ ...data, id: doc.id, createdAt: millis(data.createdAt), updatedAt: millis(data.updatedAt) } as Listing & { id: string }, sourceType === "landlord_listing" ? "let" : "sell", names.get(data.ownerUid as string) ?? "Ofis danışmanı");
+    return candidate ? [candidate] : [];
+  });
+  const ownIds = new Set(owned.map((item) => item.sourceListingId));
+  const propertyIds = new Set(owned.map((item) => item.sourcePropertyId));
+  return [...owned, ...pool.filter((item) => !(item.sourceListingId && ownIds.has(item.sourceListingId)) && !(item.sourcePropertyId && propertyIds.has(item.sourcePropertyId)))];
+}
+
+async function loadPortfolioMatches(claims: SpherepathClaims, opportunityId?: string): Promise<{ rows: OwnedPortfolioMatch[]; candidateCount: number; demandCount: number }> {
+  const db = getFirestore();
+  let contactQuery: FirebaseFirestore.Query = db.collection("contacts").where("officeId", "==", claims.officeId);
+  let opportunityQuery: FirebaseFirestore.Query = db.collection("opportunities").where("officeId", "==", claims.officeId);
+  if (claims.role !== "broker") {
+    contactQuery = contactQuery.where("ownerUid", "==", claims.uid);
+    opportunityQuery = opportunityQuery.where("ownerUid", "==", claims.uid);
+  }
+  const [contacts, opportunities, items] = await Promise.all([readQueryPages(contactQuery), readQueryPages(opportunityQuery), loadMatchCandidates(claims)]);
   const matches: OwnedPortfolioMatch[] = [];
-  for (const document of contactsSnapshot.docs) {
+  let demandCount = 0;
+  for (const document of contacts) {
     const data = document.data();
     if (data.deletedAt !== null || data.privacy?.profilingObjection === true) continue;
-    const rawMemory = (data.memory ?? {}) as DocumentData;
-    const memory = contactMemorySchema.safeParse({ ...rawMemory, updatedAt: rawMemory.updatedAt instanceof Timestamp ? rawMemory.updatedAt.toMillis() : null });
-    if (!memory.success) continue;
-    // A contact selling one property while looking for another produces two situations.
-    // Only the searching side is matched against office inventory; when no situation is
-    // stored, the collapsed preferences stand in so older contacts keep working.
-    const searching = memory.data.propertySituations.filter((situation) =>
-      situation.propertyContext === "search_preference" && situation.propertyPreferences.transactionType !== null);
-    const demands = searching.length
-      ? searching.map((situation) => ({ preferences: situation.propertyPreferences, summary: situation.summary }))
-      : memory.data.propertyPreferences.transactionType
-        ? [{ preferences: memory.data.propertyPreferences, summary: null as string | null }]
-        : [];
-    if (!demands.length) continue;
-    for (const demand of demands) {
-      for (const portfolioItem of portfolioItems) {
-        const result = scorePortfolioItem(demand.preferences, portfolioItem);
-        if (!result.eligible || result.coverage < minimumCoverage || result.score < nearMissScoreFloor) continue;
-        matches.push({
-          ownerUid: data.ownerUid as string,
-          tier: result.score >= matchScoreFloor ? "match" : "near_miss",
-          match: {
-            ...result,
-            contactId: document.id,
-            contactName: (data.fullName ?? data.label ?? "İsimsiz kişi") as string,
-            portfolioItem,
-            situationSummary: demands.length > 1 ? demand.summary : null,
-          },
-        });
+    const allDemands = opportunities.filter((doc) => doc.data().subjectContactId === document.id && ["buyer_requirement", "tenant_requirement"].includes(doc.data().type as string));
+    const demands: { id: string | null; preferences: import("../../../packages/shared/src/index.js").PropertyPreferences; summary: string | null }[] = [];
+    for (const doc of allDemands) {
+      const demand = doc.data();
+      if (demand.deletedAt !== null || demand.stage === "lost" || demand.stage === "won" || (opportunityId && doc.id !== opportunityId)) continue;
+      const parsed = voicePropertyPreferencesSchema.safeParse(demand.criteria);
+      if (parsed.success) demands.push({ id: doc.id, preferences: parsed.data, summary: opportunityCriteriaSummary(demand.type as OpportunityType, parsed.data) });
+    }
+    // Legacy memory is used only when no demand has ever been created. Closed
+    // demand criteria must never come back as an anonymous live search.
+    if (!allDemands.length && !opportunityId) {
+      const raw = data.memory ?? {};
+      const memory = contactMemorySchema.safeParse({ ...raw, updatedAt: raw.updatedAt instanceof Timestamp ? raw.updatedAt.toMillis() : null });
+      if (memory.success) {
+        const searching = memory.data.propertySituations.filter((item) => item.propertyContext === "search_preference" && item.propertyPreferences.transactionType);
+        if (searching.length) searching.forEach((item) => demands.push({ id: null, preferences: item.propertyPreferences, summary: item.summary }));
+        else if (memory.data.propertyPreferences.transactionType) demands.push({ id: null, preferences: memory.data.propertyPreferences, summary: null });
       }
     }
+    demandCount += demands.length;
+    for (const demand of demands) for (const item of items) {
+      const result = scorePortfolioItem(demand.preferences, item);
+      if (!result.eligible || result.coverage < minimumCoverage || result.score < nearMissScoreFloor) continue;
+      matches.push({ ownerUid: data.ownerUid as string, tier: result.score >= matchScoreFloor ? "match" : "near_miss", match: {
+        ...result, opportunityId: demand.id, contactId: document.id, contactName: (data.fullName ?? data.label ?? "İsimsiz kişi") as string, portfolioItem: item, situationSummary: demand.summary,
+      } });
+    }
   }
-  matches.sort((left, right) => right.match.score - left.match.score || right.match.coverage - left.match.coverage || right.match.portfolioItem.updatedAt - left.match.portfolioItem.updatedAt);
-  // Two situations of the same contact can land on one portfolio item. Keep the stronger
-  // one: the pairing is shown once, and the notification id stays unique.
-  const bestByPairing = new Map<string, OwnedPortfolioMatch>();
+  matches.sort((a, b) => b.match.score - a.match.score || b.match.coverage - a.match.coverage || b.match.portfolioItem.updatedAt - a.match.portfolioItem.updatedAt || `${a.match.opportunityId}:${a.match.portfolioItem.id}`.localeCompare(`${b.match.opportunityId}:${b.match.portfolioItem.id}`));
+  const unique = new Map<string, OwnedPortfolioMatch>();
   for (const entry of matches) {
-    const key = `${entry.match.contactId}::${entry.match.portfolioItem.id}`;
-    if (!bestByPairing.has(key)) bestByPairing.set(key, entry);
+    const key = `${entry.match.opportunityId ?? entry.match.contactId}::${entry.match.portfolioItem.id}`;
+    if (!unique.has(key)) unique.set(key, entry);
   }
-  const deduped = [...bestByPairing.values()];
-  // Each tier is capped on its own so a flood of near misses cannot push out real matches.
-  return [...deduped.filter((item) => item.tier === "match").slice(0, 100), ...deduped.filter((item) => item.tier === "near_miss").slice(0, 50)];
+  return { rows: [...unique.values()], candidateCount: items.length, demandCount };
 }
 
 export const extractPortfolioText = onCall(callableOptions, async (request): Promise<{ draft: PortfolioItemDraft }> => {
@@ -160,10 +180,17 @@ export const listPortfolioItems = onCall(callableOptions, async (request): Promi
 
 export const listPortfolioMatches = onCall(callableOptions, async (request): Promise<{ matches: PortfolioMatchRecord[]; nearMisses: PortfolioMatchRecord[] }> => {
   const claims = requireSpherepathClaims(request);
-  const envelope = readApiEnvelope<undefined>(request.data);
+  const envelope = readApiEnvelope<{ opportunityId?: string; cursor?: number } | undefined>(request.data);
+  if (envelope.data?.opportunityId !== undefined && (typeof envelope.data.opportunityId !== "string" || !/^[a-zA-Z0-9_-]{1,160}$/u.test(envelope.data.opportunityId))) throw new HttpsError("invalid-argument", "Invalid requirement id.");
   return observeApiRequest("listPortfolioMatches", envelope.requestId, async () => {
-    const scored = await loadPortfolioMatches(claims);
+    const cursor = envelope.data?.cursor ?? 0;
+    if (!Number.isSafeInteger(cursor) || cursor < 0) throw new HttpsError("invalid-argument", "Invalid match cursor.");
+    const result = await loadPortfolioMatches(claims, envelope.data?.opportunityId);
+    const scored = result.rows.slice(cursor, cursor + 100);
     return {
+      candidateCount: result.candidateCount,
+      demandCount: result.demandCount,
+      nextCursor: cursor + scored.length < result.rows.length ? cursor + scored.length : null,
       matches: scored.filter((item) => item.tier === "match").map((item) => item.match),
       nearMisses: scored.filter((item) => item.tier === "near_miss").map((item) => item.match),
     };
@@ -176,28 +203,29 @@ export const listMatchNotifications = onCall(callableOptions, async (request): P
   return observeApiRequest("listMatchNotifications", envelope.requestId, async () => {
     const firestore = getFirestore();
     // Near misses are shown when asked for; they must never raise a notification.
-    const personalMatches = (await loadPortfolioMatches(claims)).filter((item) => item.ownerUid === claims.uid && item.tier === "match");
-    const existingSnapshot = await firestore.collection("matchNotifications").where("recipientUid", "==", claims.uid).limit(200).get();
-    const existing = new Map(existingSnapshot.docs.map((document) => [document.id, document.data()]));
+    const personalMatches = (await loadPortfolioMatches(claims)).rows.filter((item) => item.ownerUid === claims.uid && item.tier === "match");
+    const existingSnapshot = await readQueryPages(firestore.collection("matchNotifications").where("recipientUid", "==", claims.uid));
+    const existing = new Map(existingSnapshot.map((document) => [document.id, document.data()]));
     const now = Timestamp.now();
-    const batch = firestore.batch();
-    let hasWrites = false;
+    const writer = firestore.bulkWriter();
+    const writes: Promise<unknown>[] = [];
     const notifications = personalMatches.map<PortfolioMatchNotificationRecord>(({ match }) => {
-      const id = `${match.contactId}_${match.portfolioItem.id}`.replace(/[^a-zA-Z0-9_-]/gu, "_");
+      const id = `${claims.uid}_${match.opportunityId ?? match.contactId}_${match.portfolioItem.id}`.replace(/[^a-zA-Z0-9_-]/gu, "_");
       const stored = existing.get(id);
-      if (!stored) {
-        batch.set(firestore.collection("matchNotifications").doc(id), {
+      if (!stored || !stored.ownerUid) {
+        writes.push(writer.set(firestore.collection("matchNotifications").doc(id), {
           officeId: claims.officeId,
+          ownerUid: claims.uid,
+          opportunityId: match.opportunityId ?? null,
           recipientUid: claims.uid,
           contactId: match.contactId,
           portfolioItemId: match.portfolioItem.id,
           score: match.score,
           coverage: match.coverage,
-          readAt: null,
-          createdAt: now,
+          readAt: stored?.readAt ?? null,
+          createdAt: stored?.createdAt ?? now,
           updatedAt: now,
-        });
-        hasWrites = true;
+        }, { merge: true }));
       }
       return {
         id,
@@ -206,7 +234,8 @@ export const listMatchNotifications = onCall(callableOptions, async (request): P
         readAt: stored?.readAt instanceof Timestamp ? stored.readAt.toMillis() : null,
       };
     });
-    if (hasWrites) await batch.commit();
+    await writer.close();
+    await Promise.all(writes);
     return { notifications };
   });
 });
@@ -278,24 +307,30 @@ export const draftMatchMessage = onCall(callableOptions, async (request): Promis
     const db = getFirestore();
     const [contactSnapshot, itemSnapshot, advisorSnapshot] = await Promise.all([
       db.collection("contacts").doc(parsed.data.contactId).get(),
-      db.collection("portfolioItems").doc(parsed.data.portfolioItemId).get(),
+      loadMatchCandidates(claims).then((items) => items.find((item) => item.id === parsed.data.portfolioItemId)),
       db.collection("users").doc(claims.uid).get(),
     ]);
     const contact = contactSnapshot.data();
-    const item = itemSnapshot.data();
+    const item = itemSnapshot;
     if (!contactSnapshot.exists || !contact || contact.officeId !== claims.officeId || (contact.ownerUid !== claims.uid && claims.role !== "broker") || contact.deletedAt !== null) {
       throw new HttpsError("permission-denied", "Contact is outside your workspace.");
     }
-    if (!itemSnapshot.exists || !item || item.officeId !== claims.officeId) {
+    if (!item || item.officeId !== claims.officeId) {
       throw new HttpsError("permission-denied", "Portfolio item is outside your workspace.");
     }
 
-    const portfolioItem = toRecord(itemSnapshot.id, item, (item.sourceAuthorName as string) ?? "Ofis danışmanı");
+    const portfolioItem = item;
     const rawMemory = (contact.memory ?? {}) as DocumentData;
     const memory = contactMemorySchema.safeParse({ ...rawMemory, updatedAt: rawMemory.updatedAt instanceof Timestamp ? rawMemory.updatedAt.toMillis() : null });
-    const preferences = memory.success
+    let preferences = memory.success
       ? memory.data.propertySituations.find((situation) => situation.propertyContext === "search_preference")?.propertyPreferences ?? memory.data.propertyPreferences
       : null;
+    if (parsed.data.opportunityId) {
+      const demand = (await db.collection("opportunities").doc(parsed.data.opportunityId).get()).data();
+      if (!demand || demand.officeId !== claims.officeId || (demand.ownerUid !== claims.uid && claims.role !== "broker") || demand.subjectContactId !== parsed.data.contactId || demand.deletedAt !== null || ["won", "lost"].includes(demand.stage as string)) throw new HttpsError("permission-denied", "Requirement is unavailable.");
+      const parsedPreferences = voicePropertyPreferencesSchema.safeParse(demand.criteria);
+      preferences = parsedPreferences.success ? parsedPreferences.data : null;
+    }
     const score = preferences ? scorePortfolioItem(preferences, portfolioItem) : null;
     if (score && !score.eligible) throw new HttpsError("failed-precondition", "Portföy zorunlu talep kriterlerini karşılamıyor.");
     const subject = {

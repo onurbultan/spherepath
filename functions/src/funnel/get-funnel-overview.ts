@@ -22,7 +22,7 @@ export const getFunnelOverview = onCall(
         return query;
       };
       const [contacts, opportunities, listings, deals, events, interactions, advisor] = await Promise.all([
-        scoped("contacts").limit(1_000).get(), scoped("opportunities").limit(1_000).get(), scoped("listings").limit(1_000).get(), scoped("deals").limit(1_000).get(), scoped("stageEvents").limit(5_000).get(),
+        scoped("contacts").get(), scoped("opportunities").limit(1_000).get(), scoped("listings").limit(1_000).get(), scoped("deals").limit(1_000).get(), scoped("stageEvents").limit(5_000).get(),
         scoped("interactions").limit(2_000).get(),
         db.collection("users").doc(claims.uid).get(),
       ]);

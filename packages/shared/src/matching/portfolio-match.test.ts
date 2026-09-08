@@ -43,7 +43,8 @@ describe("portfolio matching", () => {
     expect(portfolioItemDraftSchema.parse(item)).toEqual(item);
     const result = scorePortfolioItem(demand, item);
     expect(result.eligible).toBe(true);
-    expect(result.score).toBeLessThan(100);
+    expect(result.score).toBe(100);
+    expect(result.reasons.some((reason) => reason.key === "rooms")).toBe(false);
     expect(result.score).toBe(result.coverage);
     expect(result.coverage).toBeGreaterThanOrEqual(85);
     expect(result.reasons.find((reason) => reason.key === "location")?.status).toBe("match");

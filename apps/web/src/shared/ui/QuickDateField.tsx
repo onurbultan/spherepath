@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { SpInput } from "./SpField";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   buildCalendarMonth,
@@ -25,6 +26,7 @@ function localDateTime(days: number, hour = 10): string {
 
 const futurePresets = [
   { label: "Yarın sabah", days: 1, hour: 10 },
+  { label: "Yarın öğlen", days: 1, hour: 12 },
   { label: "Gelecek hafta", days: 7, hour: 10 },
   { label: "2 hafta", days: 14, hour: 10 },
   { label: "1 ay", days: 30, hour: 10 },
@@ -69,7 +71,9 @@ export function QuickDateField({
   // Opening downward near the foot of the page pushes the calendar off-screen,
   // so the side with room wins. Measured on the click that opens it.
   const [dropUp, setDropUp] = useState(false);
-  const { date, time } = splitDateTimeValue(value);
+  const [draft, setDraft] = useState(value);
+  const timeInput = useRef<HTMLInputElement>(null);
+  const { date, time } = splitDateTimeValue(open ? draft : value);
   const today = new Date();
   const todayValue = toDateValue(today);
   const [month, setMonth] = useState(() => monthOf(date || todayValue));
@@ -99,7 +103,7 @@ export function QuickDateField({
   }, [open]);
 
   function choose(nextDate: string) {
-    onChange(joinDateTimeValue(nextDate, time));
+    setDraft(joinDateTimeValue(nextDate, time));
   }
 
   function applyPreset(days: number, hour: number | null) {
@@ -121,6 +125,7 @@ export function QuickDateField({
           disabled={disabled}
           onClick={() => {
             if (!open) {
+              setDraft(value);
               setMonth(monthOf(date || todayValue));
               const box = trigger.current?.getBoundingClientRect();
               setDropUp(Boolean(box && window.innerHeight - box.bottom < popoverHeight && box.top > popoverHeight));
@@ -165,19 +170,21 @@ export function QuickDateField({
             </div>
             <label className="quick-date-time">
               Saat
-              <input
+              <SpInput
+                ref={timeInput}
                 className="sp-control"
-                onChange={(event) => onChange(joinDateTimeValue(date || todayValue, event.target.value))}
+                onInput={(event) => setDraft(joinDateTimeValue(date || todayValue, event.currentTarget.value))}
+                onChange={(event) => setDraft(joinDateTimeValue(date || todayValue, event.target.value))}
                 type="time"
                 value={time}
               />
             </label>
-            <button className="secondary-action" type="button" onClick={() => { setOpen(false); trigger.current?.focus(); }}>Tarih ve saati uygula</button>
+            <button className="secondary-action" type="button" onClick={() => { onChange(joinDateTimeValue(date || todayValue, timeInput.current?.value || time)); setOpen(false); trigger.current?.focus(); }}>Tarih ve saati uygula</button>
           </div>
         ) : null}
       </div>
 
-      <input aria-label={`${label} tarih ve saat`} className="sr-only" type="datetime-local" value={value} required={required} disabled={disabled} min={past ? undefined : new Date(today.getTime() - today.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)} onChange={(event) => onChange(event.target.value)} onInvalid={() => setOpen(true)} tabIndex={-1} />
+      <SpInput aria-hidden="true" aria-label={`${label} tarih ve saat`} className="sr-only" type="datetime-local" value={value} required={required} disabled={disabled} min={past ? undefined : new Date(today.getTime() - today.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)} onChange={(event) => onChange(event.target.value)} onInvalid={() => setOpen(true)} tabIndex={-1} />
       <div aria-label="Hızlı tarih seçenekleri" className="quick-date-options">
         {presets.map((preset) => (
           <button disabled={disabled} key={preset.label} onClick={() => applyPreset(preset.days, preset.hour)} type="button">

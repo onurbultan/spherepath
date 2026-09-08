@@ -1,3 +1,6 @@
+import { advisorWorkflowCopy, canRecordInternalDeal, opportunityCriteriaSummary } from "@spherepath/shared";
+import { DealHistory } from "../components/DealHistory";
+import { listOpportunities } from "@/features/opportunities/resources/opportunities";
 import { useState } from "react";
 import {
   Modal,
@@ -87,6 +90,10 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
   const firstUnpricedListing = listings.find(
     (item) => item.status === "preparing" && item.askingPrice === null,
   );
+  const [offerParty, setOfferParty] = useState<"buyer" | "seller">("buyer");
+  const [buyerOpportunityId, setBuyerOpportunityId] = useState("");
+  const opportunitiesQuery = useQuery({ queryKey: apiQueryKeys.opportunities, queryFn: listOpportunities });
+  const internalListings = listings.filter((item) => canRecordInternalDeal(item.status, "direct_inquiry"));
   const [sentConfirmationId, setSentConfirmationId] = useState<string | null>(null);
   const [sentConfirmed, setSentConfirmed] = useState(false);
   const [mode, setMode] = useState<"presentation" | "deal" | null>(null);
@@ -94,11 +101,11 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
   const [contactId, setContactId] = useState("");
   const [channel, setChannel] = useState<MarketingChannel>("whatsapp");
   const [message, setMessage] = useState("");
-  const [dealSource, setDealSource] = useState<(typeof dealSources)[number]>("presentation");
+  const [dealSource, setDealSource] = useState<(typeof dealSources)[number]>("direct_inquiry");
   const [dealSourceNote, setDealSourceNote] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const selectedListing = listingId || available[0]?.id || "";
+  const selectedListing = listingId || (mode === "presentation" ? available : internalListings)[0]?.id || "";
   const selectedContact = contactId;
   const [noticeConfirmed, setNoticeConfirmed] = useState(false);
   const [consentConfirmed, setConsentConfirmed] = useState(false);
@@ -161,7 +168,8 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
         const parsed = dealDraftSchema.safeParse({
           listingId: selectedListing,
           buyerContactId: selectedContact || null,
-          buyerOpportunityId: null,
+          buyerOpportunityId: buyerOpportunityId || null,
+          occurredAt: new Date(dealOccurredAt).getTime(),
           source: dealSource,
           sourcePresentationId: dealSource === "presentation" ? sentPresentation?.id ?? null : null,
           sourceNote: dealSource === "presentation" ? null : dealSourceNote.trim() || null,
@@ -238,6 +246,7 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
     const next = nextDealStages(deal.stage)[0];
     if (!next) return;
     setMovingDeal(deal);
+    setOfferParty(deal.offers?.at(-1)?.party === "buyer" ? "seller" : "buyer");
     setDealStage(next);
     setOfferAmount(deal.offerAmount ? String(deal.offerAmount) : "");
     setActualAmount(
@@ -262,6 +271,7 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
     if (!session || !movingDeal) return;
     const parsed = dealTransitionSchema.safeParse({
       dealId: movingDeal.id,
+      offerParty,
       toStage: dealStage,
       occurredAt: new Date(dealOccurredAt).getTime(),
       evidenceNote: dealEvidence.trim(),
@@ -313,8 +323,8 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
           <SpText variant="bodySmall">Sunum</SpText>
         </Pressable>
         <Pressable
-          disabled={!available.length}
-          onPress={() => { setDealNextActionType("call"); setDealNextActionAt(localDateTime(1)); setMode("deal"); }}
+          disabled={!internalListings.length}
+          onPress={() => { setListingId(internalListings[0]?.id ?? ""); setDealSource("direct_inquiry"); setDealOccurredAt(localDateTime()); setDealNextActionType("call"); setDealNextActionAt(localDateTime(1)); setMode("deal"); }}
           style={[styles.action, { borderColor: theme.line }]}
         >
           <Handshake color={theme.textSecondary} size={17} />
@@ -351,6 +361,8 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
       ))}
       {query.data?.deals.map((item) => (
         <SpCard key={item.id} style={styles.card}>
+          <DealHistory deal={item} listing={listings.find((listing) => listing.id === item.listingId)} />
+          {["inquiry", "presentation", "viewing", "offer"].includes(item.stage) ? <Pressable style={styles.action} onPress={() => { openDealMove(item); setDealStage("offer"); }}><SpText>{advisorWorkflowCopy.addOffer}</SpText></Pressable> : null}
           <SpText variant="title">
             {item.buyerContactName ?? "Alıcı daha sonra"}
           </SpText>
@@ -422,10 +434,10 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
             </View>
             <SpText variant="title">Portföy</SpText>
             <View style={styles.choices}>
-              {available.map((item) => (
+              {(mode === "presentation" ? available : internalListings).map((item) => (
                 <Pressable
                   key={item.id}
-                  onPress={() => setListingId(item.id)}
+                  onPress={() => { setListingId(item.id); setBuyerOpportunityId(""); }}
                   style={choice(selectedListing === item.id)}
                 >
                   <SpText
@@ -443,6 +455,7 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
               value={contactId}
               onChange={(value) => {
                 setContactId(value);
+                setBuyerOpportunityId("");
                 setNoticeConfirmed(false);
                 setConsentConfirmed(false);
               }}
@@ -558,7 +571,7 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
               </>
             ) : mode === "deal" ? (
               <>
-                <SpText variant="title">İşlem kaynağı</SpText>
+                <SpText color="secondary">{advisorWorkflowCopy.internalDeal}</SpText><SpDateField label="Talep ne zaman geldi" past value={dealOccurredAt} onChange={setDealOccurredAt} /><SpText variant="title">İlgili alıcı talebi</SpText><View style={styles.choices}>{(opportunitiesQuery.data ?? []).filter((item) => item.subjectContactId === selectedContact && (item.type === "buyer_requirement" || item.type === "tenant_requirement") && item.stage !== "won" && item.stage !== "lost").map((item) => <Pressable key={item.id} style={choice(buyerOpportunityId === item.id)} onPress={() => setBuyerOpportunityId(item.id)}><SpText>{item.criteria ? opportunityCriteriaSummary(item.type, item.criteria) : item.subjectContactName}</SpText></Pressable>)}</View><SpText variant="title">İşlem kaynağı</SpText>
                 <View style={styles.choices}>
                   {dealSources.map((item) => (
                     <Pressable key={item} onPress={() => { setDealSource(item); setError(null); }} style={choice(dealSource === item)}>
@@ -668,7 +681,7 @@ export function ClosingSection({ listings }: { listings: ListingRecord[] }) {
                 : null}
             </View>
             {dealStage === "offer" ? (
-              <>
+              <><SpText variant="title">{advisorWorkflowCopy.offerParty}</SpText><View style={styles.choices}>{(["buyer", "seller"] as const).map((party) => <Pressable key={party} style={choice(offerParty === party)} onPress={() => setOfferParty(party)}><SpText>{party === "buyer" ? advisorWorkflowCopy.buyerOffer : advisorWorkflowCopy.sellerOffer}</SpText></Pressable>)}</View>
                 <SpText variant="title">Teklif tutarı</SpText>
                 <MoneyInput
                   accessibilityLabel="Teklif tutarı"

@@ -1,4 +1,9 @@
 "use client";
+import { getClosingOverview } from "@/features/closing/resources/closing";
+
+import { contactNextStep } from "@spherepath/shared";
+
+import { ImportedContactNotes } from "@/features/contact-imports/components/ImportedContactNotes";
 
 import { dailyTaskQueryKeys } from "@spherepath/shared";
 
@@ -28,23 +33,13 @@ export function ContactWorkspaceView({ contactId }: { contactId: string }) {
   const { session } = useSession();
   const queryClient = useQueryClient();
   const contactsQuery = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts });
+  const closingQuery = useQuery({ queryKey: apiQueryKeys.closing, queryFn: getClosingOverview, enabled: Boolean(session) });
   const opportunitiesQuery = useQuery({ queryKey: apiQueryKeys.opportunities, queryFn: listOpportunities });
   const contact = contactsQuery.data?.find((item) => item.id === contactId);
   const opportunities = (opportunitiesQuery.data ?? []).filter((item) => item.subjectContactId === contactId);
   // The card used to say "Belirlenmedi" while two opportunities underneath it
   // carried dated steps, so a contact with work waiting read as a contact with none.
-  const nextStep = (() => {
-    const own = contact?.relationship.nextActionType
-      ? { id: `next-action-${contact.id}`, opportunityId: undefined, type: contact.relationship.nextActionType, at: contact.relationship.nextActionAt, fromOpportunity: false }
-      : null;
-    const fromOpportunities = opportunities
-      .filter((item) => item.stage !== "won" && item.stage !== "lost" && item.nextActionType !== null)
-      .map((item) => ({ id: `opportunity-action-${item.id}`, opportunityId: item.id, type: item.nextActionType!, at: item.nextActionAt, fromOpportunity: true }))
-      .sort((left, right) => (left.at ?? Infinity) - (right.at ?? Infinity))[0] ?? null;
-    if (!own) return fromOpportunities;
-    if (!fromOpportunities) return own;
-    return (own.at ?? Infinity) <= (fromOpportunities.at ?? Infinity) ? own : fromOpportunities;
-  })();
+  const nextStep = contact ? contactNextStep(contact, opportunities, closingQuery.data?.deals ?? []) : null;
   if (contactsQuery.isPending) return <AppShell><div className="content-state">Kişi hazırlanıyor…</div></AppShell>;
   if (!contact) return <AppShell><SpCard className="empty-state"><UserRound size={24} /><h2>Kişi bulunamadı</h2><Link className="secondary-action inline-link" href="/contacts">Kişilere dön</Link></SpCard></AppShell>;
   const name = contact.fullName ?? contact.label ?? "İsimsiz kişi";
@@ -54,7 +49,9 @@ export function ContactWorkspaceView({ contactId }: { contactId: string }) {
     id: nextStep.id,
     contactId: contact.id,
     opportunityId: nextStep.opportunityId,
+    dealId: nextStep.dealId,
     title: name,
+    actionType: nextStep.type,
     reason: nextActionTypeLabels[nextStep.type],
     dueAt: nextStep.at,
     type: "next_action",
@@ -79,7 +76,7 @@ export function ContactWorkspaceView({ contactId }: { contactId: string }) {
       <div className="contact-workspace-summary"><SpCard><span>Son görüşme</span><strong>{contact.relationship.lastTouchAt ? new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium" }).format(contact.relationship.lastTouchAt) : "Henüz yok"}</strong></SpCard><SpCard><span>Sonraki adım</span><strong>{nextStep ? nextActionTypeLabels[nextStep.type] : "Belirlenmedi"}</strong>{nextStep?.at ? <small>{new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(nextStep.at)}{nextStep.fromOpportunity ? " · fırsattan" : ""}</small> : null}{task ? <button className="text-button" onClick={() => { setTaskError(null); setTaskOpen(true); }} type="button">Tamamla veya ertele</button> : null}</SpCard><SpCard><span>Açık fırsat</span><strong>{opportunities.filter((item) => item.stage !== "won" && item.stage !== "lost").length}</strong></SpCard></div>
       <nav className="contact-workspace-tabs" aria-label="Kişi çalışma alanı"><button className={tab === "timeline" ? "selected" : ""} onClick={() => setTab("timeline")}>Görüşmeler</button><button className={tab === "memory" ? "selected" : ""} onClick={() => setTab("memory")}>Hafıza</button><button className={tab === "opportunities" ? "selected" : ""} onClick={() => setTab("opportunities")}>Fırsatlar</button><button className={tab === "privacy" ? "selected" : ""} onClick={() => setTab("privacy")}>İzinler</button></nav>
       {tab === "timeline" ? <><ContactCallHistory contactId={contact.id} /><SpCard><ContactInteractionTimeline contactId={contact.id} /></SpCard></> : null}
-      {tab === "memory" ? <SpCard className="contact-workspace-panel"><h2>Hatırlanacaklar</h2>{contact.memory.keyThingsToRemember.length ? <ul>{contact.memory.keyThingsToRemember.map((item) => <li key={item}>{item}</li>)}</ul> : <p>Henüz hatırlanacak bilgi yok.</p>}<h3>Gayrimenkul tercihleri</h3><ContactMemoryHighlights memory={contact.memory} /></SpCard> : null}
+      {tab === "memory" ? <SpCard className="contact-workspace-panel"><h2>İletişim bilgileri</h2><p>{[contact.phone, ...(contact.additionalPhones ?? []), ...(contact.emails ?? [])].filter(Boolean).join(" · ")}</p><h2>Hatırlanacaklar</h2>{contact.memory.keyThingsToRemember.length ? <ul>{contact.memory.keyThingsToRemember.map((item) => <li key={item}>{item}</li>)}</ul> : <p>Henüz hatırlanacak bilgi yok.</p>}<h3>Gayrimenkul tercihleri</h3><ContactMemoryHighlights memory={contact.memory} /><ImportedContactNotes contactId={contact.id} /></SpCard> : null}
       {tab === "opportunities" ? <SpCard className="contact-workspace-panel"><h2>Fırsatlar</h2>{opportunities.length ? opportunities.map((item) => <Link className="contact-opportunity-row" key={item.id} href={`/opportunities?opportunityId=${encodeURIComponent(item.id)}`}><BriefcaseBusiness size={17} /><span><strong>{opportunityTypeLabels[item.type]}</strong><small>{opportunityStageLabel(item.stage, item.type)}</small></span></Link>) : <p>Bu kişi için fırsat yok.</p>}</SpCard> : null}
       {tab === "privacy" ? <SpCard className="contact-workspace-panel"><ShieldCheck size={22} /><h2>Aydınlatma ve iletişim izinleri</h2><p>{contact.privacy.noticeStatus === "completed" ? "Aydınlatma tamamlandı." : "Aydınlatma bekliyor."} {contact.privacy.marketingConsent === "granted" ? "Pazarlama izni var." : contact.privacy.marketingConsent === "withdrawn" ? "Kişi iletişim istemedi; pazarlama izni geri çekildi." : "Pazarlama izni bilinmiyor."}</p><Link className="secondary-action inline-link" href={`/contacts?contactId=${encodeURIComponent(contact.id)}&action=privacy`}>İzinleri düzenle</Link></SpCard> : null}
     </section>{taskOpen && task ? <TaskResolutionSheet task={task} pending={resolvingTask} error={taskError} onClose={() => setTaskOpen(false)} onResolve={(outcome) => void resolveTask(outcome)} /> : null}

@@ -9,7 +9,7 @@ import {
   classifyInboxText,
   contactMemorySchema,
   createContact as createContactEntity,
-  createOpportunity as createOpportunityEntity,
+  createOpportunity as createOpportunityEntity, approvedOpportunityCriteria,
   createPortfolioItem,
   createInboxItemSchema,
   createInteraction,
@@ -94,7 +94,7 @@ function storedContact(contact: ReturnType<typeof createContactEntity>) {
     // The switch matches an incoming caller on this; without it a contact made
     // from a note can be dialled but never recognised when they ring back.
     ...contactPhoneFields(contact.phone),
-    metAt: Timestamp.fromMillis(contact.metAt), createdAt: Timestamp.fromMillis(contact.createdAt), updatedAt: Timestamp.fromMillis(contact.updatedAt), deletedAt: null,
+    metAt: contact.metAt === null ? null : Timestamp.fromMillis(contact.metAt), createdAt: Timestamp.fromMillis(contact.createdAt), updatedAt: Timestamp.fromMillis(contact.updatedAt), deletedAt: null,
     relationship: { ...contact.relationship, lastTouchAt: timestamp(contact.relationship.lastTouchAt), nextActionAt: timestamp(contact.relationship.nextActionAt) },
     memory: { ...contact.memory, updatedAt: timestamp(contact.memory.updatedAt) },
     privacy: {
@@ -410,6 +410,7 @@ export const processInboxItem = onCall(callableOptions, async (request): Promise
           const opportunity = createOpportunityEntity({
             subjectContactId: entityRef.id,
             type: parsed.data.opportunityType,
+            criteria: approvedOpportunityCriteria(parsed.data.approvedInsights ?? emptyVoiceInsights, parsed.data.opportunityType),
             nextActionType: parsed.data.contact.nextActionType!,
             nextActionAt: parsed.data.contact.nextActionAt!,
           }, { officeId: claims.officeId, ownerUid: claims.uid }, now);
@@ -446,7 +447,7 @@ export const processInboxItem = onCall(callableOptions, async (request): Promise
         linkedContactId = entityRef.id;
         label = `${parsed.data.contact.fullName} kişi olarak oluşturuldu`;
       } else if (parsed.data.action === "requirement") {
-        const opportunity = createOpportunityEntity({ subjectContactId: parsed.data.contactId, type: parsed.data.opportunityType, nextActionType: parsed.data.nextActionType, nextActionAt: parsed.data.nextActionAt }, { officeId: claims.officeId, ownerUid: claims.uid }, now);
+        const opportunity = createOpportunityEntity({ subjectContactId: parsed.data.contactId, type: parsed.data.opportunityType, criteria: approvedOpportunityCriteria(parsed.data.approvedInsights ?? emptyVoiceInsights, parsed.data.opportunityType), nextActionType: parsed.data.nextActionType, nextActionAt: parsed.data.nextActionAt }, { officeId: claims.officeId, ownerUid: claims.uid }, now);
         transaction.create(entityRef, { ...opportunity, qualifiedAt: nowStamp, stageEnteredAt: nowStamp, nextActionAt: Timestamp.fromMillis(parsed.data.nextActionAt), closedAt: null, deletedAt: null, createdAt: nowStamp, updatedAt: nowStamp });
         transaction.create(stageEventRef!, { officeId: claims.officeId, ownerUid: claims.uid, entityType: "opportunity", entityId: entityRef.id, fromStage: null, toStage: "new_lead", reason: "Akış notundan oluşturuldu", commandId: envelope.commandId, occurredAt: nowStamp, createdAt: nowStamp });
         const currentMemory = contactMemorySchema.parse({

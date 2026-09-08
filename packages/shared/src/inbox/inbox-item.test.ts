@@ -134,6 +134,17 @@ describe("what the card can show", () => {
   it("says nothing before the note has been read", () => {
     expect(inboxAnalysisHighlights(null)).toEqual([]);
   });
+
+  it("drops a reading that only repeats the note it was read from", () => {
+    const note = "Kayseri'den arayan bir yatırımcı Alsancak'ta kiralık ofis arıyor, 200 m² civarı.";
+    expect(inboxAnalysisHighlights(analysis([{ summary: note }]), note)).toEqual([]);
+    // Punctuation and casing differ but the sentence is the same one.
+    expect(inboxAnalysisHighlights(analysis([{ summary: "kayseri'den arayan bir yatırımcı alsancak'ta kiralık ofis arıyor 200 m² civarı" }]), note)).toEqual([]);
+  });
+
+  it("keeps a reading that says something the note does not", () => {
+    expect(inboxAnalysisHighlights(analysis([{ summary: "Bütçesi 6,5M." }]), "Elif aradı.")).toEqual(["Bütçesi 6,5M."]);
+  });
 });
 
 

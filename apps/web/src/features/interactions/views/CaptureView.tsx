@@ -1,4 +1,7 @@
 "use client";
+import { getClosingOverview } from "@/features/closing/resources/closing";
+import { advisorWorkflowCopy, parseMoneyInput, type CurrencyCode } from "@spherepath/shared";
+
 
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
@@ -64,6 +67,13 @@ export function CaptureView() {
   const [direction, setDirection] = useState<ManualInteractionDraft["direction"]>("mutual");
   const [outcome, setOutcome] = useState("");
   const [askOutcome, setAskOutcome] = useState<ManualInteractionDraft["askOutcome"]>("not_asked");
+  const [nextActionContactId, setNextActionContactId] = useState("");
+  const [nextActionOpportunityId, setNextActionOpportunityId] = useState("");
+  const [relatedDealId, setRelatedDealId] = useState("");
+  const [dealOfferAmount, setDealOfferAmount] = useState("");
+  const [dealOfferParty, setDealOfferParty] = useState<"buyer" | "seller">("buyer");
+  const [dealOfferCurrency, setDealOfferCurrency] = useState<CurrencyCode>("TRY");
+  const closingQuery = useQuery({ queryKey: apiQueryKeys.closing, queryFn: getClosingOverview });
   const [nextActionType, setNextActionType] = useState<ManualInteractionDraft["nextActionType"]>(null);
   const [nextActionAt, setNextActionAt] = useState("");
   const [nextActionTouched, setNextActionTouched] = useState(false);
@@ -105,16 +115,16 @@ export function CaptureView() {
     setNextActionAt(localDateTimeFrom(selectedContact.relationship.nextActionAt));
   }, [nextActionTouched, selectedContact]);
   const selectedContactName = selectedContact?.fullName ?? selectedContact?.label ?? "Seçilen kişi";
-  const suggestedOpportunityType = suggestOpportunityTypeForRoles(selectedContact?.roles ?? []);
+  const suggestedOpportunityType = relatedDealId || (nextActionContactId && nextActionContactId !== selectedContactId) ? null : suggestOpportunityTypeForRoles(selectedContact?.roles ?? []);
   const opportunitiesQuery = useQuery({
     queryKey: apiQueryKeys.opportunities,
     queryFn: listOpportunities,
-    enabled: Boolean(session && saved && suggestedOpportunityType && !queuedOffline),
+    enabled: Boolean(session),
   });
   const existingOpportunity = opportunitiesQuery.data?.find((opportunity) => (
     opportunity.subjectContactId === selectedContactId
     && opportunity.type === suggestedOpportunityType
-    && opportunity.stage !== "won"
+    && (opportunity.stage !== "won" || Boolean(opportunity.propertyId))
     && opportunity.stage !== "lost"
   )) ?? null;
   const availableOpportunityId = createdOpportunityId ?? existingOpportunity?.id ?? null;
@@ -135,6 +145,10 @@ export function CaptureView() {
       askOutcome,
       nextActionType,
       nextActionAt: submittedNextActionAt ? new Date(submittedNextActionAt).getTime() : null,
+      nextActionContactId: nextActionContactId || selectedContactId,
+      nextActionOpportunityId: nextActionOpportunityId || null,
+      dealId: relatedDealId || null,
+      dealOffer: parseMoneyInput(dealOfferAmount) === null ? null : { party: dealOfferParty, amount: parseMoneyInput(dealOfferAmount), currency: dealOfferCurrency },
       noteSummary,
       occurredAt: occurredAt ? new Date(occurredAt).getTime() : null,
     };
@@ -152,6 +166,8 @@ export function CaptureView() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunities }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.closing }),
       ]);
       setSaved(true);
     } catch (nextError) {
@@ -169,7 +185,7 @@ export function CaptureView() {
     setContactPending(true); setError(null);
     try {
       const created = await saveContact(session, parsed.data);
-      setContactId(created.id);
+      setContactId(created.id); clearFollowUpContext();
       setQuickContactDraft(emptyContactDraft);
       setQuickContactOpen(false);
       await queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts });
@@ -193,6 +209,8 @@ export function CaptureView() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunities }),
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunities }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.closing }),
       ]);
     } catch (nextError) {
       setOpportunityError(nextError instanceof Error ? nextError.message : "Fırsat oluşturulamadı.");
@@ -201,7 +219,18 @@ export function CaptureView() {
     }
   }
 
+  function clearFollowUpContext() {
+    setNextActionContactId("");
+    setNextActionOpportunityId("");
+    setRelatedDealId("");
+    setDealOfferAmount("");
+    setDealOfferParty("buyer");
+    setDealOfferCurrency("TRY");
+  }
+
   function resetManualInteraction() {
+    clearFollowUpContext();
+    setOccurredAt("");
     setContactId("");
     setChannel("in_person");
     setObjective("get_acquainted");
@@ -230,20 +259,22 @@ export function CaptureView() {
 
   return (
     <AppShell>
-      <header className="page-header contacts-header capture-header"><div><p className="eyebrow">HIZLI KAYIT</p><h1>Temas kaydet</h1><p className="context-sentence">Görüşme sonucunu ve kabul edilmiş sonraki adımı kısa biçimde kapat.</p></div><button className="secondary-action inline-action" onClick={() => { setError(null); setQuickContactOpen(true); }} type="button"><UserPlus size={17} /> Yeni kişi</button></header>
+      <header className="page-header contacts-header capture-header"><div><p className="eyebrow">HIZLI KAYIT</p><h1>Temas kaydet</h1><p className="context-sentence">Görüşme sonucunu ve planlanan sonraki adımı kısa biçimde kapat.</p></div><button className="secondary-action inline-action" onClick={() => { setError(null); setQuickContactOpen(true); }} type="button"><UserPlus size={17} /> Yeni kişi</button></header>
       <div className="capture-mode-tabs" role="tablist" aria-label="Kayıt yöntemi"><button className={captureMode === "voice" ? "selected" : ""} role="tab" aria-selected={captureMode === "voice"} onClick={() => changeCaptureMode("voice")} type="button">Sesli anlat</button><button className={captureMode === "manual" ? "selected" : ""} role="tab" aria-selected={captureMode === "manual"} onClick={() => changeCaptureMode("manual")} type="button">Manuel yaz</button></div>
       {captureMode === "voice" ? <VoiceCaptureCard key={selectedContactId} session={session!} contacts={contacts} initialContactId={selectedContactId} onSaved={async () => {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
           queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunities }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.closing }),
         ]);
       }} /> : saved ? (
-        <SpCard className="success-state"><div className="success-icon"><Check size={24} aria-hidden /></div><p className="eyebrow">{queuedOffline ? "CİHAZDA GÜVENDE" : "KAYDEDİLDİ"}</p><h2>{queuedOffline ? `${selectedContactName} için temas gönderilmeyi bekliyor` : `${selectedContactName} için temas kaydedildi`}</h2><p><strong>Sonuç:</strong> {outcome}</p>{nextActionType ? <p><strong>Sonraki adım:</strong> {nextActionTypeLabels[nextActionType]}{nextActionAt ? ` · ${new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(nextActionAt))}` : ""}</p> : <p>Sonraki adım planlanmadı.</p>}<p>{queuedOffline ? "Bağlantı geldiğinde aynı kişi ve sonuçla otomatik gönderilecek." : "Kişi ve takip bilgisini kontrol ettin; günlük plan güncellendi."}</p>{!queuedOffline && suggestedOpportunityType ? <div className="capture-opportunity-prompt"><div><strong>{opportunityTypeLabels[suggestedOpportunityType]}</strong><span>{availableOpportunityId ? existingOpportunity && !createdOpportunityId ? "Bu kişi için açık fırsat zaten var." : "Görüşmedeki takip bilgileriyle fırsat oluşturuldu." : nextActionType && nextActionAt ? "Rol, aksiyon ve tarih hazır; tekrar doldurmadan fırsata dönüştür." : "Fırsat için sonraki aksiyon ve tarihi tamamla."}</span></div>{availableOpportunityId ? <Link className="primary-action inline-link" href={`/opportunities?opportunityId=${encodeURIComponent(availableOpportunityId)}`}>Fırsatı görüntüle</Link> : nextActionType && nextActionAt ? <button className="primary-action inline-action" disabled={opportunityPending || opportunitiesQuery.isPending} type="button" onClick={() => void createOpportunityFromInteraction()}>{opportunityPending ? "Fırsat açılıyor…" : opportunitiesQuery.isPending ? "Açık fırsat kontrol ediliyor…" : `Fırsat aç: ${opportunityTypeLabels[suggestedOpportunityType]}`}</button> : <Link className="primary-action inline-link" href={`/opportunities?create=1&contactId=${encodeURIComponent(selectedContactId)}`}>Fırsat ayrıntılarını tamamla</Link>}</div> : null}{opportunityError ? <p className="form-error" role="alert">{opportunityError}</p> : null}<div className="capture-actions"><button className="secondary-action" type="button" onClick={() => router.push("/")}>Bugün ekranına dön</button>{!queuedOffline ? <Link className="secondary-action inline-link" href={`/listings?action=add-listing&ownerContactId=${encodeURIComponent(selectedContactId)}`}>Yetkili portföy ekle</Link> : null}<button className="secondary-action" disabled={opportunityPending} type="button" onClick={resetManualInteraction}>Yeni kişi için temas kaydet</button></div></SpCard>
+        <SpCard className="success-state"><div className="success-icon"><Check size={24} aria-hidden /></div><p className="eyebrow">{queuedOffline ? "CİHAZDA GÜVENDE" : "KAYDEDİLDİ"}</p><h2>{queuedOffline ? `${selectedContactName} için temas gönderilmeyi bekliyor` : `${selectedContactName} için temas kaydedildi`}</h2><p><strong>Sonuç:</strong> {outcome}</p>{nextActionType ? <p><strong>Sonraki adım ({contacts.find((item) => item.id === (nextActionContactId || selectedContactId))?.fullName ?? "İlgili kişi"}):</strong> {nextActionTypeLabels[nextActionType]}{nextActionAt ? ` · ${new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(nextActionAt))}` : ""}</p> : <p>Sonraki adım planlanmadı.</p>}<p>{queuedOffline ? "Bağlantı geldiğinde aynı kişi ve sonuçla otomatik gönderilecek." : "Kişi ve takip bilgisini kontrol ettin; günlük plan güncellendi."}</p>{!queuedOffline && suggestedOpportunityType ? <div className="capture-opportunity-prompt"><div><strong>{opportunityTypeLabels[suggestedOpportunityType]}</strong><span>{availableOpportunityId ? existingOpportunity && !createdOpportunityId ? "Bu kişi için ilgili iş zaten var; mevcut işi sürdürebilirsin." : "Görüşmedeki takip bilgileriyle fırsat oluşturuldu." : nextActionType && nextActionAt ? "Rol, aksiyon ve tarih hazır; tekrar doldurmadan fırsata dönüştür." : "Fırsat için sonraki aksiyon ve tarihi tamamla."}</span></div>{availableOpportunityId ? <Link className="primary-action inline-link" href={`/opportunities?opportunityId=${encodeURIComponent(availableOpportunityId)}`}>Fırsatı görüntüle</Link> : nextActionType && nextActionAt ? <button className="primary-action inline-action" disabled={opportunityPending || opportunitiesQuery.isPending} type="button" onClick={() => void createOpportunityFromInteraction()}>{opportunityPending ? "Fırsat açılıyor…" : opportunitiesQuery.isPending ? "Açık fırsat kontrol ediliyor…" : `Fırsat aç: ${opportunityTypeLabels[suggestedOpportunityType]}`}</button> : <Link className="primary-action inline-link" href={`/opportunities?create=1&contactId=${encodeURIComponent(selectedContactId)}`}>Fırsat ayrıntılarını tamamla</Link>}</div> : null}{opportunityError ? <p className="form-error" role="alert">{opportunityError}</p> : null}<div className="capture-actions"><button className="secondary-action" type="button" onClick={() => router.push("/")}>Bugün ekranına dön</button>{!queuedOffline && selectedContact?.roles.some((role) => role === "seller" || role === "landlord") && !existingOpportunity?.propertyId ? <Link className="secondary-action inline-link" href={`/listings?action=add-listing&ownerContactId=${encodeURIComponent(selectedContactId)}`}>Yetkili portföy ekle</Link> : null}<button className="secondary-action" disabled={opportunityPending} type="button" onClick={resetManualInteraction}>Yeni kişi için temas kaydet</button></div></SpCard>
       ) : (
         <form onKeyDown={handleFormKeyDown} className="capture-form" onSubmit={submit}>
-          <SpCard className="form-section"><div className="section-heading compact"><div><p className="eyebrow">1 · KİM</p><h2>Görüşülen kişi</h2></div></div><div className="form-row"><ContactCombobox contacts={contacts} value={selectedContactId} onChange={(value) => { setContactId(value); setNextActionTouched(false); setNextActionType(null); setNextActionAt(""); }} /><label>Kanal<SpSelect value={channel} onChange={(event) => setChannel(event.target.value as ManualInteractionDraft["channel"])}>{interactionChannels.map((item) => <option key={item} value={item}>{interactionChannelLabels[item]}</option>)}</SpSelect></label></div></SpCard>
-          <SpCard className="form-section"><p className="eyebrow">2 · NE OLDU</p><h2>Görüşme sonucu</h2><label>Kısa sonuç<SpTextarea value={outcome} onChange={(event) => setOutcome(event.target.value)} placeholder="Örn. Salı günü satış planını konuşacağız." required /></label><details className="form-details"><summary>İsteğe bağlı ayrıntılar</summary><div className="form-stack"><label>Görüşme amacı<SpSelect value={objective} onChange={(event) => setObjective(event.target.value as ManualInteractionDraft["objective"])}>{interactionObjectives.map((item) => <option key={item} value={item}>{interactionObjectiveLabels[item]}</option>)}</SpSelect></label><label>Yön<SpSelect value={direction} onChange={(event) => setDirection(event.target.value as ManualInteractionDraft["direction"])}>{interactionDirections.map((item) => <option key={item} value={item}>{interactionDirectionLabels[item]}</option>)}</SpSelect></label><QuickDateField past required={false} label="Görüşme ne zaman oldu" value={occurredAt} onChange={setOccurredAt} /><label>Talep sonucu<SpSelect value={askOutcome} onChange={(event) => setAskOutcome(event.target.value as ManualInteractionDraft["askOutcome"])}>{askOutcomes.map((item) => <option key={item} value={item}>{askOutcomeLabels[item]}</option>)}</SpSelect></label><label>Ek not<SpTextarea value={noteSummary} onChange={(event) => setNoteSummary(event.target.value)} /></label></div></details></SpCard>
-          <SpCard className="form-section"><p className="eyebrow">3 · SONRAKİ ADIM</p><h2>Takibi planla</h2>{selectedContact?.relationship.nextActionAt && !nextActionTouched ? <p className="privacy-hint">Kişideki mevcut takip getirildi; değiştirirsen yeni görüşme sonucu bunun yerini alır.</p> : null}<div className="form-row"><label>Aksiyon<SpSelect value={nextActionType ?? ""} onChange={(event) => { const value = (event.target.value || null) as ManualInteractionDraft["nextActionType"]; setNextActionTouched(true); setNextActionType(value); if (!value) setNextActionAt(""); }}><option value="">Henüz yok</option>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</SpSelect></label><QuickDateField disabled={!nextActionType} label="Tarih · saat isteğe göre değiştirilebilir" required={Boolean(nextActionType)} value={nextActionAt} onChange={(value) => { setNextActionTouched(true); setNextActionAt(value); }} /></div><SpInput name="nextActionAt" type="hidden" value={nextActionAt} /></SpCard>
+          <SpCard className="form-section"><div className="section-heading compact"><div><p className="eyebrow">1 · KİM</p><h2>Görüşülen kişi</h2></div></div><div className="form-row"><ContactCombobox contacts={contacts} value={selectedContactId} onChange={(value) => { setContactId(value); clearFollowUpContext(); setNextActionTouched(false); setNextActionType(null); setNextActionAt(""); }} /><label>Kanal<SpSelect value={channel} onChange={(event) => setChannel(event.target.value as ManualInteractionDraft["channel"])}>{interactionChannels.map((item) => <option key={item} value={item}>{interactionChannelLabels[item]}</option>)}</SpSelect></label></div></SpCard>
+          <SpCard className="form-section"><p className="eyebrow">2 · NE OLDU</p><h2>Görüşme sonucu</h2><QuickDateField past required={false} label="Görüşme ne zaman oldu" value={occurredAt} onChange={setOccurredAt} /><label>Kısa sonuç<SpTextarea value={outcome} onChange={(event) => setOutcome(event.target.value)} placeholder="Örn. Salı günü satış planını konuşacağız." required /></label><details className="form-details"><summary>İsteğe bağlı ayrıntılar</summary><div className="form-stack"><label>Görüşme amacı<SpSelect value={objective} onChange={(event) => setObjective(event.target.value as ManualInteractionDraft["objective"])}>{interactionObjectives.map((item) => <option key={item} value={item}>{interactionObjectiveLabels[item]}</option>)}</SpSelect></label><label>Yön<SpSelect value={direction} onChange={(event) => setDirection(event.target.value as ManualInteractionDraft["direction"])}>{interactionDirections.map((item) => <option key={item} value={item}>{interactionDirectionLabels[item]}</option>)}</SpSelect></label><label>Talep sonucu<SpSelect value={askOutcome} onChange={(event) => setAskOutcome(event.target.value as ManualInteractionDraft["askOutcome"])}>{askOutcomes.map((item) => <option key={item} value={item}>{askOutcomeLabels[item]}</option>)}</SpSelect></label><label>Ek not<SpTextarea value={noteSummary} onChange={(event) => setNoteSummary(event.target.value)} /></label></div></details></SpCard>
+          <SpCard className="form-section"><p className="eyebrow">3 · SONRAKİ ADIM</p><h2>Takibi planla</h2><label>İlgili işlem · varsa<SpSelect value={relatedDealId} onChange={(event) => { const id = event.target.value; setRelatedDealId(id); const deal = closingQuery.data?.deals.find((item) => item.id === id); setNextActionContactId(deal?.buyerContactId ?? ""); setNextActionOpportunityId(""); setDealOfferAmount(""); }}><option value="">İşleme bağlı değil</option>{(closingQuery.data?.deals ?? []).filter((item) => item.stage !== "closed" && item.stage !== "lost").map((item) => <option key={item.id} value={item.id}>{item.buyerContactName} · {item.listingAddress}</option>)}</SpSelect></label>{relatedDealId ? <div className="form-row"><label>Görüşmedeki teklif tutarı · varsa<SpInput type="number" min="1" value={dealOfferAmount} onChange={(event) => setDealOfferAmount(event.target.value)} /></label><label>{advisorWorkflowCopy.offerParty}<SpSelect value={dealOfferParty} onChange={(event) => setDealOfferParty(event.target.value as "buyer" | "seller")}><option value="buyer">{advisorWorkflowCopy.buyerOffer}</option><option value="seller">{advisorWorkflowCopy.sellerOffer}</option></SpSelect></label><label>Para birimi<SpSelect value={dealOfferCurrency} onChange={(event) => setDealOfferCurrency(event.target.value as CurrencyCode)}>{["TRY", "GBP", "USD", "EUR"].map((item) => <option key={item}>{item}</option>)}</SpSelect></label></div> : null}<ContactCombobox label="Sonraki adım kiminle" contacts={contacts} value={nextActionContactId || selectedContactId} onChange={(id) => { setNextActionContactId(id); setNextActionOpportunityId(""); setNextActionTouched(true); }} />{!relatedDealId ? <label>Takibin bağlı olduğu iş · varsa<SpSelect value={nextActionOpportunityId} onChange={(event) => setNextActionOpportunityId(event.target.value)}><option value="">Kişisel takip</option>{(opportunitiesQuery.data ?? []).filter((item) => item.subjectContactId === (nextActionContactId || selectedContactId) && item.stage !== "won" && item.stage !== "lost").map((item) => <option value={item.id} key={item.id}>{opportunityTypeLabels[item.type]} · {item.criteria?.preferredLocations.join(", ")}</option>)}</SpSelect></label> : null}{selectedContact?.relationship.nextActionAt && !nextActionTouched ? <p className="privacy-hint">Kişideki mevcut takip getirildi; değiştirirsen yeni görüşme sonucu bunun yerini alır.</p> : null}<div className="form-row"><label>Aksiyon<SpSelect value={nextActionType ?? ""} onChange={(event) => { const value = (event.target.value || null) as ManualInteractionDraft["nextActionType"]; setNextActionTouched(true); setNextActionType(value); if (!value) setNextActionAt(""); }}><option value="">Henüz yok</option>{nextActionTypes.map((item) => <option key={item} value={item}>{nextActionTypeLabels[item]}</option>)}</SpSelect></label><QuickDateField disabled={!nextActionType} label="Tarih · saat isteğe göre değiştirilebilir" required={Boolean(nextActionType)} value={nextActionAt} onChange={(value) => { setNextActionTouched(true); setNextActionAt(value); }} /></div><SpInput name="nextActionAt" type="hidden" value={nextActionAt} /></SpCard>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
           <div className="capture-actions"><span className="privacy-copy">Yalnız gerekli iş sonucunu kaydedin.</span><button className="primary-action inline-action" disabled={pending || !selectedContactId} type="submit"><Save size={18} aria-hidden /> {pending ? "Kaydediliyor…" : selectedContact ? `${selectedContactName} için kaydet` : "Teması kaydet"}</button></div>
         </form>

@@ -162,10 +162,21 @@ export function inboxItemTrace(item: Pick<InboxItem, "appliedActions">): Array<{
     .map((action) => ({ label: action.label, kind: action.type, entityId: action.entityId }));
 }
 
-export function inboxAnalysisHighlights(analysis: InboxItemAnalysis | null): string[] {
+/**
+ * A short note often reads back as its own summary, and the card then printed
+ * the same sentence twice -- once as the note and once as what was understood
+ * from it. `noteText` lets the caller drop that echo; the reading is only worth
+ * showing where it adds something the note does not already say.
+ */
+export function inboxAnalysisHighlights(analysis: InboxItemAnalysis | null, noteText?: string): string[] {
   if (!analysis) return [];
-  const situations = analysis.insights.propertySituations.map((situation) => situation.summary.trim()).filter(Boolean);
-  const remembered = situations.length ? [] : analysis.insights.keyThingsToRemember.slice(0, 2);
+  const normalize = (value: string) => value.trim().toLocaleLowerCase("tr-TR").replace(/[\s.,;:!?…]+/gu, " ").trim();
+  const echo = noteText ? normalize(noteText) : null;
+  const isEcho = (value: string) => echo !== null && normalize(value) === echo;
+  const situations = analysis.insights.propertySituations
+    .map((situation) => situation.summary.trim())
+    .filter((summary) => Boolean(summary) && !isEcho(summary));
+  const remembered = situations.length ? [] : analysis.insights.keyThingsToRemember.filter((item) => !isEcho(item)).slice(0, 2);
   const next = analysis.nextActionType ? [`Sonraki: ${nextActionTypeLabels[analysis.nextActionType]}`] : [];
   return [...situations, ...remembered, ...next].slice(0, 4);
 }

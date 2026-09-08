@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  contactMemoryLine,
   emptyVoicePropertyPreferences,
   mergePropertySituations,
   mergeVoiceInsightsIntoContactMemory,
@@ -134,5 +135,46 @@ describe("mergePropertySituations", () => {
     expect(merged).toHaveLength(3);
     expect(merged.some((situation) => situation.summary === selling.summary)).toBe(false);
     expect(merged.some((situation) => situation.summary === investing.summary)).toBe(true);
+  });
+});
+
+describe("contactMemoryLine", () => {
+  const memory = (overrides: Partial<Parameters<typeof contactMemoryLine>[0]>) => ({
+    keyThingsToRemember: [],
+    propertyPreferences: emptyVoicePropertyPreferences,
+    propertySituations: [],
+    updatedAt: null,
+    ...overrides,
+  });
+
+  it("prefers what the contact said about a property over parsed criteria", () => {
+    expect(contactMemoryLine(memory({
+      keyThingsToRemember: ["Asansör şart."],
+      propertySituations: [{
+        propertyContext: "subject_property",
+        summary: "Alsancak 3+1'i satıyor, beklenti 7,2M.",
+        propertyPreferences: emptyVoicePropertyPreferences,
+      }],
+    }))).toBe("Alsancak 3+1'i satıyor, beklenti 7,2M.");
+  });
+
+  it("falls back to remembered notes, at most two of them", () => {
+    expect(contactMemoryLine(memory({
+      keyThingsToRemember: ["Asansör şart.", "Bahçe istiyor.", "Kredi kullanacak."],
+    }))).toBe("Asansör şart. · Bahçe istiyor.");
+  });
+
+  it("falls back to derived preferences when nothing was written down", () => {
+    expect(contactMemoryLine(memory({
+      propertyPreferences: { ...emptyVoicePropertyPreferences, preferredLocations: ["Alsancak"], transactionType: "buy" },
+    }))).toBe("Amaç: Satın alma · Bölge: Alsancak");
+  });
+
+  it("returns null when the memory is empty rather than an empty string", () => {
+    expect(contactMemoryLine(memory({}))).toBeNull();
+  });
+
+  it("ignores blank entries instead of rendering a stray separator", () => {
+    expect(contactMemoryLine(memory({ keyThingsToRemember: ["   ", "Kredi kullanacak."] }))).toBe("Kredi kullanacak.");
   });
 });

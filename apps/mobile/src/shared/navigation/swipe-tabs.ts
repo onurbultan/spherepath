@@ -1,4 +1,4 @@
-export const mobileTabPaths = ["/", "/funnel", "/capture", "/listings", "/contacts"] as const;
+export const mobileTabPaths = ["/", "/contacts", "/capture", "/opportunities", "/listings"] as const;
 
 export type MobileTabPath = (typeof mobileTabPaths)[number];
 

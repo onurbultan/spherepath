@@ -67,6 +67,8 @@ export interface PortfolioItem extends TenantOwned, Audited, PortfolioItemDraft 
 export interface PortfolioItemRecord extends PortfolioItem {
   id: string;
   sharedByName: string;
+  sourceListingId?: string;
+  sourcePropertyId?: string;
 }
 
 export type MatchReasonStatus = "match" | "mismatch" | "unknown";
@@ -104,6 +106,7 @@ export function formatMatchScore(score: number): string {
 }
 
 export interface PortfolioMatchRecord extends PortfolioMatchScore {
+  opportunityId?: string | null;
   contactId: string;
   contactName: string;
   portfolioItem: PortfolioItemRecord;
@@ -304,12 +307,15 @@ export function scorePortfolioItem(preferences: PropertyPreferences, item: Portf
   else if (budget.max !== null && item.askingPrice.amount > budget.max) addReason(reasons, "budget", "mismatch", `Fiyat, azami bütçeyi %${Math.round(((item.askingPrice.amount - budget.max) / budget.max) * 100)} aşıyor.`);
   else addReason(reasons, "budget", "match", "Fiyat belirtilen bütçe içinde.");
 
+  if (item.propertyType !== "land") {
   const requiredBedrooms = preferences.bedroomCountMin ?? preferences.roomCountMin;
   const requiredLivingRooms = preferences.livingRoomCountMin;
   if (requiredBedrooms === null && requiredLivingRooms === null) addReason(reasons, "rooms", "unknown", "Talepte oda alt sınırı belirtilmemiş.");
   else if (item.bedroomCount === null || (requiredLivingRooms !== null && item.livingRoomCount === null)) addReason(reasons, "rooms", "unknown", "Portföyün oda bilgisi eksik.");
   else if (item.bedroomCount >= (requiredBedrooms ?? 0) && (item.livingRoomCount ?? 0) >= (requiredLivingRooms ?? 0)) addReason(reasons, "rooms", "match", "Oda düzeni talebi karşılıyor.");
   else addReason(reasons, "rooms", "mismatch", `Oda düzeni asgari talebi karşılamıyor (${item.bedroomCount ?? 0}+${item.livingRoomCount ?? 0}, istenen ${requiredBedrooms ?? 0}+${requiredLivingRooms ?? 0}).`);
+
+  }
 
   const comparableArea = item.propertyType === "land" ? item.landAreaM2 : item.areaM2;
   if (preferences.areaMinM2 === null && preferences.areaMaxM2 === null) addReason(reasons, "area", "unknown", "Talepte alan sınırı belirtilmemiş.");

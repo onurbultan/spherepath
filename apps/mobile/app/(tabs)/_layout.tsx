@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { PanResponder, StyleSheet, View } from "react-native";
 import { router, Tabs, usePathname, type Href } from "expo-router";
-import { ContactRound, House, ListTodo, Plus, Pyramid } from "lucide-react-native";
+import { BriefcaseBusiness, ContactRound, House, ListTodo, Plus } from "lucide-react-native";
 import { swipeDestination } from "@/shared/navigation/swipe-tabs";
 import { useSpTheme } from "@/shared/ui/theme";
 
@@ -33,8 +33,8 @@ export default function TabsLayout() {
         tabBarLabelStyle: { fontFamily: "Karla_600SemiBold", fontSize: 11 },
         }}
       >
-        <Tabs.Screen name="index" options={{ title: "Akış", tabBarIcon: ({ color }) => <ListTodo color={color} size={21} /> }} />
-        <Tabs.Screen name="funnel" options={{ title: "Huni", tabBarIcon: ({ color }) => <Pyramid color={color} size={21} /> }} />
+        <Tabs.Screen name="index" options={{ title: "Bugün", tabBarIcon: ({ color }) => <ListTodo color={color} size={21} /> }} />
+        <Tabs.Screen name="contacts" options={{ title: "Kişiler", tabBarIcon: ({ color }) => <ContactRound color={color} size={21} /> }} />
         <Tabs.Screen
           name="capture"
           options={{
@@ -44,9 +44,11 @@ export default function TabsLayout() {
             tabBarLabelStyle: { color: theme.onAsk, fontFamily: "Karla_700Bold", fontSize: 10 },
           }}
         />
+        <Tabs.Screen name="opportunities" options={{ title: "İşler", tabBarIcon: ({ color }) => <BriefcaseBusiness color={color} size={21} /> }} />
         <Tabs.Screen name="listings" options={{ title: "Portföy", tabBarIcon: ({ color }) => <House color={color} size={21} /> }} />
-        <Tabs.Screen name="contacts" options={{ title: "Kişiler", tabBarIcon: ({ color }) => <ContactRound color={color} size={21} /> }} />
-        <Tabs.Screen name="opportunities" options={{ href: null }} />
+        {/* The bar holds five; the funnel and settings are reached from the
+            Bugün header, so no screen is available on one platform only. */}
+        <Tabs.Screen name="funnel" options={{ href: null }} />
         <Tabs.Screen name="settings" options={{ href: null }} />
       </Tabs>
     </View>

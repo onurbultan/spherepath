@@ -9,7 +9,7 @@ import {
   classifyInboxText,
   contactMemorySchema,
   confirmVoiceNoteSchema,
-  createOpportunity as createOpportunityEntity,
+  createOpportunity as createOpportunityEntity, approvedOpportunityCriteria,
   createInteraction,
   discardVoiceNoteSchema,
   mergeVoiceInsightsIntoContactMemory,
@@ -812,6 +812,7 @@ export const confirmVoiceNote = onCall(
         const opportunity = createOpportunityEntity({
           subjectContactId: targetContactId,
           ...draft,
+          criteria: approvedOpportunityCriteria(parsed.data.approvedInsights, draft.type),
         }, { officeId: note.officeId as string, ownerUid: note.ownerUid as string }, now);
         transaction.create(opportunityRef, {
           ...opportunity,

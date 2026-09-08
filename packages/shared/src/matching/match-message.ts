@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { CurrencyCode } from "../domain/entities.js";
 
 export const matchMessageRequestSchema = z.object({
+  opportunityId: z.string().min(1).max(160).nullable().optional(),
   contactId: z.string().min(1).max(160),
   portfolioItemId: z.string().min(1).max(160),
 }).strict();

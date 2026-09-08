@@ -52,7 +52,33 @@ async function processDeletion(jobId: string) {
     const stageEntityIds = [...opportunityIds, ...listingIds, ...listingDeals.map((item) => item.id)];
     const stageEvents = unique((await Promise.all(stageEntityIds.map((id) => matching("stageEvents", "entityId", id, acquired.officeId)))).flat());
 
+    const [importedNotes, importedRows, previewRows] = await Promise.all([
+      firestore.collection("contactImportNotes").where("contactId", "==", acquired.contactId).get(),
+      firestore.collection("contactImportRows").where("contactId", "==", acquired.contactId).get(),
+      firestore.collection("contactImportRows").where("match.contactId", "==", acquired.contactId).get(),
+    ]);
+    const affectedImports = new Map<string, Set<string>>();
+    for (const row of unique([...importedRows.docs, ...previewRows.docs])) {
+      const data = row.data();
+      if (data.officeId !== acquired.officeId) continue;
+      const ids = affectedImports.get(data.jobId as string) ?? new Set<string>();
+      ids.add(data.rowId as string);
+      affectedImports.set(data.jobId as string, ids);
+    }
+    await Promise.all([...affectedImports].map(([importId, removedIds]) => firestore.runTransaction(async (tx) => {
+      const ref = firestore.collection("contactImportJobs").doc(importId);
+      const data = (await tx.get(ref)).data();
+      if (data?.officeId === acquired.officeId && Array.isArray(data.eligibleRowIds)) {
+        tx.update(ref, { eligibleRowIds: (data.eligibleRowIds as string[]).filter((id) => !removedIds.has(id)) });
+      }
+    })));
     const writer = firestore.bulkWriter();
+    for (const doc of importedNotes.docs) if (doc.data().officeId === acquired.officeId) writer.delete(doc.ref);
+    for (const doc of unique([...importedRows.docs, ...previewRows.docs])) {
+      if (doc.data().officeId === acquired.officeId) writer.update(doc.ref, { person: { sourceId: "deleted", fullName: "", phones: [], emails: [], note: "", noteMasked: false }, matchedName: null, contactId: null, match: { status: "review", reason: "archived", contactId: null } });
+    }
+    // Keep only hashed source links: a replay must not resurrect a deleted contact.
+
     for (const document of unique([...interactions, ...voiceNotes, ...presentations, ...opportunities, ...sourceReferrals, ...referredReferrals, ...listings, ...stageEvents, ...inboxItems])) {
       writer.delete(document.ref);
     }

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, LogOut, Monitor, Moon, Settings, Sun } from "lucide-react";
+import { ChevronDown, LogOut, Monitor, Moon, Pyramid, Settings, Sun } from "lucide-react";
 import { useSession } from "@/features/auth/resources/session";
 import { useThemePreference, type ThemePreference } from "./theme";
 
@@ -79,8 +79,13 @@ export function AccountMenu() {
             </div>
           </div>
 
+          {/* The phone's tab bar holds five destinations; whatever it cannot
+              hold lives here, so no screen is reachable on one size only. */}
+          <Link className="account-item account-item-compact" href="/funnel" role="menuitem" onClick={() => setOpen(false)}>
+            <Pyramid size={16} aria-hidden /> Huni
+          </Link>
           <Link className="account-item" href="/settings" role="menuitem" onClick={() => setOpen(false)}>
-            <Settings size={16} aria-hidden /> Ayarlar ve uyum
+            <Settings size={16} aria-hidden /> Ayarlar ve ekip
           </Link>
           <button className="account-item danger" type="button" role="menuitem" onClick={() => void signOut()}>
             <LogOut size={16} aria-hidden /> Oturumu kapat

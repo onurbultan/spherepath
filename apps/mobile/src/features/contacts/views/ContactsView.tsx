@@ -1,3 +1,5 @@
+import { getClosingOverview } from "@/features/closing/resources/closing";
+import { contactImportCopy } from "@spherepath/shared";
 import { useMemo, useState } from "react";
 import { Contact, ContactField } from "expo-contacts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -14,6 +16,7 @@ import {
 import { Archive, BookUser, ContactRound, History, LogOut, Pencil, Plus, Search, ShieldCheck, UserRoundPlus, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
+  contactNextStep,
   apiQueryKeys,
   contactDraftSchema,
   contactRoleLabels,
@@ -43,9 +46,10 @@ import { ContactHistorySheet } from "../components/ContactHistorySheet";
 import { radius, space } from "@/shared/ui/tokens.generated";
 import { useSpTheme } from "@/shared/ui/theme";
 import { archiveContact, listContacts, saveContact, saveContactPrivacy, type ContactRecord } from "../resources/contacts";
+import { listOpportunities } from "@/features/opportunities/resources/opportunities";
 import { listReferrals, saveReferral } from "@/features/referrals/resources/referrals";
 import { PhoneInput } from "@/shared/ui/MaskedInputs";
-import { choiceMetrics, controlMetrics, largeButtonMetrics } from "@/shared/ui/SpField";
+import { SpButton, choiceMetrics, controlMetrics, largeButtonMetrics } from "@/shared/ui/SpField";
 
 const emptyDraft: ContactDraft = {
   fullName: "",
@@ -97,7 +101,9 @@ export default function ContactsView() {
     queryFn: listContacts,
     enabled: Boolean(session),
   });
-  const contacts = useMemo(() => contactsQuery.data ?? [], [contactsQuery.data]);
+  const closingQuery = useQuery({ queryKey: apiQueryKeys.closing, queryFn: getClosingOverview, enabled: Boolean(session) });
+  const opportunitiesQuery = useQuery({ queryKey: apiQueryKeys.opportunities, queryFn: listOpportunities, enabled: Boolean(session) });
+  const contacts = useMemo(() => (contactsQuery.data ?? []).map((contact) => ({ ...contact, nextActionSummary: contactNextStep(contact, opportunitiesQuery.data ?? [], closingQuery.data?.deals ?? []) })), [contactsQuery.data, opportunitiesQuery.data, closingQuery.data]);
   const [openedPrivacyFor, setOpenedPrivacyFor] = useState<string | null>(null);
   const privacyLinkTarget = action === "privacy" && contactId && openedPrivacyFor !== contactId
     ? contacts.find((contact) => contact.id === contactId) ?? null
@@ -110,7 +116,7 @@ export default function ContactsView() {
   const filteredContacts = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase("tr-TR");
     if (!needle) return contacts;
-    return contacts.filter((contact) => [contact.fullName, contact.label, contact.internalLabel, contact.phone, contact.metAtPlace]
+    return contacts.filter((contact) => [contact.fullName, contact.label, contact.internalLabel, contact.phone, ...(contact.additionalPhones ?? []), ...(contact.emails ?? []), contact.metAtPlace]
       .some((value) => value?.toLocaleLowerCase("tr-TR").includes(needle)));
   }, [contacts, search]);
   const visibleContacts = filteredContacts.slice(0, visibleCount);
@@ -199,6 +205,7 @@ export default function ContactsView() {
           <Pressable accessibilityLabel="Oturumu kapat" onPress={() => void signOut()} style={[styles.iconButton, { borderColor: theme.line }]}><LogOut color={theme.textSecondary} size={19} /></Pressable>
         </View>
 
+        <SpButton tone="secondary" label={contactImportCopy.title} onPress={() => router.push("/contact-imports")} />
         <Pressable onPress={openCreate} style={({ pressed }) => [styles.primary, { backgroundColor: theme.ask, opacity: pressed ? .72 : 1 }]}><Plus color={theme.onAsk} size={19} /><SpText style={{ color: theme.onAsk }}>Yeni kişi</SpText></Pressable>
         {contacts.length > 0 ? <View style={[styles.searchBox, { backgroundColor: theme.card, borderColor: theme.line }]}><Search color={theme.textSecondary} size={19} /><TextInput accessibilityLabel="Kişilerde ara" value={search} onChangeText={(value) => { setSearch(value); setVisibleCount(40); }} placeholder="Ad, telefon veya tanışma yeri ara" placeholderTextColor={theme.textTertiary} style={[styles.searchInput, { color: theme.textPrimary }]} /><SpText variant="caption" color="secondary">{filteredContacts.length}</SpText></View> : null}
         {(referralsQuery.data?.length ?? 0) > 0 ? <View style={styles.referrals}><SpText variant="eyebrow" color="deed">İLK TEMAS BEKLEYEN REFERANSLAR</SpText>{referralsQuery.data?.slice(0, 3).map((referral) => <SpCard key={referral.id} style={styles.referralCard}><SpText variant="title">{referral.referredContactName}</SpText><SpText variant="bodySmall" color="secondary">{referral.sourceContactName} aracılığıyla · Aydınlatma bekliyor</SpText></SpCard>)}</View> : null}
@@ -211,6 +218,7 @@ export default function ContactsView() {
             <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: "/contact/[id]", params: { id: contact.id } })} style={styles.contactTop}><View style={[styles.avatar, { backgroundColor: theme.deedBg }]}><SpText variant="title" color="deed">{(contact.fullName ?? contact.label ?? "?").slice(0, 1).toLocaleUpperCase("tr-TR")}</SpText></View><View style={styles.contactCopy}><SpText variant="title">{contact.fullName ?? contact.label}</SpText><SpText variant="bodySmall" color="secondary">{contact.phone ?? "Telefon eklenmedi"}</SpText></View></Pressable>{contact.phone ? <ContactCallAction contactId={contact.id} /> : null}
             <View style={styles.chips}><View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="bodySmall" color="secondary">{(contact.roles.length ? contact.roles : ["unknown" as const]).map((role) => contactRoleLabels[role]).join(" · ")}</SpText></View><View style={[styles.chip, { backgroundColor: theme.sunk }]}><SpText variant="bodySmall" color="secondary">{contactSourceLabels[contact.source]}</SpText></View></View>
             <SpText variant="bodySmall" color="secondary">{contact.metAtPlace || "Tanışma yeri belirtilmedi"}</SpText>
+            <SpText variant="bodySmall" color="secondary">{contact.nextActionSummary ? `${nextActionTypeLabels[contact.nextActionSummary.type]} · ${contact.nextActionSummary.at ? new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(contact.nextActionSummary.at) : "Tarihsiz"}` : "Sonraki adım belirlenmedi"}</SpText>
             {(contact.memory?.keyThingsToRemember?.length ?? 0) > 0 ? <View style={[styles.memory, { backgroundColor: theme.deedBg }]}><SpText variant="caption" color="deed">HATIRLANACAKLAR</SpText>{contact.memory.keyThingsToRemember.slice(0, 3).map((item) => <SpText key={item} variant="caption" color="secondary">{item}</SpText>)}</View> : null}
             <View style={styles.compliance}><View style={[styles.complianceChip, { backgroundColor: contact.privacy.noticeStatus === "completed" ? theme.deedBg : theme.askBg }]}><SpText variant="bodySmall" color={contact.privacy.noticeStatus === "completed" ? "deed" : "ask"}>{contact.privacy.noticeStatus === "completed" ? "Aydınlatma tamam" : "Aydınlatma bekliyor"}</SpText></View>{contact.privacy.marketingConsent === "withdrawn" ? <View style={[styles.complianceChip, { backgroundColor: theme.askBg }]}><SpText variant="bodySmall" color="ask">İletişim istemiyor</SpText></View> : null}</View><View style={[styles.actions, { borderTopColor: theme.line }]}><Pressable onPress={() => setHistoryContact(contact)} style={styles.action}><History color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Geçmiş</SpText></Pressable><Pressable onPress={() => { setReferralSource(contact); setError(null); }} style={styles.action}><UserRoundPlus color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Referans</SpText></Pressable><Pressable onPress={() => { setPrivacyEditing(contact); setPrivacy(privacyDraft(contact)); setError(null); }} style={styles.action}><ShieldCheck color={theme.textSecondary} size={16} /><SpText variant="bodySmall" color="secondary">Uyum</SpText></Pressable><Pressable onPress={() => openEdit(contact)} style={styles.action}><Pencil color={theme.textSecondary} size={16} /></Pressable><Pressable onPress={() => remove(contact)} style={styles.action}><Archive color={theme.textSecondary} size={16} /></Pressable></View>
           </SpCard>

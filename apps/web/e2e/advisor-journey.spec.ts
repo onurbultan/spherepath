@@ -66,9 +66,17 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   const addLocationButton = page.getByRole("button", { name: "Ekle" });
   expect((await addLocationButton.boundingBox())!.height).toBe((await locationInput.boundingBox())!.height);
   await page.getByRole("button", { name: "Vazgeç" }).click();
-  await page.getByRole("link", { name: "Huni" }).click();
+  // The bar holds five destinations on a phone, so the funnel is reached from
+  // the account sheet there and from the rail on a desktop.
+  const onPhone = (page.viewportSize()?.width ?? 1_000) <= 900;
+  if (onPhone) {
+    await page.locator(".topbar-mobile-account").getByRole("button", { name: "Hesap menüsü" }).click();
+    await page.getByRole("menuitem", { name: "Huni" }).click();
+  } else {
+    await page.getByRole("navigation", { name: "Ana navigasyon" }).getByRole("link", { name: "Huni" }).click();
+  }
   await expect(page.getByRole("heading", { name: "Nerede takılıyor?" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Ana navigasyon" }).getByRole("link", { name: "Huni" })).toHaveAttribute("aria-current", "page");
+  if (!onPhone) await expect(page.getByRole("navigation", { name: "Ana navigasyon" }).getByRole("link", { name: "Huni" })).toHaveAttribute("aria-current", "page");
   await page.getByRole("radio", { name: "90 gün" }).click();
   await expect(page.getByRole("radio", { name: "90 gün" })).toBeChecked();
   await page.getByRole("radio", { name: "1 yıl" }).click();
@@ -96,7 +104,8 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await expect(contactActionMenus).toHaveCount(2);
   const firstContactRow = page.locator(".contact-table-row").first();
   await firstContactRow.hover();
-  await expect(firstContactRow.locator(".contact-row-compliance")).toBeVisible();
+  await expect(firstContactRow.locator(".contact-row-flag")).toContainText("Aydınlatma bekliyor");
+  await expect(firstContactRow.locator(".contact-row-memory")).toBeVisible();
   await contactActionMenus.first().locator("summary").click();
   await expect(contactActionMenus.first()).toHaveAttribute("open", "");
   expect(await contactActionMenus.first().locator("xpath=..").evaluate((row) => getComputedStyle(row).zIndex)).toBe("30");
@@ -114,8 +123,8 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await contactActionMenus.first().locator("summary").click();
 
   await page.goto("/");
-  const savedNote = page.locator("article.keep-card").filter({ hasText: "Bahçeli satılık bir ev duydum." });
-  await savedNote.getByRole("button", { name: "Düzenle ve işle" }).click();
+  const savedNote = page.locator("article.note-row").filter({ hasText: "Bahçeli satılık bir ev duydum." });
+  await savedNote.getByRole("button", { name: "İşle", exact: true }).click();
   const noteDialog = page.getByRole("dialog", { name: "Bu not neye dönüşsün?" });
   await expect(noteDialog.getByRole("button", { name: "Ofis havuzuna ekle" })).toBeVisible();
   await expect(noteDialog.getByRole("button", { name: "Yetkili portföye dönüştür" })).toBeVisible();
@@ -126,7 +135,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await expect(noteDialog.getByText("Talep bilgileri çıkarıldı")).toBeVisible();
   await noteDialog.getByRole("button", { name: "Talep oluştur" }).click();
   await page.getByRole("button", { name: "İşlendi" }).click();
-  const processedNote = page.locator("article.keep-card").filter({ hasText: "Ayşe Urla'da bahçeli satılık ev arıyor." });
+  const processedNote = page.locator("article.note-row").filter({ hasText: "Ayşe Urla'da bahçeli satılık ev arıyor." });
   await expect(processedNote).toContainText("Alıcı talebi oluşturuldu");
   await processedNote.getByRole("button", { name: "Arşivle" }).click();
   await expect(processedNote).toBeHidden();
@@ -287,7 +296,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await contactListingDialog.getByRole("button", { name: "Kapat" }).click();
 
   await page.goto("/opportunities");
-  await page.getByRole("button", { name: /Yeni fırsat|Fırsat oluştur/ }).first().click();
+  await page.getByRole("button", { name: /Yeni iş|Fırsat oluştur/ }).first().click();
   const opportunityDialog = page.getByRole("dialog");
   await opportunityDialog.getByRole("combobox", { name: "Kişi ara" }).fill(contactName);
   await opportunityDialog.getByRole("option", { name: contactName }).click();
@@ -295,7 +304,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await opportunityDialog.getByRole("button", { name: "Fırsatı oluştur" }).click();
   await expect(page.getByRole("button", { name: new RegExp(contactName) }).first()).toBeVisible();
 
-  const sellerOpportunityCard = page.locator(".kanban-card").filter({ hasText: "Satılık portföy" }).filter({ hasText: contactName });
+  const sellerOpportunityCard = page.locator(".work-row").filter({ hasText: "Satılık portföy" }).filter({ hasText: contactName }).locator(".work-row-open");
   await sellerOpportunityCard.click();
   await page.getByRole("dialog").getByRole("button", { name: "Aşamayı düzelt" }).click();
   const correctionDialog = page.getByRole("dialog");
@@ -335,7 +344,8 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
 
   const listingAddress = `E2E Urla ${runId.slice(-6)}`;
   await page.goto("/listings");
-  await page.getByRole("button", { name: "Mevcut yetkiyi ekle" }).first().click();
+  await page.getByRole("button", { name: "Portföy ekle" }).click();
+  await page.getByRole("menuitem", { name: /Mevcut yetkiyi ekle/ }).click();
   const listingDialog = page.getByRole("dialog");
   await listingDialog.getByRole("combobox", { name: "Mülk sahibi ara" }).fill(contactName);
   await listingDialog.getByRole("option", { name: contactName }).click();
@@ -345,7 +355,7 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
   await listingDialog.getByRole("button", { name: "Yetkiyi ve portföyü oluştur" }).click();
   await expect(page.getByText(listingAddress)).toBeVisible();
 
-  await page.getByRole("button", { name: "Kişi, fırsat veya portföy ara" }).click();
+  await page.getByRole("button", { name: "Kişi, iş veya portföy ara" }).click();
   await page.getByRole("dialog", { name: "Hızlı arama" }).getByRole("searchbox").fill(contactName);
   await page.getByRole("dialog", { name: "Hızlı arama" }).getByRole("button", { name: new RegExp(contactName) }).first().click();
   await expect(page).toHaveURL(/\/contacts\//);
@@ -439,8 +449,9 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
 
   if ((page.viewportSize()?.width ?? 1_000) <= 900) {
     await page.goto("/");
-    await expect(page.getByRole("navigation", { name: "Ana navigasyon" }).getByRole("link")).toHaveCount(5);
-    await expect(page.locator(".sidebar .nav-group-office")).toBeHidden();
+    // Five tabs that reach the whole app: the funnel and settings live in the
+    // account sheet rather than being available on the desktop only.
+    await expect(page.getByRole("navigation", { name: "Ana navigasyon" }).getByRole("link").filter({ visible: true })).toHaveCount(5);
     await expect(page.locator(".sidebar .account-menu")).toBeHidden();
     await expect(page.locator(".topbar-mobile-account .account-menu")).toBeVisible();
     const quickNote = page.getByLabel("Hızlı not");
@@ -449,13 +460,22 @@ test("emlak danışmanının ana iş akışı masaüstü ve mobilde tamamlanır"
     await expect(page).toHaveURL(/\/$/);
     await expect(quickNote).toHaveValue("Kaydırırken bu yazı korunmalı");
     await swipe(page, ".app-frame", 340, 80);
+    await expect(page).toHaveURL(/\/contacts\/?$/);
+    await expect(page.getByRole("heading", { name: "Kişiler" })).toBeVisible();
+    // Nothing may be desktop-only: the funnel is one tap from the account sheet.
+    await page.goto("/");
+    await page.locator(".topbar-mobile-account").getByRole("button", { name: "Hesap menüsü" }).click();
+    await page.getByRole("menuitem", { name: "Huni" }).click();
     await expect(page).toHaveURL(/\/funnel\/?$/);
     await expect(page.getByRole("heading", { name: "Nerede takılıyor?" })).toBeVisible();
   } else {
-    await page.getByRole("navigation", { name: "Ana navigasyon" }).getByRole("link", { name: "Ekip" }).click();
-    await expect(page).toHaveURL(/\/team\/?$/);
-    await expect(page.getByRole("heading", { name: "Ekip", level: 1 })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Ana navigasyon" }).getByRole("link", { name: /Ekip/ })).toHaveAttribute("aria-current", "page");
+    // The office roster is a setting of the workspace, not its own destination.
+    await page.getByRole("navigation", { name: "Ana navigasyon" }).getByRole("link", { name: "İşler" }).click();
+    await expect(page).toHaveURL(/\/opportunities\/?$/);
+    await expect(page.getByRole("heading", { name: "İşler", level: 1 })).toBeVisible();
+    await page.goto("/team");
+    await expect(page).toHaveURL(/\/settings/);
+    await expect(page.getByRole("button", { name: /Ofis ve ekip/ })).toBeVisible();
   }
 
   await expectNoSeriousAccessibilityViolations(page);

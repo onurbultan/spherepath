@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from "react
 import { CalendarClock, Check, CircleSlash, PhoneOff, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { contactRoleLabels, dailyTaskOutcomeSchema, dailyTaskResolutionLabels, nextActionTypeLabels, nextActionTypes, opportunityStageLabel, opportunityTypeLabels, type DailyTaskOutcome, type NextActionType, type TodayTask } from "@spherepath/shared";
+import { localDateTimeValue, taskActionType } from "@spherepath/shared";
 import { SpText } from "@/shared/ui/SpText";
 import { SpDateField } from "@/shared/ui/SpDateField";
 import { radius, space } from "@/shared/ui/tokens.generated";
@@ -53,19 +54,24 @@ export function taskRecordRoute(task: TodayTask): string {
  * counters come from, so the daily plan and the feed resolve tasks through this one
  * sheet rather than each having its own idea of what "done" means.
  */
-export function TaskResolutionSheet({ task, pending, error, onClose, onResolve, onOpenRecord }: {
+interface TaskResolutionProps {
   task: TodayTask | null;
   pending: boolean;
   error: string | null;
+  initialStatus?: DailyTaskOutcome["status"];
   onClose(): void;
   onResolve(outcome: DailyTaskOutcome): void;
   onOpenRecord?(task: TodayTask): void;
-}) {
+}
+export function TaskResolutionSheet(props: TaskResolutionProps) {
+  return props.task ? <TaskResolutionContent key={`${props.task.id}:${props.task.dueAt}:${props.task.actionType}`} {...props} task={props.task} /> : null;
+}
+function TaskResolutionContent({ task, pending, error, onClose, onResolve, onOpenRecord, initialStatus = "completed" }: TaskResolutionProps & { task: TodayTask }) {
   const theme = useSpTheme();
-  const [status, setStatus] = useState<DailyTaskOutcome["status"]>("completed");
+  const [status, setStatus] = useState<DailyTaskOutcome["status"]>(initialStatus);
   const [note, setNote] = useState("");
-  const [rescheduleAt, setRescheduleAt] = useState(defaultFollowUp);
-  const [actionType, setActionType] = useState<NextActionType>("call");
+  const [rescheduleAt, setRescheduleAt] = useState(() => task?.dueAt ? localDateTimeValue(task.dueAt) : defaultFollowUp());
+  const [actionType, setActionType] = useState<NextActionType>(() => taskActionType(task));
   const [localError, setLocalError] = useState<string | null>(null);
 
   function submit() {

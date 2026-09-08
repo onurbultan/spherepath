@@ -1,4 +1,7 @@
-import { dailyTaskQueryKeys } from "@spherepath/shared";
+import { getClosingOverview } from "@/features/closing/resources/closing";
+import { contactNextStep , dailyTaskQueryKeys } from "@spherepath/shared";
+
+import { ImportedContactNotes } from "@/features/contact-imports/components/ImportedContactNotes";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -86,24 +89,14 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
   const contactsQuery = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts, enabled: Boolean(session) });
   const callsQuery = useQuery({ queryKey: apiQueryKeys.contactCalls(contactId), queryFn: () => listContactCalls(contactId), enabled: Boolean(session) });
   const interactionsQuery = useQuery({ queryKey: apiQueryKeys.contactInteractions(contactId), queryFn: () => listContactInteractions(contactId), enabled: Boolean(session) });
+  const closingQuery = useQuery({ queryKey: apiQueryKeys.closing, queryFn: getClosingOverview, enabled: Boolean(session) });
   const opportunitiesQuery = useQuery({ queryKey: apiQueryKeys.opportunities, queryFn: listOpportunities, enabled: Boolean(session) });
 
   const contact = contactsQuery.data?.find((item) => item.id === contactId);
   const opportunities = (opportunitiesQuery.data ?? []).filter((item) => item.subjectContactId === contactId);
   // The card used to say "Belirlenmedi" while two opportunities underneath it
   // carried dated steps, so a contact with work waiting read as a contact with none.
-  const nextStep = (() => {
-    const own = contact?.relationship.nextActionType
-      ? { id: `next-action-${contact.id}`, opportunityId: undefined, type: contact.relationship.nextActionType, at: contact.relationship.nextActionAt, fromOpportunity: false }
-      : null;
-    const fromOpportunities = opportunities
-      .filter((item) => item.stage !== "won" && item.stage !== "lost" && item.nextActionType !== null)
-      .map((item) => ({ id: `opportunity-action-${item.id}`, opportunityId: item.id, type: item.nextActionType!, at: item.nextActionAt, fromOpportunity: true }))
-      .sort((left, right) => (left.at ?? Infinity) - (right.at ?? Infinity))[0] ?? null;
-    if (!own) return fromOpportunities;
-    if (!fromOpportunities) return own;
-    return (own.at ?? Infinity) <= (fromOpportunities.at ?? Infinity) ? own : fromOpportunities;
-  })();
+  const nextStep = contact ? contactNextStep(contact, opportunities, closingQuery.data?.deals ?? []) : null;
   const entries: Entry[] = [
     ...(callsQuery.data ?? []).map((call) => ({ kind: "call" as const, at: call.startedAt ?? call.createdAt, call })),
     ...(interactionsQuery.data ?? []).map((interaction) => ({ kind: "interaction" as const, at: interaction.occurredAt, interaction })),
@@ -136,7 +129,9 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
     id: nextStep.id,
     contactId: contact.id,
     opportunityId: nextStep.opportunityId,
+    dealId: nextStep.dealId,
     title: name,
+    actionType: nextStep.type,
     reason: nextActionTypeLabels[nextStep.type],
     dueAt: nextStep.at,
     type: "next_action",
@@ -257,7 +252,7 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
 
         {tab === "memory" ? (
           <SpCard style={styles.entry}>
-            <SpText variant="title">Hatırlanacaklar</SpText>
+            <SpText variant="title">İletişim bilgileri</SpText><SpText>{[contact.phone, ...(contact.additionalPhones ?? []), ...(contact.emails ?? [])].filter(Boolean).join(" · ")}</SpText><ImportedContactNotes contactId={contact.id} /><SpText variant="title">Hatırlanacaklar</SpText>
             {contact.memory.keyThingsToRemember.length
               ? contact.memory.keyThingsToRemember.map((item) => <SpText key={item} variant="bodySmall" color="secondary">· {item}</SpText>)
               : <SpText variant="bodySmall" color="secondary">Henüz hatırlanacak bilgi yok.</SpText>}

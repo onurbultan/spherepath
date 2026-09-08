@@ -24,3 +24,8 @@ export { configureWhatsAppGroupIntegration, createWhatsAppOfficeGroup, getWhatsA
 export { completeDailyTask, getTodayOverview, replaceDailyPlanItem } from "./today/get-today-overview.js";
 export { confirmVoiceNote, discardVoiceNote, getLatestReviewableVoiceNote, getVoiceNote, processVoiceNote, registerInteractionText, registerVoiceNote, registerVoiceTextTest, retryVoiceNoteProcessing } from "./voice/voice-api.js";
 export { health } from "./system/health.js";
+export { prepareContactImport, listContactImports, getContactImport, commitContactImport, controlContactImport, listContactImportNotes } from "./contacts/import-api.js";
+export { getGoogleContactImportConfig, beginGoogleContactImport, finishGoogleContactImport, googleContactImportCallback } from "./contacts/google-import-api.js";
+export { processContactImport, purgeContactImportPreviews } from "./contacts/import-store.js";
+
+export { previewTestWorkspaceReset, resetTestWorkspace } from "./testing/reset-test-workspace.js";

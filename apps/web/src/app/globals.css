@@ -50,7 +50,7 @@ a { color: inherit; text-decoration: none; }
 .contact-combobox-list button { min-height: 40px; padding: 8px 10px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-primary); text-align: left; }
 .contact-combobox-list button:hover, .contact-combobox-list button[aria-selected="true"] { background: var(--deed-bg); color: var(--deed); }
 .contact-combobox-list em { padding: 12px 10px; color: var(--text-secondary); font-style: normal; }
-.quick-date-field { display: grid; gap: 8px; }
+.quick-date-field { position: relative; display: grid; gap: 8px; min-width: 0; }
 .quick-date-label { color: var(--text-secondary); font-size: 12px; font-weight: 700; }
 .quick-date-control { position: relative; }
 .quick-date-trigger { display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer; }
@@ -147,7 +147,7 @@ a { color: inherit; text-decoration: none; }
 
 .sidebar nav { flex: 1; display: flex; flex-direction: column; gap: 14px; }
 .nav-group { display: grid; gap: 2px; }
-.nav-group-label { color: var(--text-tertiary); padding: 0 10px 4px; }
+
 .nav-item {
   position: relative; border: 0; background: transparent; color: var(--text-secondary);
   min-height: var(--control-md); border-radius: var(--radius-md); padding: 0 10px;
@@ -179,8 +179,7 @@ a { color: inherit; text-decoration: none; }
   background: var(--card); border-bottom: 1px solid var(--line);
 }
 .topbar-inner { width: min(1320px, calc(100% - 48px)); height: 100%; margin: 0 auto; display: flex; align-items: center; gap: var(--space-lg); }
-.topbar-crumbs { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-tertiary); min-width: 0; }
-.topbar-crumbs strong { color: var(--text-primary); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .topbar-spacer { flex: 1; }
 .topbar-search {
   display: flex; align-items: center; gap: var(--space-md); width: min(320px, 34vw); min-width: 0;
@@ -191,7 +190,7 @@ a { color: inherit; text-decoration: none; }
 .topbar-search:hover { border-color: var(--line-strong); }
 .topbar-search > span { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar-kbd { font-family: var(--font-ibm-plex-mono), monospace; font-size: 10px; padding: 2px 5px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card); color: var(--text-secondary); }
-.topbar-divider { width: 1px; height: 22px; background: var(--line); }
+
 .topbar-actions { display: flex; align-items: center; gap: var(--space-sm); }
 .topbar-icon-button {
   width: var(--control-sm); height: var(--control-sm); display: grid; place-items: center;
@@ -264,7 +263,7 @@ h1 { font-size: clamp(22px, 2.4vw, 26px); font-weight: 600; line-height: 1.15; l
 h2 { font-size: 18px; font-weight: 600; line-height: 1.25; }
 h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 600; margin: 0; }
 
-.eyebrow, .period-chip, .stage-label, .nav-group-label { font-family: var(--font-ibm-plex-mono), monospace; font-size: 10.5px; line-height: 14px; letter-spacing: 1.1px; text-transform: uppercase; }
+.eyebrow, .period-chip, .stage-label { font-family: var(--font-ibm-plex-mono), monospace; font-size: 10.5px; line-height: 14px; letter-spacing: 1.1px; text-transform: uppercase; }
 .eyebrow { color: var(--text-tertiary); margin: 0 0 6px; }
 .context-sentence { color: var(--text-secondary); font-size: 13.5px; line-height: 1.5; margin: 6px 0 0; max-width: 640px; }
 .page-header { max-width: 780px; margin-bottom: var(--space-2xl); }
@@ -316,7 +315,7 @@ h3 { font-family: var(--font-zilla-slab), serif; font-size: 15px; font-weight: 6
 .confirm-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: var(--radius-md); }
 .confirm-icon.danger { color: var(--ask); background: var(--ask-bg); }
 .confirm-dialog > .form-error, .confirm-actions { grid-column: 1 / -1; }
-.confirm-actions { display: flex; justify-content: flex-end; gap: var(--space-md); margin-top: var(--space-sm); }
+.confirm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-md); margin-top: var(--space-sm); }
 .danger-action { min-height: var(--control-md); display: inline-flex; align-items: center; justify-content: center; padding: 0 var(--space-lg); border: 1px solid var(--ask); border-radius: var(--radius-md); background: var(--ask); color: var(--on-ask); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 .danger-action:hover:not(:disabled) { filter: brightness(.94); }
 .danger-action:disabled { cursor: wait; opacity: .6; }
@@ -507,7 +506,7 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .contact-detail-sheet { width: min(600px, 100%); }
 .sheet-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2xl); margin-bottom: var(--space-3xl); }
 .sheet-heading h2 { font-size: 20px; }
-.review-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.review-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 
 .palette-backdrop { position: fixed; z-index: 110; inset: 0; background: var(--overlay); display: flex; justify-content: center; align-items: flex-start; padding: 12vh 20px 20px; }
 .command-palette { width: min(560px, 100%); max-height: 66vh; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--elevated); box-shadow: var(--shadow-lg); overflow: hidden; }
@@ -890,22 +889,13 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .opportunity-filterbar select { padding: 0 10px; }
 .opportunity-filterbar > strong { color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
 .opportunity-outcome-filter { min-height: var(--control-md); }
+
+@media (max-width: 1150px) {
+  .opportunity-filterbar { grid-template-columns: minmax(220px, 1fr) minmax(180px, .6fr); }
+  .opportunity-outcome-filter { grid-column: 1 / -1; width: max-content; max-width: 100%; overflow-x: auto; }
+}
 .opportunity-outcome-filter button { height: 30px; white-space: nowrap; }
-.opportunity-board { display: grid; grid-template-columns: repeat(5, minmax(210px, 1fr)); gap: 10px; align-items: start; overflow-x: auto; padding-bottom: 8px; color: var(--text-secondary); }
-.opportunity-column { min-width: 210px; display: grid; gap: 8px; }
-.opportunity-column-heading { min-height: 30px; padding: 0 4px 8px; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid currentColor; font-family: var(--font-ibm-plex-mono), monospace; font-size: 10px; letter-spacing: 1.1px; text-transform: uppercase; }
-.opportunity-column-heading strong { color: var(--text-secondary); }
-.opportunity-column-heading strong { min-width: 22px; height: 20px; border-radius: var(--radius-pill); background: var(--sunk); color: var(--text-secondary); display: grid; place-items: center; font-size: 10px; }
-.opportunity-column-list { min-height: 430px; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--chrome) 58%, var(--background)); display: flex; flex-direction: column; gap: 8px; }
-.kanban-card { width: 100%; min-height: 126px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--card); box-shadow: var(--shadow-sm); color: var(--text-primary); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; cursor: pointer; }
-.kanban-card.missing-action, .kanban-card.overdue-action { border-left: 3px solid var(--ask); }
-.kanban-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-md); }
-.kanban-card > span { color: var(--deed); font-family: var(--font-ibm-plex-mono), monospace; font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase; }
-.kanban-card > strong { font-size: 13px; font-weight: 600; }
-.kanban-card > small { margin-top: 3px; color: var(--text-secondary); font-size: 11px; line-height: 1.35; }
-.kanban-card > small.missing, .kanban-card > small.overdue { color: var(--ask); }
-.kanban-card > em { margin-top: auto; color: var(--text-tertiary); font-size: 10.5px; font-style: normal; }
-.kanban-empty { min-height: 88px; display: grid; place-items: center; color: var(--text-tertiary); font-size: 11.5px; text-align: center; }
+
 .opportunity-list-table { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--card); overflow: hidden; }
 .opportunity-list-head, .opportunity-list-table > button { display: grid; grid-template-columns: minmax(180px, 1.2fr) 150px 130px minmax(220px, 1.5fr) 100px; align-items: center; gap: 12px; padding: 0 16px; }
 .opportunity-list-head { height: 34px; border-bottom: 1px solid var(--line); background: var(--background); color: var(--text-secondary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10px; letter-spacing: 1.1px; text-transform: uppercase; }
@@ -934,7 +924,7 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .stage-timeline strong { font-size: 13.5px; font-weight: 600; }
 .stage-timeline time { display: block; margin-top: 3px; color: var(--text-tertiary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 12px; }
 .stage-timeline p { margin: 6px 0 0; color: var(--text-secondary); font-size: 13px; }
-.opportunity-detail-actions { position: sticky; bottom: calc(-1 * var(--space-4xl)); margin: 0 calc(-1 * var(--space-3xl)) calc(-1 * var(--space-4xl)); padding: var(--space-lg) var(--space-3xl) var(--space-2xl); border-top: 1px solid var(--line); background: var(--card); display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.opportunity-detail-actions { position: sticky; bottom: calc(-1 * var(--space-4xl)); margin: 0 calc(-1 * var(--space-3xl)) calc(-1 * var(--space-4xl)); padding: var(--space-lg) var(--space-3xl) var(--space-2xl); border-top: 1px solid var(--line); background: var(--card); display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 
 /* --- listings and office pool -------------------------------------------- */
 
@@ -1010,17 +1000,7 @@ textarea.sp-control.is-compact { min-height: 80px; }
 /* --- settings ------------------------------------------------------------ */
 
 .settings-header { max-width: none; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2xl); }
-.unsaved-label { color: var(--warm); font-size: 12px; font-weight: 600; }
-.settings-workspace { display: grid; grid-template-columns: 218px minmax(0, 1fr); gap: 20px; align-items: start; }
-.settings-subnav { position: sticky; top: 72px; display: flex; flex-direction: column; gap: 14px; }
-.settings-subnav > div { display: grid; gap: 2px; }
-.settings-subnav > div > span { padding: 0 10px 4px; color: var(--text-tertiary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10px; letter-spacing: 1.1px; text-transform: uppercase; }
-.settings-subnav a, .settings-subnav button { position: relative; width: 100%; min-height: 34px; padding: 0 10px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); display: flex; align-items: center; gap: 9px; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
-.settings-subnav a:hover, .settings-subnav button:hover { background: var(--sunk); color: var(--text-primary); }
-.settings-subnav a.active, .settings-subnav button.active { background: var(--deed-bg); color: var(--deed); font-weight: 700; }
-.settings-subnav a.active::before, .settings-subnav button.active::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; border-radius: 0 3px 3px 0; background: var(--deed); }
-.settings-subnav a em { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10px; font-style: normal; }
-.settings-subnav button:disabled { opacity: .55; cursor: not-allowed; }
+
 .privacy-policy-list { margin: 0; padding-left: 20px; display: grid; gap: var(--space-md); color: var(--text-secondary); line-height: 1.5; }
 
 .legal-shell { min-height: 100vh; padding: clamp(24px, 5vw, 72px) clamp(16px, 4vw, 40px); background: var(--sunk); }
@@ -1044,8 +1024,7 @@ textarea.sp-control.is-compact { min-height: 80px; }
 }
 .settings-main { min-width: 0; display: grid; gap: 14px; }
 .settings-sections { display: grid; gap: 14px; }
-.settings-sections-footer { display: flex; justify-content: flex-end; }
-.settings-sections-footer .primary-action { margin-top: 0; }
+
 #advisor-profile, #reminders, #data-controller, #data-requests { scroll-margin-top: 78px; }
 .settings-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .settings-summary .sp-card { min-height: 88px; padding: 12px 13px; display: flex; flex-direction: column; gap: 5px; }
@@ -1117,9 +1096,8 @@ textarea.sp-control.is-compact { min-height: 80px; }
      carries settings and sign-out. The office links live on the pages they point
      into, so they drop out of this bar rather than crowding it. */
   .sidebar { position: fixed; z-index: 20; inset: auto 0 0; height: 70px; padding: 6px 8px; border: 1px solid var(--line); border-width: 1px 0 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; gap: 0; }
-  .brand-mark, .nav-group-label, .nav-count, .nav-item.settings, .sidebar-separator { display: none; }
+  .brand-mark, .nav-count, .nav-item.settings, .sidebar-separator { display: none; }
   .sidebar nav, .nav-group, .sidebar-footer { display: contents; }
-  .sidebar .nav-group-office, .sidebar-footer > .nav-item { display: none; }
   .sidebar-footer .account-menu { display: none; }
   .sidebar-footer .account-trigger { width: 100%; height: var(--hit-comfortable); flex-direction: column; justify-content: center; gap: 2px; padding: 0 4px; }
   .sidebar-footer .account-avatar { width: 22px; height: 22px; flex-basis: 22px; font-size: 11px; }
@@ -1132,7 +1110,7 @@ textarea.sp-control.is-compact { min-height: 80px; }
   .nav-item > span:first-of-type { width: 100%; flex: 0 0 auto; line-height: 1.2; text-align: center; }
   .nav-item.active::before { display: none; }
   .app-topbar { padding: 0 var(--space-xl); gap: var(--space-md); }
-  .topbar-crumbs, .account-name { display: none; }
+  .account-name { display: none; }
   .topbar-search { width: 100%; }
   .topbar-mobile-account { display: block; }
   .topbar-mobile-account .account-trigger { width: var(--hit-min); height: var(--hit-min); padding: 0; justify-content: center; }
@@ -1159,16 +1137,9 @@ textarea.sp-control.is-compact { min-height: 80px; }
   .contact-toolbar .contact-search { flex: 1 1 100%; max-width: none; }
   .contact-toolbar > strong { display: none; }
   .opportunity-insights { overflow-x: auto; }
-  .opportunity-filterbar { grid-template-columns: minmax(220px, 1fr) minmax(180px, .6fr); }
-  .opportunity-outcome-filter { grid-column: 1 / -1; width: max-content; max-width: 100%; overflow-x: auto; }
   .opportunity-filterbar > strong { display: none; }
   .match-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .settings-workspace { grid-template-columns: 1fr; }
-  .settings-subnav { position: static; top: auto; flex-direction: row; gap: 4px; overflow-x: auto; padding-bottom: 5px; }
-  .settings-subnav > div { display: contents; }
-  .settings-subnav > div > span { display: none; }
-  .settings-subnav a, .settings-subnav button { flex: 0 0 auto; width: auto; padding: 0 11px; border: 1px solid var(--line); }
-  .settings-subnav a.active::before, .settings-subnav button.active::before { display: none; }
 }
 
 @media (max-width: 800px) {
@@ -1198,7 +1169,7 @@ textarea.sp-control.is-compact { min-height: 80px; }
   .voice-review-subject em { grid-column: 1 / -1; text-align: left; }
   .voice-recording { flex-wrap: wrap; }
   .settings-grid { grid-template-columns: 1fr; }
-  .settings-sections-footer .primary-action { width: 100%; justify-content: center; }
+
   .topbar-inner { width: min(100% - 32px, 760px); gap: var(--space-md); }
   .settings-header { display: grid; }
   .today-task-list li { grid-template-columns: 1fr; }
@@ -1247,37 +1218,13 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .funnel-view { display: grid; gap: var(--space-xl); min-width: 0; }
 .feed-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-xl); }
 .feed-section-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-lg); }
-.daily-five { display: grid; gap: var(--space-lg); }
-.daily-five ol { display: grid; margin: 0; padding: 0; list-style: none; }
-.daily-five li { min-height: 62px; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: var(--space-md); border-top: 1px solid var(--line); }
+
 /* Element-agnostic: the task copy is a link now, and was a span before. */
-.daily-five li > :nth-child(2) { min-width: 0; display: grid; gap: 2px; }
-.daily-task-link { color: inherit; text-decoration: none; }
-.daily-task-link:hover strong { text-decoration: underline; }
-.daily-five li strong, .daily-five li small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.daily-five li small { color: var(--text-secondary); }
-.daily-five li.resolved strong { color: var(--text-tertiary); text-decoration: line-through; }
-.daily-five li.resolved small { overflow: visible; white-space: normal; line-height: 1.35; }
-.daily-five li.resolution-contact_opt_out strong { color: var(--ask); text-decoration: none; }
-.daily-five li.resolution-contact_opt_out .daily-number { background: var(--ask-bg); color: var(--ask); }
-.daily-number { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--deed-bg); color: var(--deed); }
-.daily-actions { display: flex; gap: 4px; }
-.daily-actions button, .keep-card footer button { width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); cursor: pointer; }
-.daily-actions button:first-child { width: auto; grid-template-columns: auto auto; gap: var(--space-xs); padding: 0 var(--space-sm); }
-.daily-actions button:first-child::after { content: "Bugün gizle"; font: inherit; font-size: .78rem; white-space: nowrap; }
-.daily-actions button:hover, .keep-card footer button:hover { background: var(--deed-bg); color: var(--deed); }
-.all-work-section { display: grid; gap: var(--space-md); }
-.all-work-toggle { justify-self: start; }
-.all-work-list { display: grid; gap: var(--space-md); }
-.all-work-list ol { display: grid; gap: var(--space-xs); margin: 0; padding: 0; list-style: none; }
-.all-work-list li { padding: var(--space-sm) 0; border-top: 1px solid var(--line); }
-.all-work-list .daily-task-link { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: var(--space-sm) var(--space-lg); }
-.all-work-list .daily-task-link strong { min-width: 0; overflow-wrap: anywhere; }
-.all-work-list .daily-task-link small { color: var(--text-secondary); text-align: right; white-space: nowrap; }
+
 .quick-note { display: grid; gap: var(--space-lg); }
 .quick-note textarea { width: 100%; min-height: 116px; resize: vertical; padding: var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--background); color: var(--text-primary); font: inherit; font-size: 16px; line-height: 1.5; }
 .quick-note textarea:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
-.quick-note-actions { display: flex; justify-content: flex-end; gap: var(--space-sm); }
+.quick-note-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-sm); }
 .quick-note-actions a, .quick-note-actions button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-sm); }
 .feed-title { display: grid; gap: 2px; margin-top: var(--space-md); }
 .note-list-heading { grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-lg); }
@@ -1291,8 +1238,6 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .kind-requirement { --kind: var(--good); --kind-bg: var(--good-bg); }
 .kind-follow_up { --kind: var(--warm); --kind-bg: var(--warm-bg); }
 
-.keep-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); align-items: stretch; gap: var(--space-lg); }
-.keep-card { min-width: 0; display: grid; grid-template-rows: auto 1fr; gap: var(--space-md); }
 .keep-meta { display: flex; align-items: center; gap: var(--space-sm); }
 .keep-kind { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 .keep-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--kind, var(--deed)); }
@@ -1301,10 +1246,9 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .keep-kind select { min-width: 0; height: 28px; padding: 0 18px 0 0; border: 0; background: transparent; color: var(--kind, var(--deed)); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10.5px; letter-spacing: 1.1px; text-transform: uppercase; font-weight: 700; }
 .keep-kind select:disabled { color: var(--text-tertiary); }
 .keep-source { margin: 0; font-family: var(--font-ibm-plex-mono), monospace; font-size: 10.5px; line-height: 1.5; letter-spacing: .4px; color: var(--text-tertiary); }
-.keep-card > p { margin: 0; overflow-wrap: anywhere; line-height: 1.55; }
+
 .keep-clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; overflow: hidden; }
-.keep-card footer { display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin-top: auto; padding-top: var(--space-md); border-top: 1px solid var(--line); }
-.keep-card footer .keep-edit-action { width: auto; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; margin-right: auto; color: var(--deed); font-size: 12px; font-weight: 700; }
+
 .location-prompt { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-md); border-radius: var(--radius-md); background: var(--ask-bg); color: var(--ask); font-size: 12px; }
 .note-processing-sheet { width: min(620px, 100%); }
 .note-extraction-review { display: grid; gap: var(--space-md); padding: var(--space-lg); border: 1px solid var(--good); border-radius: var(--radius-lg); background: var(--good-bg); }
@@ -1321,13 +1265,17 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .funnel-workspace { display: grid; gap: var(--space-xl); }
 .funnel-analysis { min-width: 0; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); align-items: start; gap: var(--space-xl); }
 .funnel-panel { display: grid; gap: var(--space-lg); }
-.funnel-panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-lg); }
+.funnel-panel-heading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-lg); }
 .funnel-panel-heading h2, .funnel-panel-heading p { margin: 0; }
 .funnel-panel-heading > span { padding: 6px 10px; border-radius: 999px; background: var(--background); color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
 .funnel-stage-list { display: grid; }
-.funnel-stage { position: relative; min-height: 72px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto 48px; align-items: center; gap: var(--space-md); padding: var(--space-md) var(--space-md); border-top: 1px solid var(--line); color: var(--text-primary); }
+.funnel-stage { position: relative; min-height: 72px; display: grid; grid-template-columns: 34px minmax(0, 1.7fr) minmax(0, 1fr) 48px; align-items: center; gap: var(--space-md); padding: var(--space-md) var(--space-md); border-top: 1px solid var(--line); color: var(--text-primary); }
 .funnel-step { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: var(--background); color: var(--text-secondary); font-size: 12px; font-weight: 800; }
 .funnel-stage-copy { min-width: 0; display: grid; gap: 3px; }
+/* The stage name is the row's subject, so the ratio beside it is what shrinks
+   when the column runs out of width. */
+.funnel-conversion { min-width: 0; }
+.funnel-conversion small { display: block; justify-self: stretch; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .funnel-stage-copy > strong { font-size: 16px; }
 .funnel-stage-copy > small, .funnel-conversion small { color: var(--text-secondary); }
 .funnel-conversion { display: grid; justify-items: end; gap: 2px; }
@@ -1361,7 +1309,6 @@ textarea.sp-control.is-compact { min-height: 80px; }
   .main-content { padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
   .record-button { display: none; }
   .contact-action-menu > div { z-index: 80; }
-  .funnel-analysis { grid-template-columns: minmax(0, 1fr); }
   .coaching-card { position: static; }
   .app-frame.page-swipe-next .main-content { animation: page-swipe-next 200ms ease; }
   .app-frame.page-swipe-previous .main-content { animation: page-swipe-previous 200ms ease; }
@@ -1379,27 +1326,25 @@ textarea.sp-control.is-compact { min-height: 80px; }
 
 @media (max-width: 620px) {
   html, body, .app-shell, .app-frame, .main-content { max-width: 100%; overflow-x: clip; }
-  .auth-panel button, .auth-panel a, .daily-actions button, .keep-card footer button, .funnel-periods button { min-height: 44px; }
+  .auth-panel button, .auth-panel a, .funnel-periods button, .plan-actions button, .note-row-actions button { min-height: 44px; }
   .main-content { width: calc(100% - 24px); padding-top: var(--space-xl); }
   .topbar-inner { width: 100%; }
-  .topbar-kbd, .topbar-divider { display: none; }
+  .topbar-kbd { display: none; }
   .topbar-actions { gap: 4px; }
   .topbar-search { gap: 8px; }
   .sp-card { padding: var(--space-lg); }
   .feed-header { align-items: center; }
   .feed-header h1 { font-size: 30px; }
-  .daily-five li { grid-template-columns: 28px minmax(0, 1fr); padding: var(--space-sm) 0; }
-  .daily-actions { grid-column: 2; justify-content: flex-end; }
-  .all-work-list .daily-task-link { grid-template-columns: minmax(0, 1fr); gap: 2px; }
-  .all-work-list .daily-task-link small { text-align: left; white-space: normal; }
+
   .quick-note-actions { flex-direction: column-reverse; }
   .quick-note-actions > * { width: 100%; }
-  .keep-grid { grid-template-columns: minmax(0, 1fr); }
+
   .funnel-header { align-items: stretch; flex-direction: column; }
   .funnel-periods { width: 100%; }
   .funnel-periods button { flex: 1; padding: 0 8px; }
   .funnel-stage { min-height: 68px; grid-template-columns: 30px minmax(0, 1fr) 42px; gap: var(--space-sm); padding: var(--space-md) var(--space-sm); }
   .funnel-conversion { display: none; }
+  .funnel-stage { grid-template-columns: 34px minmax(0, 1fr) 48px; }
   .funnel-value { font-size: 26px; }
   .funnel-stage.is-bottleneck { margin-right: 0; margin-left: 0; }
   .bottleneck-label { top: -9px; right: 8px; }
@@ -1488,9 +1433,7 @@ textarea.sp-control.is-compact { min-height: 80px; }
 }
 
 @media (max-width: 900px) {
-  /* Five empty 430px columns turned the board into a wall of nothing on a phone.
-     The column still scrolls; it just no longer reserves a screenful per stage. */
-  .opportunity-column-list { min-height: 200px; }
+
 }
 
 @media (max-width: 620px) {
@@ -1527,16 +1470,10 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .note-row-body > p { margin: 0; line-height: 1.5; overflow-wrap: anywhere; }
 .note-row-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .note-row .keep-source { min-width: 0; }
-.note-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 2px; }
+.note-row-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 2px; }
 .note-row-actions button, .note-rows .keep-edit-action { width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); cursor: pointer; }
 .note-row-actions .keep-edit-action { width: auto; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; color: var(--deed); font-size: 12px; font-weight: 700; }
 .note-row-actions button:hover { background: var(--deed-bg); color: var(--deed); }
-
-.note-groups { display: grid; gap: var(--space-3xl); }
-.note-group-head { display: flex; align-items: center; gap: 9px; margin-bottom: var(--space-lg); }
-.note-group-label { font-family: var(--font-ibm-plex-mono), monospace; font-size: 10.5px; line-height: 14px; letter-spacing: 1.1px; text-transform: uppercase; color: var(--kind, var(--deed)); }
-.note-group-count { min-width: 20px; height: 18px; padding: 0 6px; display: grid; place-items: center; border-radius: var(--radius-pill); background: var(--kind-bg, var(--deed-bg)); color: var(--kind, var(--deed)); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10px; }
-.note-group-rule { flex: 1; height: 1px; background: var(--line); }
 
 @media (max-width: 900px) {
   /* Below this the four columns stop being readable, so a row becomes a stacked block. */
@@ -1583,3 +1520,436 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .keep-trace li::before { content: "→"; position: absolute; left: 0; color: var(--text-tertiary); }
 .keep-trace a { color: var(--deed); text-decoration: none; }
 .keep-trace a:hover { text-decoration: underline; }
+
+/* ==========================================================================
+   Redesign · one navigation, one plan, one pipeline
+   Five destinations instead of ten, a day that groups itself by when the work
+   is due, and rows that say why a record is on the list. Everything below
+   reads its colour, spacing, radius and control height from the generated
+   tokens; nothing here names a colour of its own.
+   ========================================================================== */
+
+/* --- shell --------------------------------------------------------------- */
+
+/* Capture is a destination on a phone and an action on a desktop, so each size
+   hides the copy it does not need rather than the app shipping two shells. */
+.nav-item.nav-capture { display: none; }
+.nav-count.urgent { color: var(--warm); background: var(--warm-bg); border-radius: var(--radius-pill); padding: 2px 6px; font-weight: 600; }
+.nav-item.active .nav-count.urgent { color: var(--warm); background: var(--warm-bg); }
+.account-item-compact { display: none; }
+.topbar-search { width: min(380px, 40vw); }
+
+/* --- Bugün · header and capture ------------------------------------------ */
+
+.day-header { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-3xl); flex-wrap: wrap; }
+.day-header h1 { margin-top: 2px; }
+.day-summary { display: flex; align-items: center; gap: var(--space-2xl); padding: 9px var(--space-xl); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--card); box-shadow: var(--shadow-sm); }
+.day-summary > div { display: grid; gap: 1px; }
+.day-summary strong { font-family: var(--font-ibm-plex-mono), monospace; font-size: 17px; font-weight: 600; line-height: 1.1; }
+.day-summary strong.is-overdue { color: var(--ask); }
+.day-summary strong.is-done { color: var(--good); }
+.day-summary span { color: var(--text-secondary); font-size: 11px; }
+.day-summary-rule { width: 1px; height: 26px; background: var(--line); }
+.day-summary .topbar-icon-button { margin-left: var(--space-sm); }
+
+/* A note left between two appointments costs one line of the screen, not a
+   third of it; the field grows only once there is something in it. */
+.capture-bar { display: flex; align-items: center; gap: var(--space-lg); min-height: 54px; padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-xl); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--card); box-shadow: var(--shadow-sm); }
+.capture-bar > svg { color: var(--text-tertiary); }
+.capture-bar textarea {
+  flex: 1; min-width: 0; height: 20px; min-height: 20px; max-height: 140px; padding: 0; margin: 0;
+  border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 13.5px;
+  /* Box height equals line height, so the glyphs sit on the row's centre line
+     rather than at the top of a taller box. */
+  line-height: 20px; resize: none; overflow-y: auto;
+}
+.capture-bar textarea:focus { outline: 0; }
+.capture-bar textarea::placeholder { color: var(--text-tertiary); }
+
+/* --- Bugün · plan -------------------------------------------------------- */
+
+.day-grid { display: grid; grid-template-columns: minmax(0, 1.62fr) minmax(0, 1fr); gap: var(--space-xl); align-items: start; }
+.day-rail { display: grid; gap: var(--space-xl); align-content: start; }
+
+.plan-card { padding: 0; overflow: hidden; }
+.plan-card > .feed-section-heading { padding: 14px var(--space-xl) var(--space-lg); margin: 0; }
+.plan-progress { display: flex; align-items: center; gap: var(--space-md); color: var(--text-secondary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 11px; white-space: nowrap; }
+.plan-progress-track { display: block; width: 76px; height: 5px; border-radius: var(--radius-pill); background: var(--sunk); overflow: hidden; }
+.plan-progress-track > span { display: block; height: 100%; background: var(--good); transition: width var(--motion-base) ease; }
+.plan-empty { padding: 0 var(--space-xl) var(--space-2xl); }
+
+.plan-group { display: flex; align-items: center; gap: var(--space-md); margin: 0; padding: 7px var(--space-xl); background: var(--background); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.plan-group span:last-child { font-family: var(--font-ibm-plex-mono), monospace; font-size: 10.5px; line-height: 14px; color: var(--text-tertiary); }
+/* The global eyebrow carries a 6px bottom margin for stacked headers. On a
+   centred row that margin is half a line of offset, so the label reads three
+   pixels above the count beside it. */
+.plan-group .eyebrow, .work-group-heading .eyebrow, .section-tabs-note .eyebrow { margin: 0; }
+.plan-group.is-overdue { background: var(--ask-bg); }
+.plan-group.is-overdue .eyebrow, .plan-group.is-overdue span:last-child { color: var(--ask); }
+
+.plan-list { list-style: none; margin: 0; padding: 0; }
+.plan-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-lg); min-height: 66px; padding: 11px var(--space-xl); border-bottom: 1px solid var(--line); }
+.plan-row:last-child { border-bottom: 0; }
+.plan-row:hover { background: var(--background); }
+.plan-dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--cool); }
+.plan-row.tone-overdue .plan-dot { background: var(--ask); }
+.plan-row.tone-today .plan-dot { background: var(--warm); }
+.plan-body { min-width: 0; display: grid; gap: 3px; color: inherit; text-decoration: none; }
+.plan-body strong { font-size: 13.5px; font-weight: 600; }
+.plan-body span { color: var(--text-secondary); font-size: 12px; }
+.plan-due { padding: 3px 7px; border-radius: var(--radius-sm); background: var(--background); color: var(--text-secondary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.plan-row.tone-overdue .plan-due { background: var(--ask-bg); color: var(--ask); }
+.plan-actions { display: flex; align-items: center; gap: var(--space-sm); }
+/* The verb the advisor is about to perform, next to the person it concerns --
+   not a tick a screen-width away from the name it belongs to. */
+.plan-go { text-decoration: none; }
+.plan-actions > button { width: 30px; height: 30px; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--card); color: var(--text-secondary); cursor: pointer; }
+.plan-actions > button:hover { background: var(--good-bg); border-color: color-mix(in srgb, var(--good) 30%, var(--line)); color: var(--good); }
+.plan-row.resolved { background: var(--sunk); }
+.plan-row.resolved .plan-body strong { color: var(--text-tertiary); text-decoration: line-through; }
+.plan-row.resolution-contact_opt_out .plan-body strong { color: var(--ask); text-decoration: none; }
+.plan-resolved-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--radius-md); background: var(--good-bg); color: var(--good); }
+.plan-row.resolution-contact_opt_out .plan-resolved-mark { background: var(--ask-bg); color: var(--ask); }
+.plan-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-lg); margin: 0; padding: 11px var(--space-xl); border-top: 1px solid var(--line); background: var(--background); color: var(--text-secondary); font-size: 12.5px; }
+
+/* The bottleneck belongs where the day starts, not only on the funnel page. */
+.day-focus { display: grid; gap: var(--space-lg); }
+.day-focus .focus-heading { display: flex; align-items: flex-start; gap: 11px; }
+.day-focus .card-icon { margin-bottom: 0; }
+.day-focus > p { margin: 0; color: var(--text-secondary); font-size: 12.5px; line-height: 1.5; }
+.focus-evidence { display: grid; gap: 3px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--background); }
+.focus-evidence span { color: var(--text-tertiary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10px; letter-spacing: 1.1px; text-transform: uppercase; }
+.focus-evidence strong { font-size: 12.5px; font-weight: 600; }
+.day-focus .primary-action { justify-content: center; text-decoration: none; }
+
+.upcoming-card { padding: 0; overflow: hidden; }
+.upcoming-card > .feed-section-heading { padding: 13px var(--space-xl) 11px; margin: 0; }
+.upcoming-list { list-style: none; margin: 0; padding: 0; }
+.upcoming-list li { display: flex; align-items: center; gap: var(--space-lg); padding: 9px var(--space-xl); border-top: 1px solid var(--line); }
+.upcoming-list li:hover { background: var(--background); }
+.upcoming-list time { flex: 0 0 62px; padding: 3px 6px; border-radius: var(--radius-sm); background: var(--background); color: var(--text-secondary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10.5px; font-weight: 600; text-align: center; white-space: nowrap; }
+.upcoming-list a { min-width: 0; flex: 1; display: grid; gap: 1px; }
+.upcoming-list strong { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.upcoming-list small { color: var(--text-secondary); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- Kişiler · rows that carry the reason --------------------------------- */
+
+.contact-table-header, .contact-table-row { grid-template-columns: 24px minmax(240px, 1.6fr) 136px 178px 34px; }
+.contact-table-row { min-height: 66px; align-items: center; }
+.contact-table-person { align-items: center; }
+.contact-row-lines { min-width: 0; display: grid; gap: 2px; }
+.contact-row-identity { display: flex; align-items: baseline; gap: var(--space-md); min-width: 0; }
+.contact-row-identity strong { color: var(--text-primary); font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.contact-row-identity small { color: var(--text-secondary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10.5px; white-space: nowrap; }
+/* What this person is trying to do. It used to be searchable and never shown,
+   so every row needed opening to find out why it was on the list. */
+.contact-row-memory { color: var(--text-secondary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Compliance earns a place on a row only when there is something to do about
+   it; a badge that is green on every row is width without information. */
+.contact-row-flag { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 2px 7px; border-radius: var(--radius-pill); font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.contact-row-flag.tone-warm { background: var(--warm-bg); color: var(--warm); }
+.contact-row-flag.tone-ask { background: var(--ask-bg); color: var(--ask); }
+.contact-row-next { display: grid; gap: 2px; min-width: 0; }
+.contact-row-next strong { font-size: 12.5px; font-weight: 600; color: var(--deed); }
+.contact-row-next small { color: var(--text-secondary); font-size: 11.5px; }
+.contact-row-next .overdue-text { color: var(--ask); }
+
+/* --- İşler · the whole path, then the queue ------------------------------ */
+
+.segmented-count { margin-left: 6px; font-family: var(--font-ibm-plex-mono), monospace; font-size: 10px; opacity: .75; }
+
+/* The board's value was seeing the path at once; its cost was five columns of
+   height for the stages that were empty. This keeps the first and drops the
+   second, and each step doubles as the filter for its own stage. */
+.work-stage-strip { display: flex; align-items: stretch; gap: var(--space-sm); margin-bottom: var(--space-xl); padding: var(--space-xl) var(--space-2xl) var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--card); box-shadow: var(--shadow-sm); overflow-x: auto; }
+.work-stage-step { flex: 1 1 0; min-width: 92px; display: grid; justify-items: center; gap: 5px; padding: 0 var(--space-sm) var(--space-sm); border: 0; background: transparent; cursor: pointer; }
+.work-stage-step strong { font-family: var(--font-ibm-plex-mono), monospace; font-size: 16px; font-weight: 600; line-height: 1; color: var(--text-primary); }
+.work-stage-step span { color: var(--text-secondary); font-size: 10.5px; text-align: center; white-space: nowrap; }
+.work-stage-step em { display: block; width: 100%; height: 3px; border-radius: 2px; background: var(--sunk); }
+.work-stage-step.stage-tone-cool em { background: var(--cool-bg); }
+.work-stage-step.stage-tone-deed em { background: var(--deed-bg); }
+.work-stage-step.stage-tone-warm em { background: var(--warm-bg); }
+.work-stage-step.stage-tone-warm strong { color: var(--warm); }
+.work-stage-step.stage-tone-good em { background: var(--good-bg); }
+.work-stage-step.stage-tone-good strong { color: var(--good); }
+.work-stage-step:hover em { background: var(--line-strong); }
+.work-stage-step.selected em { background: var(--deed); }
+.work-stage-step.selected span { color: var(--text-primary); font-weight: 600; }
+.work-stage-divider { display: grid; place-items: center; flex: 0 0 24px; padding-bottom: var(--space-lg); color: var(--line-strong); }
+
+.work-queue { display: grid; gap: var(--space-2xl); }
+.work-group { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--card); box-shadow: var(--shadow-sm); overflow: hidden; }
+.work-group-heading { display: flex; align-items: center; gap: var(--space-md); margin: 0; padding: 8px var(--space-xl); background: var(--background); border-bottom: 1px solid var(--line); }
+.work-group-heading span:last-child { font-family: var(--font-ibm-plex-mono), monospace; font-size: 10.5px; line-height: 14px; color: var(--text-tertiary); }
+.work-group-heading.tone-overdue { background: var(--ask-bg); }
+.work-group-heading.tone-overdue .eyebrow, .work-group-heading.tone-overdue span:last-child { color: var(--ask); }
+.work-list { list-style: none; margin: 0; padding: 0; }
+.work-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) 200px 160px auto; align-items: center; gap: var(--space-lg); padding: 12px var(--space-xl); border-bottom: 1px solid var(--line); }
+.work-row:last-child { border-bottom: 0; }
+.work-row:hover { background: var(--background); }
+.work-dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--cool); }
+.work-row.urgency-overdue .work-dot { background: var(--ask); }
+.work-row.urgency-week .work-dot { background: var(--warm); }
+.work-row-identity { min-width: 0; display: grid; gap: var(--space-sm); }
+.requirement-match-indicator { justify-self: start; max-width: 100%; white-space: normal; text-align: left; background: var(--deed-bg); color: var(--deed); }
+.requirement-match-indicator.is-review { background: var(--warm-bg); color: var(--warm); }
+.requirement-match-indicator svg { flex-shrink: 0; }
+.requirement-match-hint { font-weight: 400; }
+.requirement-match-loading { color: var(--text-secondary); }
+.work-row-open { min-width: 0; display: grid; gap: 4px; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.work-row-head { display: flex; align-items: center; gap: var(--space-md); min-width: 0; }
+.work-row-head strong { font-size: 13.5px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.work-row-open small { color: var(--text-secondary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.work-path { display: grid; gap: 5px; min-width: 0; }
+.work-path-pips { display: flex; align-items: center; gap: 4px; }
+.work-path-pips i { flex: 0 0 9px; width: 9px; height: 9px; border-radius: var(--radius-pill); background: var(--sunk); }
+.work-path-pips i.on { background: var(--deed); }
+/* The connector between two pips is drawn by the gap they sit in, so a filled
+   run reads as a walked path rather than six unrelated dots. */
+.work-path-pips i.on + i:not(.on) { box-shadow: -4px 0 0 -3px var(--deed-bg); }
+.work-path small { color: var(--text-secondary); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.work-next { display: grid; gap: 2px; min-width: 0; }
+.work-next strong { font-size: 12.5px; font-weight: 600; color: var(--deed); }
+.work-next small { color: var(--text-secondary); font-size: 11.5px; }
+.work-next .overdue-text { color: var(--ask); }
+.work-row-actions { display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; }
+.work-row-actions > .primary-action { margin-top: 0; }
+.work-advance { text-decoration: none; }
+.work-closing { margin-top: var(--space-4xl); padding-top: var(--space-3xl); border-top: 1px solid var(--line); }
+
+/* --- Portföy ------------------------------------------------------------- */
+
+/* Three buttons that all added a listing, differing only in where it came
+   from. One action, with its sources behind it. */
+.add-listing-menu { position: relative; }
+.add-listing-menu > div { position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; width: min(320px, calc(100vw - 32px)); display: grid; gap: 2px; padding: var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--elevated); box-shadow: var(--shadow-lg); }
+.add-listing-menu > div button { width: 100%; display: flex; align-items: flex-start; gap: var(--space-lg); min-height: var(--hit-min); padding: 9px 10px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-primary); text-align: left; cursor: pointer; }
+.add-listing-menu > div button:hover:not(:disabled) { background: var(--deed-bg); color: var(--deed); }
+.add-listing-menu > div button:disabled { opacity: .5; cursor: not-allowed; }
+.add-listing-menu > div button > svg { margin-top: 2px; color: var(--text-secondary); }
+.add-listing-menu > div button span { display: grid; gap: 1px; }
+.add-listing-menu > div button strong { font-size: 13px; font-weight: 600; }
+.add-listing-menu > div button small { color: var(--text-secondary); font-size: 11.5px; }
+
+/* "Yayında: —" said nothing about why a listing was not published. */
+.listing-readiness { display: grid; gap: 5px; min-width: 0; }
+.listing-readiness-meter { display: block; height: 5px; border-radius: var(--radius-pill); background: var(--sunk); overflow: hidden; }
+.listing-readiness-meter > span { display: block; height: 100%; }
+.listing-readiness-meter .is-ready { background: var(--good); }
+.listing-readiness-meter .is-partial { background: var(--warm); }
+.listing-readiness small { color: var(--good); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.listing-readiness small.is-partial-text { color: var(--warm); }
+
+.listing-work-link { display: flex; align-items: center; gap: var(--space-lg); margin-top: var(--space-2xl); padding: 12px var(--space-xl); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--card); color: var(--text-secondary); font-size: 12.5px; box-shadow: var(--shadow-sm); }
+.listing-work-link span { flex: 1; }
+.listing-work-link strong { color: var(--text-primary); font-weight: 600; }
+.listing-work-link:hover { border-color: var(--line-strong); }
+.listing-work-link > svg:last-child { color: var(--deed); }
+
+/* --- Huni ---------------------------------------------------------------- */
+
+.funnel-ratio-note { flex: 0 1 auto; min-width: 0; }
+.funnel-ratio-note > summary { list-style: none; cursor: pointer; color: var(--text-tertiary); font-size: 11.5px; text-wrap: pretty; }
+.funnel-ratio-note > summary::-webkit-details-marker { display: none; }
+.funnel-ratio-note > summary::before { content: "ⓘ "; }
+.funnel-ratio-note > summary:hover { color: var(--deed); }
+.funnel-ratio-note > p { max-width: 620px; margin: var(--space-md) 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.funnel-pending-metric { margin-top: var(--space-lg); color: var(--text-tertiary); }
+
+/* --- Ayarlar ------------------------------------------------------------- */
+
+/* One tab bar for sections inside a page: an underline marks the open one and
+   each tab states its own size, so no heading has to repeat the tab's name
+   back at it. */
+.section-tabs { display: flex; align-items: center; gap: var(--space-2xl); margin-bottom: var(--space-xl); border-bottom: 1px solid var(--line); overflow-x: auto; }
+.section-tabs button { flex: 0 0 auto; min-height: 40px; padding: 0 2px 9px; display: inline-flex; align-items: center; gap: 7px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--text-secondary); font-size: 13.5px; cursor: pointer; }
+.section-tabs button:hover { color: var(--text-primary); }
+.section-tabs button.active { color: var(--text-primary); font-weight: 600; border-bottom-color: var(--deed); }
+.section-tab-count { padding: 1px 6px; border-radius: var(--radius-pill); background: var(--sunk); color: var(--text-secondary); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10.5px; }
+.section-tabs button.active .section-tab-count { background: var(--deed-bg); color: var(--deed); }
+.section-tabs-spacer { flex: 1; }
+.section-tabs-note { flex: 0 0 auto; padding-bottom: 9px; color: var(--text-secondary); font-size: 12.5px; white-space: nowrap; }
+.section-tabs-note strong { color: var(--warm); font-weight: 600; }
+
+/* The app already has a left rail; a second one beside the content is a rail
+   too many, so the sections became tabs. */
+.settings-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-xl); align-items: start; }
+.settings-subnav { position: static; top: auto; display: flex; flex-direction: row; align-items: center; gap: var(--space-2xl); padding: 0; margin-bottom: var(--space-xl); border-bottom: 1px solid var(--line); overflow-x: auto; }
+.settings-subnav button { font: inherit; text-align: left; flex: 0 0 auto; width: auto; min-height: 40px; padding: 0 2px 9px; display: inline-flex; align-items: center; gap: 7px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--text-secondary); font-size: 13.5px; cursor: pointer; }
+.settings-subnav button:hover { color: var(--text-primary); background: transparent; }
+.settings-subnav button.active { color: var(--text-primary); font-weight: 600; border-bottom-color: var(--deed); }
+.settings-subnav button > svg { flex-shrink: 0; }
+.settings-subnav button:disabled { opacity: .55; cursor: not-allowed; }
+.settings-subnav em { display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--radius-pill); background: var(--warm-bg); color: var(--warm); font-family: var(--font-ibm-plex-mono), monospace; font-size: 10px; font-style: normal; font-weight: 600; }
+
+.settings-compliance-line { display: flex; align-items: center; gap: var(--space-lg); width: 100%; margin-bottom: var(--space-xl); padding: 11px var(--space-lg); border: 1px solid var(--warm-bg); border-radius: var(--radius-lg); background: var(--card); color: var(--text-secondary); font-size: 12.5px; text-align: left; cursor: pointer; }
+.settings-compliance-line > svg { color: var(--warm); }
+.settings-compliance-line span { flex: 1; }
+.settings-compliance-line strong { color: var(--warm); font-weight: 600; }
+.settings-compliance-line em { color: var(--deed); font-style: normal; font-weight: 600; white-space: nowrap; }
+.settings-compliance-line:hover { border-color: var(--warm); }
+
+/* One save, and only once something has changed: two disabled buttons for the
+   same form asked the advisor which of them was the real one. */
+.settings-save-bar {
+  position: sticky; z-index: 40; bottom: var(--space-2xl);
+  display: flex; align-items: center; gap: var(--space-lg);
+  margin-top: var(--space-3xl); padding: 11px var(--space-lg) 11px var(--space-2xl);
+  border: 1px solid var(--line-strong); border-radius: 9px;
+  background: var(--elevated); box-shadow: var(--shadow-md);
+}
+.settings-save-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--warm); }
+.settings-save-bar strong { flex: 1; font-size: 13px; font-weight: 600; }
+
+/* --- responsive ---------------------------------------------------------- */
+
+@media (max-width: 1180px) {
+  .day-grid { grid-template-columns: minmax(0, 1fr); }
+  .day-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .work-row { grid-template-columns: 8px minmax(0, 1fr) 170px auto; }
+  .work-row .work-next { display: none; }
+  .contact-table-header, .contact-table-row { grid-template-columns: 24px minmax(200px, 1.6fr) 120px 160px 34px; }
+}
+
+@media (max-width: 900px) {
+  /* Five tabs that reach the whole app: Bugün, Kişiler, capture, İşler,
+     Portföy. The funnel and settings live in the account sheet, so nothing is
+     reachable on one screen size only. */
+  .nav-item.nav-capture { display: flex; }
+  .nav-item.nav-desktop-only { display: none; }
+  .sidebar-footer { display: none !important; }
+  .day-rail { grid-template-columns: minmax(0, 1fr); }
+  .account-item-compact { display: flex; }
+  .work-stage-strip { padding: var(--space-lg) var(--space-lg) var(--space-md); gap: var(--space-sm); }
+  /* A nowrapped stage name is wider than its step on a phone and bleeds over
+     the step beside it, so here the name wraps and the step keeps its width. */
+  .work-stage-step { min-width: 88px; }
+  .work-stage-step span { white-space: normal; line-height: 1.25; }
+  .settings-subnav { gap: var(--space-xl); }
+}
+
+@media (max-width: 980px) {
+  /* Below this a five-column row stops being a row. Each record becomes a
+     block that still leads with the name and ends with the one action. */
+  .contact-table-card { display: grid; gap: 9px; }
+  .contact-table-header { display: none; }
+  .contact-table-row { grid-template-columns: 24px minmax(0, 1fr) 34px; gap: 8px var(--space-lg); padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); }
+  .contact-table-person { grid-column: 2; }
+  .contact-row-role, .contact-row-next { grid-column: 2; justify-self: start; }
+  .contact-row-identity { flex-wrap: wrap; }
+  .contact-table-person .contact-row-memory { white-space: normal; }
+
+  .work-row { grid-template-columns: 8px minmax(0, 1fr); row-gap: var(--space-md); padding: 14px var(--space-lg); }
+  .work-row-open small { white-space: normal; }
+  .work-path, .work-next { grid-column: 2; }
+  .work-row .work-next { display: grid; }
+  .work-row-actions { grid-column: 2; justify-self: start; }
+
+  .plan-row { grid-template-columns: 8px minmax(0, 1fr) auto; row-gap: var(--space-md); }
+  .plan-actions { grid-column: 2 / -1; justify-content: flex-start; }
+
+  .listing-work-link { align-items: flex-start; }
+}
+
+@media (max-width: 760px) {
+  /* The readiness line would push the tabs off screen; the meter on each row
+     already carries it there. */
+  .section-tabs-note { display: none; }
+}
+
+@media (max-width: 620px) {
+  .day-header { align-items: stretch; gap: var(--space-lg); }
+  .day-summary { width: 100%; justify-content: space-between; gap: var(--space-lg); }
+  .capture-bar { flex-wrap: wrap; padding: var(--space-lg); }
+  .capture-bar textarea { flex: 1 1 100%; order: -1; }
+  .capture-bar > svg { display: none; }
+  .capture-bar .secondary-action { flex: 1; }
+  .capture-bar .primary-action { flex: 1; }
+  .plan-due { grid-column: 2; justify-self: start; }
+  .settings-save-bar { flex-wrap: wrap; bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .settings-save-bar strong { flex: 1 1 100%; }
+  .settings-save-bar .secondary-action, .settings-save-bar .primary-action { flex: 1; }
+  .add-listing-menu, .add-listing-menu > .primary-action { width: 100%; }
+  .add-listing-menu > div { width: 100%; }
+}
+
+/* --- redesign follow-ups ------------------------------------------------- */
+
+/* The memory line sits inside .contact-table-person, whose <small> is the
+   monospace phone number. This one is prose and reads as prose. */
+.contact-table-person .contact-row-memory { font-family: var(--font-karla), system-ui, sans-serif; font-size: 12px; white-space: nowrap; }
+/* A row with nothing agreed is not a link to somewhere. */
+.contact-row-next strong.is-unset { color: var(--text-tertiary); font-weight: 500; }
+
+/* The plan and the notes share a column so a short plan leaves no hole. */
+.day-column { display: grid; gap: var(--space-xl); align-content: start; min-width: 0; }
+.day-column .note-list-heading { margin-top: var(--space-md); }
+
+/* Readiness needs room for "5/7 · 2 eksik" without truncating it. Below 900px
+   the row is a stacked card whose children are placed by hand, so the seven
+   columns must not come back and scatter them. */
+/* Seven columns need about 860px of content width; below that the row is a
+   stacked card, which is why the card treatment reaches further here than it
+   does for the other tables. */
+@media (min-width: 1201px) {
+  .listing-table-head, .listing-table > button { grid-template-columns: minmax(200px, 1.8fr) minmax(104px, .85fr) 92px 112px 96px 140px 24px; gap: 10px; }
+}
+
+@media (max-width: 1200px) {
+  .listing-table { border: 0; box-shadow: none; background: transparent; overflow: visible; display: grid; gap: 9px; }
+  .listing-table-head { display: none; }
+  .listing-table > button { position: relative; min-height: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; }
+  .listing-table > button > :nth-child(1) { grid-column: 1 / -1; padding-right: 24px; }
+  .listing-table > button > :nth-child(2) { color: var(--text-secondary); font-size: 11.5px; }
+  .listing-table > button > :nth-child(3) { display: none; }
+  .listing-table > button > :nth-child(4) { grid-column: 1; }
+  .listing-table > button > :nth-child(5) { grid-column: 2; grid-row: 2 / span 2; justify-self: end; }
+  .listing-table > button > :nth-child(6) { display: grid; grid-column: 1 / -1; }
+  .listing-table > button > :nth-child(7) { position: absolute; top: 12px; right: 10px; }
+  .listing-readiness small { white-space: normal; }
+}
+
+.work-closing { margin-top: var(--space-3xl); padding-top: var(--space-2xl); }
+
+/* The note list now shares a column with the plan, so the text gets the width
+   and the provenance line drops under it instead of taking a column of its own.
+   Below 900px the row is already a stacked block, which this must not undo. */
+@media (min-width: 901px) {
+  .note-row { grid-template-columns: 104px minmax(0, 1fr) auto; align-items: start; }
+  .note-row > .keep-kind { align-self: start; margin-top: 2px; }
+  .note-row .keep-source { grid-column: 2; margin: 0; }
+  .note-row-line { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .note-row-actions { align-self: start; }
+}
+
+/* A pinned task whose date has moved past today keeps its place in the day's
+   list; it just stops claiming to be due now. */
+.plan-row.tone-later .plan-dot { background: var(--cool); }
+
+/* Two funnel panels side by side stop being readable well before the phone
+   breakpoint, and the panel is declared after the shell's media blocks, so the
+   override has to come after it to win. */
+@media (max-width: 1150px) {
+  .funnel-analysis { grid-template-columns: minmax(0, 1fr); }
+  .coaching-card { position: static; }
+}
+
+/* Shared inline selection and quiet actions. */
+.sp-checkbox { display: flex; align-items: center; gap: var(--space-md); min-height: var(--control-md); cursor: pointer; font-weight: 600; line-height: 1.4; }
+.sp-checkbox input { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; }
+.sp-checkbox:has(input:disabled) { cursor: default; color: var(--text-secondary); }
+.secondary-action.action-quiet { border-color: transparent; background: transparent; color: var(--text-secondary); }
+.secondary-action.action-quiet:hover:not(:disabled) { border-color: transparent; background: var(--sunk); color: var(--text-primary); }
+
+/* Proposal history needs the full card width, including on a phone. */
+.closing-card.deal-card { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+.deal-card > .deal-history { grid-column: 1 / -1; grid-row: 2; min-width: 0; }
+.deal-card > .stage-badge { grid-column: 2; grid-row: 1; }
+.deal-card > button { grid-column: 1 / -1; white-space: normal; }
+.offer-timeline { list-style: none; display: grid; gap: var(--space-lg); padding: 0; margin: 0; }
+.offer-timeline > li { display: grid; gap: var(--space-sm); border-top: 1px solid var(--line); padding-top: var(--space-md); }
+.offer-timeline time { color: var(--text-secondary); font-size: 12px; }
+.offer-timeline p { margin: 0; overflow-wrap: anywhere; }
+
+/* A hidden native fallback must not inherit a full-width form control box. */
+.sp-control.sr-only { width: 1px; min-width: 0; height: 1px; min-height: 0; padding: 0; border: 0; pointer-events: none; }

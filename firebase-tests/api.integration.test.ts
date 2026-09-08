@@ -353,12 +353,14 @@ describe("callable API vertical slice", () => {
     const contactsAfterVoice = (await listContacts(envelope(undefined, "request-list-after-voice"))).data as { contacts: Array<{ id: string; memory: { keyThingsToRemember: string[] } }> };
     expect(contactsAfterVoice.contacts.find((contact) => contact.id === reassignedContact.contact.id)?.memory.keyThingsToRemember).toContain("Yarın yeniden aranacak.");
     expect(contactsAfterVoice.contacts.find((contact) => contact.id === created.contact.id)?.memory.keyThingsToRemember).not.toContain("Yarın yeniden aranacak.");
-    const opportunitiesAfterVoice = (await listOpportunities(envelope(undefined, "request-list-opportunities-after-voice"))).data as { opportunities: Array<{ id: string; subjectContactId: string }> };
+    const opportunitiesAfterVoice = (await listOpportunities(envelope(undefined, "request-list-opportunities-after-voice"))).data as { opportunities: Array<{ id: string; subjectContactId: string; type: string; criteria?: { preferredLocations: string[] } }> };
     expect(opportunitiesAfterVoice.opportunities).toContainEqual(expect.objectContaining({
       id: confirmedVoice.opportunityId,
       subjectContactId: reassignedContact.contact.id,
     }));
     expect(opportunitiesAfterVoice.opportunities.filter((item) => confirmedVoice.opportunityIds.includes(item.id))).toHaveLength(2);
+
+    expect(opportunitiesAfterVoice.opportunities.find((item) => confirmedVoice.opportunityIds.includes(item.id) && item.type === "buyer_requirement")?.criteria?.preferredLocations).toEqual(["Integration Region"]);
 
     const createPortfolioItemFromDraft = httpsCallable(functions, "createPortfolioItemFromDraft");
     const portfolioRequest = envelope({
@@ -499,9 +501,9 @@ describe("callable API vertical slice", () => {
       },
     }, "request-opportunity-criteria", "command-opportunity-criteria"));
     const requirementDetail = (await getOpportunityDetail(envelope({ opportunityId: requirementResult.entityId }, "request-requirement-detail"))).data as {
-      opportunity: { subjectContactMemory: { propertyPreferences: { preferredLocations: string[]; budgetRange: { max: number } | null; mustHaves: string[]; timeline: string | null } } };
+      opportunity: { criteria: { preferredLocations: string[]; budgetRange: { max: number } | null; mustHaves: string[]; timeline: string | null }; subjectContactMemory: { propertyPreferences: { preferredLocations: string[] } } };
     };
-    expect(requirementDetail.opportunity.subjectContactMemory.propertyPreferences).toMatchObject({
+    expect(requirementDetail.opportunity.criteria).toMatchObject({
       preferredLocations: ["Karşıyaka", "Bostanlı"],
       budgetRange: { max: 45_000 },
       mustHaves: ["Havuzlu", "Otoparklı"],
@@ -572,11 +574,12 @@ describe("callable API vertical slice", () => {
     const accessApproval = (await resolveDataSubjectRequest(envelope({ requestId: accessRequest.request.id, decision: "approved", resolutionNote: "Identity verified.", correctedContact: null }, "request-data-access-resolve", "command-data-access-resolve"))).data as { status: string };
     expect(accessApproval.status).toBe("approved");
     await expect(resolveDataSubjectRequest(envelope({ requestId: accessRequest.request.id, decision: "completed", resolutionNote: "Premature completion", correctedContact: null }, "request-premature-delivery", "command-premature-delivery"))).rejects.toThrow();
-    const contactExport = (await getContactDataExport(envelope({ requestId: accessRequest.request.id }, "request-contact-export"))).data as { export: { contact: { id: string; memory: { propertyPreferences: { preferredLocations: string[]; budgetRange: { max: number } | null } } }; interactions: unknown[]; opportunities: unknown[] } };
+    const contactExport = (await getContactDataExport(envelope({ requestId: accessRequest.request.id }, "request-contact-export"))).data as { export: { contact: { id: string; memory: { propertyPreferences: { preferredLocations: string[]; budgetRange: { max: number } | null } } }; interactions: unknown[]; opportunities: Array<{ id: string; criteria?: { preferredLocations: string[]; budgetRange: { max: number } | null } }> } };
     expect(contactExport.export.contact.id).toBe(created.contact.id);
     expect(contactExport.export.interactions.length).toBeGreaterThan(0);
     expect(contactExport.export.opportunities.length).toBeGreaterThan(0);
-    expect(contactExport.export.contact.memory.propertyPreferences).toMatchObject({ preferredLocations: ["Karşıyaka", "Bostanlı"], budgetRange: { max: 45_000 } });
+    expect(contactExport.export.opportunities.find((item) => item.id === requirementResult.entityId)?.criteria).toMatchObject({ preferredLocations: ["Karşıyaka", "Bostanlı"], budgetRange: { max: 45_000 } });
+    expect(contactExport.export.contact.memory.propertyPreferences.preferredLocations).not.toEqual(["Karşıyaka", "Bostanlı"]);
     const preparedAccess = (await resolveDataSubjectRequest(envelope({ requestId: accessRequest.request.id, decision: "prepared", resolutionNote: "Export prepared for delivery", correctedContact: null }, "request-access-prepared", "command-access-prepared"))).data as { status: string };
     expect(preparedAccess.status).toBe("processing");
     const deliveredAccess = (await resolveDataSubjectRequest(envelope({ requestId: accessRequest.request.id, decision: "completed", resolutionNote: "Handed to verified requester", correctedContact: null }, "request-access-delivered", "command-access-delivered"))).data as { status: string };

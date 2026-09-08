@@ -22,7 +22,7 @@ export const interactionObjectives = [
   "offer",
 ] as const satisfies readonly InteractionObjective[];
 export const askOutcomes = ["positive", "unclear", "negative", "not_asked", "not_applicable"] as const satisfies readonly AskOutcome[];
-export const nextActionTypes = ["call", "message", "appointment", "valuation", "offer", "complete_permission", "make_ask", "other"] as const satisfies readonly NextActionType[];
+export const nextActionTypes = ["call", "message", "appointment", "appointment_confirmed", "valuation", "offer", "complete_permission", "make_ask", "other"] as const satisfies readonly NextActionType[];
 
 export const interactionChannelLabels: Record<InteractionChannel, string> = {
   in_person: "Yüz yüze",
@@ -56,7 +56,8 @@ export const askOutcomeLabels: Record<AskOutcome, string> = {
 export const nextActionTypeLabels: Record<NextActionType, string> = {
   call: "Ara",
   message: "Mesaj gönder",
-  appointment: "Randevu yap",
+  appointment: "Randevu planla",
+  appointment_confirmed: "Teyitli randevuya katıl",
   valuation: "Değerleme",
   offer: "Teklif hazırla",
   complete_permission: "İzni tamamla",
@@ -73,6 +74,10 @@ export const interactionDirectionLabels: Record<(typeof interactionDirections)[n
 
 export const manualInteractionSchema = z
   .object({
+    nextActionContactId: z.string().min(1).max(160).nullable().optional(),
+    nextActionOpportunityId: z.string().min(1).max(160).nullable().optional(),
+    dealId: z.string().min(1).max(160).nullable().optional(),
+    dealOffer: z.object({ party: z.enum(["buyer", "seller"]), amount: z.number().positive(), currency: z.enum(["TRY", "GBP", "USD", "EUR"]) }).strict().nullable().optional(),
     contactId: z.string().min(1).max(160),
     channel: z.enum(interactionChannels),
     objective: z.enum(interactionObjectives),
@@ -87,6 +92,7 @@ export const manualInteractionSchema = z
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.dealOffer && !value.dealId) context.addIssue({ code: "custom", message: "Teklifi kaydetmek için ilgili işlemi seç.", path: ["dealId"] });
     if ((value.nextActionType === null) !== (value.nextActionAt === null)) {
       context.addIssue({
         code: "custom",
@@ -115,6 +121,9 @@ export function createInteraction(draft: ManualInteractionDraft, tenant: TenantO
   return {
     ...tenant,
     contactId: parsed.contactId,
+    nextActionContactId: parsed.nextActionContactId ?? parsed.contactId,
+    nextActionOpportunityId: parsed.nextActionOpportunityId ?? null,
+    dealId: parsed.dealId ?? null,
     channel: parsed.channel,
     occurredAt: parsed.occurredAt ?? now,
     objective: parsed.objective,

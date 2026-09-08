@@ -1,6 +1,23 @@
 {
   "indexes": [
     {
+      "collectionGroup": "contactImportJobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "officeId", "order": "ASCENDING" },
+        { "fieldPath": "ownerUid", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "contactImportLinks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "officeId", "order": "ASCENDING" },
+        { "fieldPath": "ownerUid", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "contacts",
       "queryScope": "COLLECTION",
       "fields": [
@@ -121,6 +138,12 @@
     }
   ],
   "fieldOverrides": [
+    {"collectionGroup": "contactImportRows", "fieldPath": "person", "indexes": []},
+    {"collectionGroup": "contactImportNotes", "fieldPath": "text", "indexes": []},
+    {"collectionGroup": "contactImportOAuthStates", "fieldPath": "verifier", "indexes": []},
+    {"collectionGroup": "contactImportJobs", "fieldPath": "oauthState", "indexes": []},
+    {"collectionGroup": "contactImportJobs", "fieldPath": "selectedRows", "indexes": []},
+    {"collectionGroup": "contactImportJobs", "fieldPath": "eligibleRowIds", "indexes": []},
     { "collectionGroup": "interactions", "fieldPath": "noteSummary", "indexes": [] },
     { "collectionGroup": "portfolioItems", "fieldPath": "summary", "indexes": [] },
     { "collectionGroup": "portfolioItems", "fieldPath": "attributes", "indexes": [] },

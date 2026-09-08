@@ -1,6 +1,9 @@
 "use client";
+import { TestWorkspaceCard } from "../components/TestWorkspaceCard";
+
 
 import { useState, type FormEvent } from "react";
+import { useSearchParams } from "next/navigation";
 import { Bell, Lock, MessageCircleMore, Save, ShieldCheck, UserRoundCog, Users } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -72,6 +75,7 @@ function downloadJson(value: unknown, filename: string) {
 }
 
 import { DataRequestActions } from "../components/DataRequestActions";
+import { OfficeTeamPanel } from "../components/OfficeTeamPanel";
 
 export function SettingsView() {
   const { session } = useSession();
@@ -79,7 +83,11 @@ export function SettingsView() {
   const settingsQuery = useQuery({ queryKey: apiQueryKeys.workspaceSettings, queryFn: loadWorkspaceSettings });
   const requestsQuery = useQuery({ queryKey: apiQueryKeys.dataSubjectRequests, queryFn: listDataSubjectRequests });
   const contactsQuery = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts });
-  const [settingsArea, setSettingsArea] = useState<SettingsArea>("start");
+  const searchParams = useSearchParams();
+  const requestedSection = searchParams.get("section");
+  const [chosenArea, setSettingsArea] = useState<SettingsArea | null>(null);
+  const settingsArea: SettingsArea = chosenArea
+    ?? (["start", "communication", "office", "compliance"].includes(requestedSection ?? "") ? requestedSection as SettingsArea : "start");
   const [editedDraft, setDraft] = useState<WorkspaceSettingsDraft | null>(null);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -135,27 +143,30 @@ export function SettingsView() {
     finally { setPending(false); }
   }
 
-  if (settingsQuery.isError) return <AppShell><div className="content-state" role="alert"><strong>Ayarlar yüklenemedi.</strong><span>{messageFrom(settingsQuery.error)}</span><button className="secondary-action" type="button" onClick={() => void settingsQuery.refetch()}>Yeniden dene</button></div></AppShell>;
-  if (settingsQuery.isPending || !draft) return <AppShell><div className="content-state">Ayarlar yükleniyor…</div></AppShell>;
+  if (settingsQuery.isError) return <AppShell><div className="content-state" role="alert"><strong>Ayarlar yüklenemedi.</strong><span>{messageFrom(settingsQuery.error)}</span><button className="secondary-action" type="button" onClick={() => void settingsQuery.refetch()}>Yeniden dene</button></div><TestWorkspaceCard /></AppShell>;
+  if (settingsQuery.isPending || !draft) return <AppShell><div className="content-state">Ayarlar yükleniyor…</div><TestWorkspaceCard /></AppShell>;
   const requests = requestsQuery.data ?? [];
   const pendingRequests = requests.filter((item) => ["pending_verification", "approved", "processing"].includes(item.status));
   const iysApprovedCount = contacts.filter((contact) => contact.privacy.iysStatus === "approved").length;
   const noticeVersion = contacts.map((contact) => contact.privacy.noticeVersion).find(Boolean) ?? "—";
 
   return <AppShell>
-    <header className="page-header settings-header"><div><p className="eyebrow">ÇALIŞMA ALANI</p><h1>Ayarlar ve uyum</h1><p className="context-sentence">Profil, ofis yükümlülükleri, hatırlatmalar ve veri sahibi talepleri.</p></div><div className="header-actions">{editedDraft ? <span className="unsaved-label">Kaydedilmemiş değişiklikler</span> : null}<button className="secondary-action inline-action" disabled={!editedDraft || pending} type="button" onClick={() => setDraft(null)}>Vazgeç</button><button className="primary-action inline-action" disabled={!editedDraft || pending} form="workspace-settings-form" type="submit"><Save size={16} /> {pending ? "Kaydediliyor…" : "Profil ve uyumu kaydet"}</button></div></header>
+    <header className="page-header settings-header"><div><p className="eyebrow">ÇALIŞMA ALANI</p><h1>Ayarlar ve ekip</h1><p className="context-sentence">Profilin, ofis ekibin, iletişim bağlantıların ve uyum kayıtların.</p></div></header>
     {message ? <p className="success-notice">{message}</p> : null}{error ? <p className="form-error notice">{error}</p> : null}
     <div className="settings-workspace">
       <nav className="settings-subnav" aria-label="Ayar bölümleri">
-        <div><span>Çalışma alanı</span>
-          <button aria-current={settingsArea === "start" ? "page" : undefined} className={settingsArea === "start" ? "active" : ""} onClick={() => setSettingsArea("start")} type="button"><UserRoundCog size={16} /> Başlangıç</button>
-          <button aria-current={settingsArea === "communication" ? "page" : undefined} className={settingsArea === "communication" ? "active" : ""} onClick={() => setSettingsArea("communication")} type="button"><MessageCircleMore size={16} /> İletişim</button>
-          <button aria-current={settingsArea === "office" ? "page" : undefined} className={settingsArea === "office" ? "active" : ""} onClick={() => setSettingsArea("office")} type="button"><Users size={16} /> Ofis</button>
-          <button aria-current={settingsArea === "compliance" ? "page" : undefined} className={settingsArea === "compliance" ? "active" : ""} onClick={() => setSettingsArea("compliance")} type="button"><ShieldCheck size={16} /> Uyum <em>{pendingRequests.length}</em></button>
-        </div>
+        <button aria-current={settingsArea === "start" ? "page" : undefined} className={settingsArea === "start" ? "active" : ""} onClick={() => setSettingsArea("start")} type="button"><UserRoundCog size={16} /> Profil</button>
+        <button aria-current={settingsArea === "office" ? "page" : undefined} className={settingsArea === "office" ? "active" : ""} onClick={() => setSettingsArea("office")} type="button"><Users size={16} /> Ofis ve ekip</button>
+        <button aria-current={settingsArea === "communication" ? "page" : undefined} className={settingsArea === "communication" ? "active" : ""} onClick={() => setSettingsArea("communication")} type="button"><MessageCircleMore size={16} /> İletişim</button>
+        <button aria-current={settingsArea === "compliance" ? "page" : undefined} className={settingsArea === "compliance" ? "active" : ""} onClick={() => setSettingsArea("compliance")} type="button"><ShieldCheck size={16} /> Uyum{pendingRequests.length ? <em>{pendingRequests.length}</em> : null}</button>
       </nav>
       <div className="settings-main">
-        <div className="settings-summary"><SpCard><span>VERBİS</span><strong className="good-text">{verbisStatusLabels[draft.verbisStatus]}</strong><small>{draft.dataControllerName || "Veri sorumlusu belirtilmedi"}</small></SpCard><SpCard><span>Aydınlatma metni</span><strong>{noticeVersion}</strong><small>Kişi kayıtlarında kullanılan sürüm</small></SpCard><SpCard><span>İYS onaylı</span><strong>{iysApprovedCount} / {contacts.length}</strong><div><span style={{ width: `${contacts.length ? Math.round((iysApprovedCount / contacts.length) * 100) : 0}%` }} /></div></SpCard><SpCard><span>Açık talep</span><strong className={pendingRequests.length ? "warm-text" : "good-text"}>{pendingRequests.length} bekliyor</strong><small>{pendingRequests.length ? "Kimlik doğrulama ve yanıt bekliyor" : "Bekleyen talep yok"}</small></SpCard></div>
+        {/* Four compliance tiles above a profile form is a dashboard in the
+            wrong room. The state lives here as one line and its detail on the
+            tab that actually owns it. */}
+        {settingsArea === "compliance"
+          ? <div className="settings-summary"><SpCard><span>VERBİS</span><strong className="good-text">{verbisStatusLabels[draft.verbisStatus]}</strong><small>{draft.dataControllerName || "Veri sorumlusu belirtilmedi"}</small></SpCard><SpCard><span>Aydınlatma metni</span><strong>{noticeVersion}</strong><small>Kişi kayıtlarında kullanılan sürüm</small></SpCard><SpCard><span>İYS onaylı</span><strong>{iysApprovedCount} / {contacts.length}</strong><div><span style={{ width: `${contacts.length ? Math.round((iysApprovedCount / contacts.length) * 100) : 0}%` }} /></div></SpCard><SpCard><span>Açık talep</span><strong className={pendingRequests.length ? "warm-text" : "good-text"}>{pendingRequests.length} bekliyor</strong><small>{pendingRequests.length ? "Kimlik doğrulama ve yanıt bekliyor" : "Bekleyen talep yok"}</small></SpCard></div>
+          : <button className="settings-compliance-line" onClick={() => setSettingsArea("compliance")} type="button"><ShieldCheck size={17} aria-hidden /><span>{contacts.length - contacts.filter((contact) => contact.privacy.noticeStatus === "pending").length}/{contacts.length} kişide aydınlatma tamam, {iysApprovedCount}&apos;i İYS onaylı{pendingRequests.length ? <> · <strong>{pendingRequests.length} veri sahibi talebi yanıt bekliyor</strong></> : null}</span><em>Uyum sekmesi</em></button>}
     <form onKeyDown={handleFormKeyDown} className="settings-sections" id="workspace-settings-form" onSubmit={save}>
       {settingsArea === "start" ? <>
       <SpCard className="settings-card" id="advisor-profile">
@@ -181,11 +192,11 @@ export function SettingsView() {
         {draft.country === "TRNC" ? <div className="trnc-gate"><strong>KKTC zorunlu doğrulama kapısı</strong><p>Firebase verisi KKTC dışına çıktığı için çalışma başlamadan önce hem dosyalama bildirimi hem aktarım ruhsatı gerekir.</p><label className="check-label"><SpInput type="checkbox" checked={draft.trncFilingConfirmed} onChange={(event) => setDraft({ ...draft, trncFilingConfirmed: event.target.checked })} /> m.8 dosyalama bildirimi tamamlandı</label><label className="check-label"><SpInput type="checkbox" checked={draft.trncTransferLicenseConfirmed} onChange={(event) => setDraft({ ...draft, trncTransferLicenseConfirmed: event.target.checked })} /> Yurt dışı aktarım ruhsatı alındı</label></div> : null}
         <p className="privacy-hint">Bu ekran hukuki danışmanlık yerine geçmez. Üretim öncesi yerel hukukçu doğrulaması gerekir.</p>
       </SpCard>
-      <SpCard className="settings-card"><div className="settings-title"><Users size={20} /><div><p className="eyebrow">OFİS</p><h2>Ekip ve davetler</h2></div></div><p className="privacy-copy">Danışmanları davet et, rolleri ve ofis erişimini ayrı çalışma alanında yönet.</p><a className="secondary-action inline-link" href="/team">Ekip yönetimini aç</a></SpCard>
       </> : null}
+      {settingsArea === "office" ? <OfficeTeamPanel /> : null}
 
-      {settingsArea === "start" || settingsArea === "office" ? <div className="settings-sections-footer"><button className="primary-action inline-action" disabled={!editedDraft || pending} type="submit"><Save size={18} /> {pending ? "Kaydediliyor…" : "Değişiklikleri kaydet"}</button></div> : null}
     </form>
+    {editedDraft ? <div className="settings-save-bar" role="status"><span className="settings-save-dot" aria-hidden /><strong>Kaydedilmemiş değişiklikler</strong><button className="secondary-action compact-action" disabled={pending} type="button" onClick={() => setDraft(null)}>Vazgeç</button><button className="primary-action compact-action" disabled={pending} form="workspace-settings-form" type="submit"><Save size={15} /> {pending ? "Kaydediliyor…" : "Kaydet"}</button></div> : null}
     {settingsArea === "communication" ? <WhatsAppGroupSettingsCard /> : null}
     {settingsArea === "compliance" ? <>
     <section className="office-team-section" id="voice-privacy"><div className="section-heading"><div><p className="eyebrow">SES VE GİZLİLİK</p><h2>Görüşme sonrası güvenli not</h2><p>Sesli not yalnız danışmanın görüşme bittikten sonra verdiği özettir; karşı taraf kaydedilmez.</p></div></div><div className="settings-grid"><SpCard className="settings-card"><div className="settings-title"><Lock size={20} /><div><p className="eyebrow">KALICI KORUMALAR</p><h2>Değiştirilemeyen güvenlik sınırları</h2></div></div><ul className="privacy-policy-list"><li>Aktif görüşme sırasında kayıt başlatılmaz; yalnız olduğunuzu ayrıca onaylamanız gerekir.</li><li>Ham ses ve maskelenmemiş döküm kalıcı olarak saklanmaz.</li><li>Hassas veri kategorileri inceleme öncesinde maskelenir.</li><li>Çıkarılan taslak, danışman onayı olmadan kişi veya fırsat kaydına dönüşmez.</li></ul><a className="secondary-action inline-link" href="/capture">Sesli not akışını aç</a></SpCard><SpCard className="settings-card"><div className="settings-title"><ShieldCheck size={20} /><div><p className="eyebrow">VERİ HAKLARI</p><h2>Dışa aktarma ve silme</h2></div></div><p className="privacy-copy">Kişi bazlı JSON dışa aktarımı ve silme talebi aşağıdaki veri sahibi talepleri bölümünden kimlik doğrulamasıyla yürütülür.</p></SpCard></div></section>
@@ -193,5 +204,5 @@ export function SettingsView() {
     </> : null}
       </div>
     </div>
-  </AppShell>;
+  <TestWorkspaceCard /></AppShell>;
 }

@@ -1,41 +1,49 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
-import { BriefcaseBusiness, ContactRound, Handshake, House, ListTodo, Network, Plus, Pyramid, SlidersHorizontal, Users } from "lucide-react";
+import { BriefcaseBusiness, ContactRound, House, ListTodo, Plus, Pyramid, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { apiQueryKeys } from "@spherepath/shared";
+import { apiQueryKeys, type TodayOverview } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
 import { listContacts } from "@/features/contacts/resources/contacts";
 import { listOpportunities } from "@/features/opportunities/resources/opportunities";
 import { listListings } from "@/features/listings/resources/listings";
-import { listPortfolioItems } from "@/features/matching/resources/portfolio";
 import { loadOfficeTeam } from "@/features/settings/resources/settings";
+import { loadTodayOverview } from "@/features/today/resources/today";
 import { AccountMenu } from "./AccountMenu";
 import { CommandPalette } from "./CommandPalette";
 import { ConnectivityBanner } from "./ConnectivityBanner";
 import { TopBar } from "./TopBar";
 
-const workNavigation = [
-  { label: "Akış", icon: ListTodo, href: "/", count: null },
-  { label: "Huni", icon: Pyramid, href: "/funnel", count: null },
-  { label: "Temas kaydet", icon: Plus, href: "/capture", count: null },
-  { label: "Aktif portföy", icon: House, href: "/listings", count: "listings" },
+/**
+ * One list, in the order the bottom tab bar needs it. Capture is a destination
+ * only on a phone -- on a desktop it is the top bar's single action -- and the
+ * funnel is a diagnosis rather than a place work happens, so the bar drops it
+ * to the account sheet. Hiding either is CSS; the set stays the same so a
+ * capability never becomes unreachable on one screen size.
+ */
+const navigation = [
+  { label: "Bugün", icon: ListTodo, href: "/", count: "today" },
   { label: "Kişiler", icon: ContactRound, href: "/contacts", count: "contacts" },
+  { label: "Temas kaydet", icon: Plus, href: "/capture", count: null },
+  { label: "İşler", icon: BriefcaseBusiness, href: "/opportunities", count: "work" },
+  { label: "Portföy", icon: House, href: "/listings", count: "listings" },
+  { label: "Huni", icon: Pyramid, href: "/funnel", count: null },
 ] as const;
-const swipePaths = workNavigation.map((item) => item.href);
 
-const officeNavigation = [
-  { label: "Fırsatlar", icon: BriefcaseBusiness, href: "/opportunities", count: "opportunities" },
-  { label: "Kapama", icon: Handshake, href: "/closing", count: null },
-  { label: "Ofis havuzu", icon: Network, href: "/listings?view=pool", count: "portfolioItems" },
-  { label: "Ekip", icon: Users, href: "/team", count: "team" },
-] as const;
+const swipePaths = ["/", "/contacts", "/capture", "/opportunities", "/listings"] as const;
+
+/** End of the current day: anything due at or before it is work for today. */
+function endOfToday(): number {
+  const date = new Date();
+  date.setHours(23, 59, 59, 999);
+  return date.getTime();
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const currentPathname = pathname === "/" ? pathname : pathname.replace(/\/+$/, "");
   const router = useRouter();
   const { session } = useSession();
@@ -48,14 +56,19 @@ export function AppShell({ children }: { children: ReactNode }) {
   const contacts = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts, enabled: false });
   const opportunities = useQuery({ queryKey: apiQueryKeys.opportunities, queryFn: listOpportunities, enabled: false });
   const listings = useQuery({ queryKey: apiQueryKeys.listings, queryFn: listListings, enabled: false });
-  const portfolioItems = useQuery({ queryKey: apiQueryKeys.portfolioItems, queryFn: listPortfolioItems, enabled: false });
+  const today = useQuery<TodayOverview>({ queryKey: apiQueryKeys.todayOverviewPeriod("30d"), queryFn: () => loadTodayOverview("30d"), enabled: false });
   const team = useQuery({ queryKey: apiQueryKeys.officeTeam, queryFn: loadOfficeTeam, enabled: Boolean(session) });
-  const counts: Record<string, number | undefined> = {
-    contacts: contacts.data?.length,
-    opportunities: opportunities.data?.filter((item) => item.stage !== "won" && item.stage !== "lost").length,
-    listings: listings.data?.filter((item) => item.status === "active" || item.status === "reserved").length,
-    portfolioItems: portfolioItems.data?.length,
-    team: team.data?.members.length,
+
+  const dueToday = today.data ? today.data.overdueTasks.length + today.data.todayTasks.length : undefined;
+  const openWork = opportunities.data?.filter((item) => item.stage !== "won" && item.stage !== "lost");
+  const workNeedingAction = openWork?.filter((item) => item.nextActionAt !== null && item.nextActionAt <= endOfToday()).length ?? 0;
+  // A number that means "act on me" is not the same number as an inventory
+  // total, so it is not allowed to look like one.
+  const counts: Record<string, { value: number | undefined; urgent: boolean }> = {
+    today: { value: dueToday, urgent: (today.data?.overdueTasks.length ?? 0) > 0 },
+    contacts: { value: contacts.data?.length, urgent: false },
+    work: { value: workNeedingAction || openWork?.length, urgent: workNeedingAction > 0 },
+    listings: { value: listings.data?.filter((item) => item.status === "preparing" || item.status === "active" || item.status === "reserved").length, urgent: false },
   };
 
   useEffect(() => {
@@ -78,21 +91,19 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [router]);
 
   function navItem({ label, icon: Icon, href, count }: { label: string; icon: typeof ListTodo; href: string; count: string | null }) {
-    const route = href.split(/[?#]/)[0] ?? href;
-    const requestedView = href.includes("?") ? new URLSearchParams(href.split("?")[1]).get("view") : null;
-    const active = currentPathname === route && !href.includes("#") && (requestedView ? searchParams.get("view") === requestedView : !(route === "/listings" && searchParams.get("view") === "pool"));
-    const value = count ? counts[count] : undefined;
+    const active = currentPathname === href;
+    const badge = count ? counts[count] : undefined;
     return (
-      <Link key={href} href={href} className={`${active ? "nav-item active" : "nav-item"}${href === "/capture" ? " nav-capture" : ""}`} aria-current={active ? "page" : undefined}>
+      <Link key={href} href={href} className={`${active ? "nav-item active" : "nav-item"}${href === "/capture" ? " nav-capture" : ""}${href === "/funnel" ? " nav-desktop-only" : ""}`} aria-current={active ? "page" : undefined}>
         <Icon size={17} aria-hidden />
         <span>{label}</span>
-        {value !== undefined ? <span className="nav-count">{value}</span> : null}
+        {badge?.value !== undefined ? <span className={badge.urgent ? "nav-count urgent" : "nav-count"}>{badge.value}</span> : null}
       </Link>
     );
   }
 
   function swipeBlocked(target: EventTarget | null) {
-    return target instanceof Element && Boolean(target.closest("input, textarea, select, button, a, [role='dialog'], [data-no-page-swipe], .contact-segments, .settings-subnav, .opportunity-board"));
+    return target instanceof Element && Boolean(target.closest("input, textarea, select, button, a, [role='dialog'], [data-no-page-swipe], .contact-segments, .settings-subnav, .work-stage-strip"));
   }
 
   function onTouchStart(event: TouchEvent<HTMLDivElement>) {
@@ -131,20 +142,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <nav aria-label="Ana navigasyon">
-          <div className="nav-group">
-            <span className="nav-group-label">Çalışma</span>
-            {workNavigation.map(navItem)}
-          </div>
-          <div className="nav-group nav-group-office">
-            <span className="nav-group-label">Ofis</span>
-            {officeNavigation.map(navItem)}
-          </div>
+          <div className="nav-group">{navigation.map(navItem)}</div>
         </nav>
 
         <div className="sidebar-footer">
           <Link href="/settings" className={currentPathname === "/settings" ? "nav-item active" : "nav-item"} aria-current={currentPathname === "/settings" ? "page" : undefined}>
             <SlidersHorizontal size={17} aria-hidden />
-            <span>Ayarlar ve uyum</span>
+            <span>Ayarlar ve ekip</span>
           </Link>
           <div className="sidebar-separator" aria-hidden />
           <AccountMenu />

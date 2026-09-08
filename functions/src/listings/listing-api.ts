@@ -90,6 +90,7 @@ export const createListing = onCall(callableOptions, async (request): Promise<{ 
       if (opportunity.propertyId) throw new HttpsError("already-exists", "Opportunity already has a property.");
 
       const now = Date.now();
+      if (parsed.data.acquiredAt !== undefined && parsed.data.acquiredAt > now + 60_000) throw new HttpsError("invalid-argument", "Yetki tarihi gelecekte olamaz.");
       const nowTimestamp = Timestamp.fromMillis(now);
       const entities = createPropertyAndListing(parsed.data, { officeId: opportunity.officeId, ownerUid: opportunity.ownerUid }, opportunity.subjectContactId, propertyRef.id, now);
       transaction.create(propertyRef, { ...entities.property, deletedAt: null, createdAt: nowTimestamp, updatedAt: nowTimestamp });
@@ -150,9 +151,12 @@ export const importExistingListing = onCall(callableOptions, async (request): Pr
       }
 
       const now = Date.now();
+      if (parsed.data.acquiredAt !== undefined && parsed.data.acquiredAt > now + 60_000) throw new HttpsError("invalid-argument", "Yetki tarihi gelecekte olamaz.");
       const nowTimestamp = Timestamp.fromMillis(now);
+      const acquiredTimestamp = Timestamp.fromMillis(parsed.data.acquiredAt ?? now);
       const tenant = { officeId: contact.officeId as string, ownerUid: contact.ownerUid as string };
       const entities = createPropertyAndListing({
+        acquiredAt: parsed.data.acquiredAt,
         opportunityId: opportunityRef.id,
         address: parsed.data.address,
         regionSlug: parsed.data.regionSlug,
@@ -173,13 +177,13 @@ export const importExistingListing = onCall(callableOptions, async (request): Pr
         referralId: null,
         propertyId: propertyRef.id,
         stage: "won",
-        qualifiedAt: nowTimestamp,
-        stageEnteredAt: nowTimestamp,
+        qualifiedAt: acquiredTimestamp,
+        stageEnteredAt: acquiredTimestamp,
         nextActionAt: null,
         nextActionType: null,
         lostReason: null,
         estimatedValue: parsed.data.askingPrice === null ? null : { amount: parsed.data.askingPrice, currency: parsed.data.currency },
-        closedAt: nowTimestamp,
+        closedAt: acquiredTimestamp,
         deletedAt: null,
         createdAt: nowTimestamp,
         updatedAt: nowTimestamp,
@@ -187,8 +191,8 @@ export const importExistingListing = onCall(callableOptions, async (request): Pr
       transaction.create(propertyRef, { ...entities.property, deletedAt: null, createdAt: nowTimestamp, updatedAt: nowTimestamp });
       transaction.create(listingRef, toStoredListing(entities.listing));
       const auditReason = inboxRef ? "Akış notundan yetkili portföy oluşturuldu" : "Mevcut yetki içe aktarıldı";
-      transaction.create(opportunityEventRef, { ...tenant, entityType: "opportunity", entityId: opportunityRef.id, fromStage: null, toStage: "won", reason: auditReason, commandId: envelope.commandId, occurredAt: nowTimestamp, createdAt: nowTimestamp });
-      transaction.create(listingEventRef, { ...tenant, entityType: "listing", entityId: listingRef.id, fromStage: null, toStage: "preparing", reason: auditReason, commandId: envelope.commandId, occurredAt: nowTimestamp, createdAt: nowTimestamp });
+      transaction.create(opportunityEventRef, { ...tenant, entityType: "opportunity", entityId: opportunityRef.id, fromStage: null, toStage: "won", reason: auditReason, commandId: envelope.commandId, occurredAt: acquiredTimestamp, createdAt: nowTimestamp });
+      transaction.create(listingEventRef, { ...tenant, entityType: "listing", entityId: listingRef.id, fromStage: null, toStage: "preparing", reason: auditReason, commandId: envelope.commandId, occurredAt: acquiredTimestamp, createdAt: nowTimestamp });
       if (inboxRef) {
         transaction.update(inboxRef, {
           linkedContactId: parsed.data.ownerContactId,

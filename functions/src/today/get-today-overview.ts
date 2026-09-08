@@ -50,7 +50,7 @@ export const getTodayOverview = onCall(
     }
 
     const [contactsSnapshot, opportunitiesSnapshot, listingsSnapshot, dealsSnapshot, completionsSnapshot, interactionsSnapshot, callsSnapshot] = await Promise.all([
-      contactsQuery.limit(1_000).get(),
+      contactsQuery.get(),
       opportunitiesQuery.limit(1_000).get(),
       listingsQuery.limit(1_000).get(),
       dealsQuery.limit(1_000).get(),
@@ -426,7 +426,7 @@ async function loadTaskCandidates(claims: ReturnType<typeof requireSpherepathCla
     contactsQuery = contactsQuery.where("ownerUid", "==", claims.uid);
     opportunitiesQuery = opportunitiesQuery.where("ownerUid", "==", claims.uid);
   }
-  const [contactSnapshot, opportunitySnapshot] = await Promise.all([contactsQuery.limit(1_000).get(), opportunitiesQuery.limit(1_000).get()]);
+  const [contactSnapshot, opportunitySnapshot] = await Promise.all([contactsQuery.get(), opportunitiesQuery.limit(1_000).get()]);
   const contacts = contactSnapshot.docs.map((item) => {
     const data = item.data();
     return { id: item.id, name: (data.fullName ?? data.label ?? "İsimsiz kişi") as string, createdAt: millis(data.createdAt) ?? 0, meaningfulTouchCount: Number(data.relationship?.meaningfulTouchCount ?? 0), lastTouchAt: millis(data.relationship?.lastTouchAt), nextActionAt: millis(data.relationship?.nextActionAt), nextActionType: data.relationship?.nextActionType ?? null, roles: data.roles ?? [], deletedAt: millis(data.deletedAt) };

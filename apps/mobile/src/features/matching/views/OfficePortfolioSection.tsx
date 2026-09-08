@@ -1,3 +1,4 @@
+import { MatchInterest } from "@/features/closing/components/MatchInterest";
 import { useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, Share, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -8,6 +9,7 @@ import {
   buildMatchMessageFallback,
   formatMatchScore,
   currencyCodes,
+  advisorWorkflowCopy,
   moneyInputValue,
   parseMoneyInput,
   portfolioAuthorizationLabels,
@@ -71,7 +73,7 @@ function splitPortfolioMessages(raw: string): string[] {
   return normalized.split(/\n\s*\n+/u).map((item) => item.trim()).filter((item) => item.length >= 10).slice(0, 10);
 }
 
-function MatchCard({ match, nearMiss }: { match: PortfolioMatchRecord; nearMiss?: boolean }) {
+export function MatchCard({ match, nearMiss }: { match: PortfolioMatchRecord; nearMiss?: boolean }) {
   const theme = useSpTheme();
   const [sending, setSending] = useState(false);
   const [draftText, setDraftText] = useState<string | null>(null);
@@ -91,7 +93,7 @@ function MatchCard({ match, nearMiss }: { match: PortfolioMatchRecord; nearMiss?
       listingUrl: item.listingUrl,
     };
     try {
-      const draft = await draftMatchMessage({ ...subject, contactId: match.contactId, portfolioItemId: item.id })
+      const draft = await draftMatchMessage({ ...subject, contactId: match.contactId, portfolioItemId: item.id, opportunityId: match.opportunityId ?? null })
         .catch(() => ({ message: buildMatchMessageFallback(subject), source: "template" as const }));
       // Shown before it is shared: this text goes to a customer over the
       // advisor's own name, and a dismissed share used to take it with it.
@@ -116,6 +118,7 @@ function MatchCard({ match, nearMiss }: { match: PortfolioMatchRecord; nearMiss?
         {item.location}
         {item.askingPrice ? ` · ${money(item.askingPrice.amount, item.askingPrice.currency)}` : ""}
       </SpText>
+      {nearMiss ? <SpText color="secondary">{match.softMismatchKeys.length ? advisorWorkflowCopy.alternativeMatch : advisorWorkflowCopy.incompleteMatch}</SpText> : null}
       {match.situationSummary ? <SpText variant="caption" color="secondary">{match.situationSummary}</SpText> : null}
       {/* The reasons are what make a match arguable rather than magic. */}
       <View style={styles.reasons}>
@@ -125,6 +128,7 @@ function MatchCard({ match, nearMiss }: { match: PortfolioMatchRecord; nearMiss?
           </View>
         ))}
       </View>
+      <MatchInterest match={match} />
       {draftText === null ? (
         <SpButton
           disabled={sending}
@@ -155,7 +159,7 @@ export function OfficePortfolioSection() {
   const queryClient = useQueryClient();
   const itemsQuery = useQuery({ queryKey: apiQueryKeys.portfolioItems, queryFn: listPortfolioItems, enabled: Boolean(session) });
   const matchesQuery = useQuery({ queryKey: apiQueryKeys.portfolioMatches, queryFn: listPortfolioMatches, enabled: Boolean(session) });
-  const notificationsQuery = useQuery({ queryKey: apiQueryKeys.matchNotifications, queryFn: listMatchNotifications, enabled: Boolean(session) });
+  const notificationsQuery = useQuery({ queryKey: apiQueryKeys.matchNotifications, queryFn: listMatchNotifications, enabled: Boolean(session), staleTime: 60_000, refetchInterval: 60_000 });
 
   const [open, setOpen] = useState(false);
   const [source, setSource] = useState<PortfolioSource>("whatsapp_group");
@@ -165,12 +169,14 @@ export function OfficePortfolioSection() {
   const [attributes, setAttributes] = useState("");
   const [pending, setPending] = useState<"analyze" | "save" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(12);
+  const [contactFilter, setContactFilter] = useState("");
   const [showPool, setShowPool] = useState(false);
   const [showNearMisses, setShowNearMisses] = useState(false);
 
   const items = itemsQuery.data ?? [];
-  const matches = matchesQuery.data?.matches ?? [];
-  const nearMisses = matchesQuery.data?.nearMisses ?? [];
+  const matches = (matchesQuery.data?.matches ?? []).filter((item) => !contactFilter || item.contactId === contactFilter);
+  const nearMisses = (matchesQuery.data?.nearMisses ?? []).filter((item) => !contactFilter || item.contactId === contactFilter);
   const unread = (notificationsQuery.data ?? []).filter((item) => item.readAt === null);
 
   function update<K extends keyof PortfolioItemDraft>(key: K, value: PortfolioItemDraft[K]) {
@@ -216,7 +222,7 @@ export function OfficePortfolioSection() {
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.portfolioItems }),
-        queryClient.invalidateQueries({ queryKey: apiQueryKeys.portfolioMatches }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.portfolioMatches }), queryClient.invalidateQueries({ queryKey: apiQueryKeys.matchNotifications }),
       ]);
     } catch (nextError) {
       setError(messageFrom(nextError));
@@ -231,7 +237,7 @@ export function OfficePortfolioSection() {
       await withdrawPortfolioItem(session, portfolioItemId);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.portfolioItems }),
-        queryClient.invalidateQueries({ queryKey: apiQueryKeys.portfolioMatches }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.portfolioMatches }), queryClient.invalidateQueries({ queryKey: apiQueryKeys.matchNotifications }),
       ]);
     } catch (nextError) {
       setError(messageFrom(nextError));
@@ -249,7 +255,7 @@ export function OfficePortfolioSection() {
       <View style={styles.heading}>
         <View style={styles.flex}>
           <SpText variant="eyebrow" color="deed">OFİS HAVUZU</SpText>
-          <SpText variant="title">Eşleşmeler</SpText>
+          <SpText variant="title">Talep ve portföy eşleşmeleri</SpText>
         </View>
         <SpButton icon={<Plus color={theme.onDeed} size={16} />} label="Havuza ekle" onPress={() => { setOpen(true); setError(null); }} />
       </View>
@@ -263,23 +269,25 @@ export function OfficePortfolioSection() {
         </Pressable>
       ) : null}
 
+      <SpText>Kişiye göre filtrele</SpText><View style={styles.choices}><SpButton label="Tümü" onPress={() => { setContactFilter(""); setVisibleCount(12); }} />{Array.from(new Map([...(matchesQuery.data?.matches ?? []), ...(matchesQuery.data?.nearMisses ?? [])].map((item) => [item.contactId, item.contactName])).entries()).map(([id, name]) => <SpButton key={id} label={name} onPress={() => { setContactFilter(id); setVisibleCount(12); }} />)}</View>
       {matchesQuery.isPending ? (
         <View style={styles.state}><ActivityIndicator color={theme.deed} /><SpText color="secondary">Eşleşmeler yükleniyor…</SpText></View>
-      ) : matches.length ? (
-        matches.map((match) => <MatchCard key={`${match.contactId}-${match.portfolioItem.id}`} match={match} />)
+      ) : matchesQuery.error ? (<SpCard><SpText>{advisorWorkflowCopy.matchError}</SpText><SpButton label="Yeniden dene" onPress={() => void matchesQuery.refetch()} /></SpCard>) : matches.length ? (
+        matches.slice(0, visibleCount).map((match) => <MatchCard key={`${match.opportunityId ?? match.contactId}-${match.portfolioItem.id}`} match={match} />)
       ) : (
-        <SpCard><SpText color="secondary">Şu an eşleşme yok. Havuza portföy ekledikçe burada görünecek.</SpText></SpCard>
+        <SpCard><SpText color="secondary">{matchesQuery.data?.candidateCount === 0 ? "Eşleştirilecek portföy yok. Kendi portföyüne veya ofis havuzuna kayıt ekle." : matchesQuery.data?.demandCount === 0 ? advisorWorkflowCopy.missingCriteria : advisorWorkflowCopy.noMatches}</SpText></SpCard>
       )}
 
+      {Math.max(matches.length, nearMisses.length, showPool ? items.length : 0) > visibleCount ? <SpButton label="12 kayıt daha göster" onPress={() => setVisibleCount((count) => count + 12)} /> : null}
       {nearMisses.length ? (
         <>
           <Pressable onPress={() => setShowNearMisses((current) => !current)} style={styles.toggle}>
             <SpText variant="bodySmall" color="deed">
-              {showNearMisses ? "Yakın kaçanları gizle" : `Yakın kaçanlar · ${nearMisses.length}`}
+              {showNearMisses ? "Bilgi eksik veya alternatifleri gizle" : `Bilgi eksik veya alternatifler · ${nearMisses.length}`}
             </SpText>
           </Pressable>
-          {showNearMisses ? nearMisses.map((match) => (
-            <MatchCard key={`near-${match.contactId}-${match.portfolioItem.id}`} match={match} nearMiss />
+          {showNearMisses ? nearMisses.slice(0, visibleCount).map((match) => (
+            <MatchCard key={`near-${match.opportunityId ?? match.contactId}-${match.portfolioItem.id}`} match={match} nearMiss />
           )) : null}
         </>
       ) : null}
@@ -290,7 +298,7 @@ export function OfficePortfolioSection() {
           {showPool ? "Havuzu gizle" : `Ofis havuzu · ${items.length} portföy`}
         </SpText>
       </Pressable>
-      {showPool ? items.map((item) => (
+      {showPool ? items.slice(0, visibleCount).map((item) => (
         <SpCard key={item.id} style={styles.poolItem}>
           <SpText variant="title">{item.headline}</SpText>
           <SpText variant="bodySmall" color="secondary">

@@ -1,13 +1,16 @@
 "use client";
+import { OpportunityAction } from "../components/OpportunityAction";
+import { RequirementMatches } from "../components/RequirementMatches";
+import { RequirementMatchIndicator } from "../components/RequirementMatchIndicator";
+import { portfolioMatchesQueryOptions } from "@/features/matching/resources/portfolio";
 
-import { useEffect, useState, type FormEvent } from "react";
+
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowRight,
   BriefcaseBusiness,
-  LayoutGrid,
-  List,
   Plus,
   RefreshCw,
   Search,
@@ -15,8 +18,8 @@ import {
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  apiQueryKeys,
-  defaultOpportunityJourney,
+  apiQueryKeys, opportunityListSummary, opportunityJourneyFilters, opportunityJourneyLabels, opportunityOutcomeLabels, type OpportunityOutcomeFilter,
+  contactMemoryLine,
   emptyVoicePropertyPreferences,
   opportunityCriteriaCopy,
   portfolioAuthorizationLabels,
@@ -24,6 +27,8 @@ import {
   type OwnerOpportunityDetails,
   currencyCodes,
   isOwnerOpportunity,
+  isOpenRequirement,
+  summarizeOpportunityMatches,
   nextActionTypeLabels,
   nextActionTypes,
   nextOpportunityStages,
@@ -32,7 +37,7 @@ import {
   opportunityTransactionType,
   opportunityDraftSchema,
   opportunityStageCorrectionSchema,
-  opportunityStageLabel,
+  opportunityStageLabel, neutralOpportunityStageLabel,
   opportunityStages,
   opportunityTransitionSchema,
   opportunityTypeLabels,
@@ -63,12 +68,20 @@ import {
   updateOpportunityCriteria,
   type OpportunityRecord,
 } from "../resources/opportunities";
-import { handleFormKeyDown, SpInput, SpSelect, SpTextarea } from "@/shared/ui/SpField";
+import { handleFormKeyDown, SpField, SpInput, SpSelect, SpTextarea } from "@/shared/ui/SpField";
 import { MoneyField } from "@/shared/ui/MaskedFields";
 import {
   opportunitiesForJourney,
   type OpportunityJourneyFilter,
 } from "../viewModels/opportunity-list-scope";
+import {
+  groupWorkByUrgency,
+  workPathProgress,
+  workPathStages,
+  workUrgencyLabels,
+} from "../viewModels/work-queue";
+import { ClosingSection } from "@/features/closing/views/ClosingSection";
+import { listListings } from "@/features/listings/resources/listings";
 
 function localDateTime(days = 1): string {
   const date = new Date(Date.now() + days * 86_400_000);
@@ -88,6 +101,22 @@ function messageFrom(error: unknown) {
   return error instanceof Error
     ? error.message
     : "Fırsat işlemi tamamlanamadı.";
+}
+
+/** The row already names the action; this says only when it is due. */
+function dueChip(value: number | null, now: number): string {
+  if (value === null) return "Tarih belirlenmedi";
+  const due = new Date(value);
+  const today = new Date(now);
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  const time = new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(due);
+  if (value < now) {
+    const days = Math.floor((now - value) / 86_400_000);
+    return days >= 1 ? `${days} gün gecikti` : `bugün ${time} · gecikti`;
+  }
+  if (due.toDateString() === today.toDateString()) return `bugün ${time}`;
+  if (due.toDateString() === tomorrow.toDateString()) return `yarın ${time}`;
+  return new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short" }).format(due);
 }
 
 const dateTime = (value: number) =>
@@ -113,7 +142,6 @@ const stageTone: Partial<Record<OpportunityStage, string>> = {
   valuation: "warm",
   mandate_offer: "good",
 };
-type OpportunityOutcomeFilter = "open" | "won" | "lost";
 
 interface CriteriaForm {
   locationRequired: boolean;
@@ -206,8 +234,17 @@ export function OpportunitiesView() {
     queryKey: apiQueryKeys.contacts,
     queryFn: listContacts,
   });
+  // Marketing a mandate and closing on it are the second half of the same
+  // pipeline, so they live on the same screen as the first half.
+  const listingsQuery = useQuery({
+    queryKey: apiQueryKeys.listings,
+    queryFn: listListings,
+  });
   const contacts = contactsQuery.data ?? [];
   const opportunities = (opportunitiesQuery.data ?? []).map((opportunity) => withCurrentContactMemory(opportunity, contacts));
+  const [demandLocation, setDemandLocation] = useState("");
+  const [demandPropertyType, setDemandPropertyType] = useState<PropertyType | "">("");
+  const [demandBudget, setDemandBudget] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const createRequested = searchParams.get("create") === "1";
   const requestedContactId = searchParams.get("contactId");
@@ -216,6 +253,7 @@ export function OpportunitiesView() {
   const [correcting, setCorrecting] = useState<OpportunityRecord | null>(null);
   const [selected, setSelected] = useState<OpportunityRecord | null>(null);
   const [criteriaEditing, setCriteriaEditing] = useState<OpportunityRecord | null>(null);
+  const [criteriaAddressError, setCriteriaAddressError] = useState<string | null>(null);
   const [criteriaForm, setCriteriaForm] = useState<CriteriaForm>({ locationRequired: false, authorizationType: "unknown", motivation: "", locations: "", propertyTypes: [], budgetMin: "", budgetMax: "", currency: "TRY", bedrooms: "", livingRooms: "", areaMin: "", mustHaves: "", timeline: "" });
   const [dismissedDeepLink, setDismissedDeepLink] = useState<string | null>(
     null,
@@ -248,12 +286,12 @@ export function OpportunitiesView() {
   const [lostReason, setLostReason] = useState("");
   const [lostKind, setLostKind] = useState<"lost" | "duplicate">("lost");
   const [correctionReason, setCorrectionReason] = useState("");
-  const [view, setView] = useState<"board" | "list">("board");
+  const [stageFilter, setStageFilter] = useState<OpportunityStage | "all">("all");
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<OpportunityType | "all">("all");
   const [chosenJourney, setJourneyFilter] =
     useState<OpportunityJourneyFilter | null>(null);
-  const journeyFilter = chosenJourney ?? defaultOpportunityJourney(opportunities);
+  const journeyFilter = chosenJourney ?? "all";
   const [actionFilter, setActionFilter] = useState<
     "all" | "missing" | "overdue"
   >("all");
@@ -262,14 +300,11 @@ export function OpportunitiesView() {
 
   useEffect(() => {
     if (!linkedOpportunity) return;
-    // A deep link is external navigation state; reflect its journey in the local controls.
+    // A deep link is external navigation state; the list must not hide the
+    // record it points at, so both the journey and the stage open up.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setJourneyFilter(
-      linkedOpportunity.type === "buyer_requirement" ||
-        linkedOpportunity.type === "tenant_requirement"
-        ? "requirement"
-        : "owner",
-    );
+    setJourneyFilter("all");
+    setStageFilter("all");
     setOutcomeFilter(
       linkedOpportunity.stage === "won" || linkedOpportunity.stage === "lost"
         ? linkedOpportunity.stage
@@ -311,11 +346,7 @@ export function OpportunitiesView() {
       )
     : undefined;
   const normalizedSearch = search.trim().toLocaleLowerCase("tr-TR");
-  const journeyOpportunities = opportunitiesForJourney(
-    opportunities,
-    journeyFilter,
-  );
-  const scopedOpportunities = journeyOpportunities.filter((opportunity) => {
+  const matchingOpportunities = opportunities.filter((opportunity) => {
     if (typeFilter !== "all" && opportunity.type !== typeFilter) return false;
     if (!normalizedSearch) return true;
     return [
@@ -326,7 +357,10 @@ export function OpportunitiesView() {
       value.toLocaleLowerCase("tr-TR").includes(normalizedSearch),
     );
   });
+  const scopedOpportunities = opportunitiesForJourney(matchingOpportunities, journeyFilter);
+  const outcomeCounts = opportunityListSummary(scopedOpportunities);
   const visibleOpportunities = scopedOpportunities.filter((opportunity) => {
+    if (stageFilter !== "all" && opportunity.stage !== stageFilter) return false;
     if (actionFilter === "missing") return opportunity.nextActionAt === null;
     if (actionFilter === "overdue") {
       return (
@@ -346,19 +380,19 @@ export function OpportunitiesView() {
     outcomeFilter === "open"
       ? openOpportunities
       : visibleOpportunities.filter((item) => item.stage === outcomeFilter);
-  const wonCount = scopedOpportunities.filter(
-    (item) => item.stage === "won",
-  ).length;
-  const lostCount = scopedOpportunities.filter(
-    (item) => item.stage === "lost" && item.lostKind !== "duplicate",
-  ).length;
-  const nextOpportunity = [...openOpportunities].sort((left, right) => {
-    if (left.nextActionAt === null && right.nextActionAt !== null) return -1;
-    if (left.nextActionAt !== null && right.nextActionAt === null) return 1;
-    if (left.nextActionAt !== right.nextActionAt)
-      return (left.nextActionAt ?? 0) - (right.nextActionAt ?? 0);
-    return left.stageEnteredAt - right.stageEnteredAt;
-  })[0];
+  const matchesQuery = useQuery({ ...portfolioMatchesQueryOptions, enabled: displayedOpportunities.some(isOpenRequirement), refetchInterval: 60_000 });
+  const matchSummaries = useMemo(() => summarizeOpportunityMatches(matchesQuery.data ?? { matches: [], nearMisses: [] }), [matchesQuery.data]);
+  const wonCount = outcomeCounts.won;
+  const lostCount = outcomeCounts.lost;
+  const nextOpportunity = outcomeFilter === "open"
+    ? [...displayedOpportunities].sort((left, right) => {
+        if (left.nextActionAt === null && right.nextActionAt !== null) return -1;
+        if (left.nextActionAt !== null && right.nextActionAt === null) return 1;
+        if (left.nextActionAt !== right.nextActionAt)
+          return (left.nextActionAt ?? 0) - (right.nextActionAt ?? 0);
+        return left.stageEnteredAt - right.stageEnteredAt;
+      })[0]
+    : undefined;
   const missingActionCount = scopedOpportunities.filter(
     (item) => activeStages.includes(item.stage) && item.nextActionAt === null,
   ).length;
@@ -383,7 +417,7 @@ export function OpportunitiesView() {
   function selectOutcome(next: OpportunityOutcomeFilter) {
     setOutcomeFilter(next);
     if (next !== "open") {
-      setView("list");
+      setStageFilter("all");
       setActionFilter("all");
     }
   }
@@ -432,6 +466,7 @@ export function OpportunitiesView() {
   function openCriteriaEditor(opportunity: OpportunityRecord) {
     const current = withCurrentContactMemory(detailQuery.data?.opportunity.id === opportunity.id ? detailQuery.data.opportunity : opportunity, contacts);
     const preferences = preferencesFor(current);
+    setCriteriaAddressError(null);
     setCriteriaEditing(current);
     setCriteriaForm({
       locationRequired: preferences.locationRequired ?? false,
@@ -456,6 +491,7 @@ export function OpportunitiesView() {
     event.preventDefault();
     if (!session || !criteriaEditing) return;
     const current = preferencesFor(criteriaEditing);
+    const onlyLand = criteriaForm.propertyTypes.length === 1 && criteriaForm.propertyTypes[0] === "land";
     const budgetMin = parseMoneyInput(criteriaForm.budgetMin);
     const budgetMax = parseMoneyInput(criteriaForm.budgetMax);
     const parsed = opportunityCriteriaUpdateSchema.safeParse({
@@ -468,26 +504,38 @@ export function OpportunitiesView() {
         preferredLocations: criteriaForm.locations.split(",").map((item) => item.trim()).filter(Boolean),
         locationRequired: criteriaForm.locationRequired,
         budgetRange: budgetMin !== null || budgetMax !== null ? { min: isOwnerOpportunity(criteriaEditing.type) ? budgetMax : budgetMin, max: budgetMax, currency: criteriaForm.currency } : null,
-        bedroomCountMin: optionalNumber(criteriaForm.bedrooms),
-        livingRoomCountMin: optionalNumber(criteriaForm.livingRooms),
-        roomCountMin: optionalNumber(criteriaForm.bedrooms),
+        bedroomCountMin: onlyLand ? null : optionalNumber(criteriaForm.bedrooms),
+        livingRoomCountMin: onlyLand ? null : optionalNumber(criteriaForm.livingRooms),
+        roomCountMin: onlyLand ? null : optionalNumber(criteriaForm.bedrooms),
         areaMinM2: optionalNumber(criteriaForm.areaMin),
         mustHaves: criteriaForm.mustHaves.split(",").map((item) => item.trim()).filter(Boolean),
         timeline: criteriaForm.timeline.trim() || null,
       },
     });
-    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Kriterleri kontrol et.");
+    if (!parsed.success) {
+      const addressError = parsed.error.issues.find((issue) => issue.path.join(".") === "ownerDetails.address")?.message ?? null;
+      setCriteriaAddressError(addressError);
+      setError(addressError ? null : parsed.error.issues[0]?.message ?? "Kriterleri kontrol et.");
+      if (addressError) {
+        const field = event.currentTarget.elements.namedItem("criteria-address");
+        if (field instanceof HTMLInputElement) field.focus();
+      }
+      return;
+    }
+    setCriteriaAddressError(null);
     setPending(true); setError(null);
     try {
       await updateOpportunityCriteria(session, parsed.data);
       const opportunityId = criteriaEditing.id;
-      setCriteriaEditing(null);
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunities }),
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunityDetail(opportunityId) }),
-        queryClient.invalidateQueries({ queryKey: apiQueryKeys.portfolioMatches }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.portfolioMatches }), queryClient.invalidateQueries({ queryKey: apiQueryKeys.matchNotifications }),
       ]);
+      await queryClient.fetchQuery({ queryKey: apiQueryKeys.opportunityDetail(opportunityId), queryFn: () => getOpportunityDetail(opportunityId), staleTime: 0 });
+      setCriteriaEditing(null);
     } catch (nextError) { setError(messageFrom(nextError)); }
     finally { setPending(false); }
   }
@@ -500,6 +548,7 @@ export function OpportunitiesView() {
     const parsed = opportunityDraftSchema.safeParse({
       subjectContactId: selectedContactId,
       type: draftType,
+      ...(!isOwnerOpportunity(draftType) ? { criteria: { ...emptyVoicePropertyPreferences, transactionType: opportunityTransactionType(draftType), preferredLocations: demandLocation.split(",").map((item) => item.trim()).filter(Boolean), propertyTypes: demandPropertyType ? [demandPropertyType] : [], budgetRange: parseMoneyInput(demandBudget) === null ? null : { min: null, max: parseMoneyInput(demandBudget), currency: "TRY" } } } : {}),
       nextActionType: actionType,
       nextActionAt: new Date(submittedActionAt).getTime(),
     });
@@ -510,14 +559,17 @@ export function OpportunitiesView() {
     setPending(true);
     setError(null);
     try {
-      await saveOpportunity(session, parsed.data);
+      const created = await saveOpportunity(session, parsed.data);
       setJourneyFilter(
-        type === "buyer_requirement" || type === "tenant_requirement"
+        parsed.data.type === "buyer_requirement" || parsed.data.type === "tenant_requirement"
           ? "requirement"
           : "owner",
       );
       closeCreate();
       await invalidate();
+      setSelected(created);
+      setDemandLocation(""); setDemandPropertyType(""); setDemandBudget("");
+      setStageFilter("all"); setTypeFilter("all"); setSearch("");
     } catch (nextError) {
       setError(messageFrom(nextError));
     } finally {
@@ -631,46 +683,25 @@ export function OpportunitiesView() {
     <AppShell>
       <header className="page-header contacts-header">
         <div>
-          <p className="eyebrow">TALEPLER VE SONUÇLAR</p>
-          <h1>Fırsatlar</h1>
+          <p className="eyebrow">TALEPTEN KAPANIŞA · {scopedOpenOpportunities.length} AÇIK İŞ</p>
+          <h1>İşler</h1>
           <p className="context-sentence">
-            Açık işleri ilerlet; kazanılan ve kaybedilen kayıtları gerektiğinde
-            yeniden aç.
+            Fırsat, sunum, gezi ve teklif tek akışta. Sıralama aksiyon
+            aciliyetine göre.
           </p>
         </div>
         <div className="header-actions">
-          <div className="segmented-control">
+          {nextOpportunity ? (
             <button
-              className={
-                view === "board" && outcomeFilter === "open" ? "selected" : ""
-              }
-              onClick={() => {
-                setView("board");
-                setOutcomeFilter("open");
-              }}
+              className="secondary-action inline-action"
+              disabled={pending}
+              onClick={() => openMove(nextOpportunity)}
               type="button"
             >
-              <LayoutGrid size={13} /> Pano
+              {nextOpportunity.subjectContactName}: ilerlet{" "}
+              <ArrowRight size={15} />
             </button>
-            <button
-              className={view === "list" ? "selected" : ""}
-              onClick={() => setView("list")}
-              type="button"
-            >
-              <List size={13} /> Liste
-            </button>
-          </div>
-          <button
-            className="secondary-action inline-action"
-            disabled={pending || !nextOpportunity}
-            onClick={() => nextOpportunity && openMove(nextOpportunity)}
-            type="button"
-          >
-            {nextOpportunity
-              ? `${nextOpportunity.subjectContactName}: ilerlet`
-              : "İlerletilecek fırsat yok"}{" "}
-            <ArrowRight size={15} />
-          </button>
+          ) : null}
           <button
             className="primary-action inline-action"
             disabled={!contacts.length}
@@ -680,7 +711,7 @@ export function OpportunitiesView() {
             }}
             type="button"
           >
-            <Plus size={18} /> Yeni fırsat
+            <Plus size={18} /> Yeni iş
           </button>
         </div>
       </header>
@@ -688,27 +719,24 @@ export function OpportunitiesView() {
         <p className="form-error notice">{error}</p>
       ) : null}
       {opportunities.length ? (
-        <div className="segmented-control" aria-label="Fırsat yolu">
-          <button
-            className={journeyFilter === "owner" ? "selected" : ""}
-            onClick={() => {
-              setJourneyFilter("owner");
-              setTypeFilter("all");
-            }}
-            type="button"
-          >
-            Portföy adayları
-          </button>
-          <button
-            className={journeyFilter === "requirement" ? "selected" : ""}
-            onClick={() => {
-              setJourneyFilter("requirement");
-              setTypeFilter("all");
-            }}
-            type="button"
-          >
-            Müşteri talepleri
-          </button>
+        <div className="segmented-control" aria-label="İş yolu">
+          {opportunityJourneyFilters.map((value) => {
+            const count = opportunityListSummary(opportunitiesForJourney(matchingOpportunities, value)).total;
+            return (
+            <button
+              key={value}
+              className={journeyFilter === value ? "selected" : ""}
+              onClick={() => {
+                setJourneyFilter(value);
+                setTypeFilter("all");
+                setStageFilter("all");
+              }}
+              type="button"
+            >
+              {opportunityJourneyLabels[value]} <span className="segmented-count">{count}</span>
+            </button>
+            );
+          })}
         </div>
       ) : null}
       {opportunities.length ? (
@@ -725,7 +753,7 @@ export function OpportunitiesView() {
               }}
               type="button"
             >
-              {missingActionCount} fırsatta sonraki aksiyon yok
+              {missingActionCount} işte sonraki aksiyon yok
             </button>
             <button
               aria-pressed={actionFilter === "overdue"}
@@ -749,22 +777,49 @@ export function OpportunitiesView() {
                 gün
               </strong>
             </span>
+          </div>
+          {/* The board's real value was seeing the whole path at once. A strip
+              keeps that and gives the empty stages a line instead of a column. */}
+          <section className="work-stage-strip" aria-label="Yolun neresinde">
+            {activeStages.map((stage) => {
+              const items = scopedOpportunities.filter((item) => item.stage === stage);
+              const selectedStage = stageFilter === stage;
+              return (
+                <button
+                  key={stage}
+                  aria-pressed={selectedStage}
+                  className={`work-stage-step stage-tone-${stageTone[stage] ?? "deed"}${selectedStage ? " selected" : ""}`}
+                  onClick={() => {
+                    selectOutcome("open");
+                    setStageFilter((current) => (current === stage ? "all" : stage));
+                  }}
+                  type="button"
+                >
+                  <strong>{items.length}</strong>
+                  <span>
+                    {(journeyFilter === "all" ? neutralOpportunityStageLabel(stage) : opportunityStageLabel(
+                      stage,
+                      journeyFilter === "requirement" ? "buyer_requirement" : "seller_listing",
+                    ))}
+                  </span>
+                  <em aria-hidden />
+                </button>
+              );
+            })}
+            <span className="work-stage-divider" aria-hidden>
+              <ArrowRight size={14} />
+            </span>
             <button
               aria-pressed={outcomeFilter === "won"}
-              className="opportunity-outcomes"
+              className="work-stage-step stage-tone-good"
               onClick={() => selectOutcome("won")}
               type="button"
             >
-              Kazanılan · {wonCount}
+              <strong>{wonCount}</strong>
+              <span>Kazanıldı</span>
+              <em aria-hidden />
             </button>
-            <button
-              aria-pressed={outcomeFilter === "lost"}
-              onClick={() => selectOutcome("lost")}
-              type="button"
-            >
-              Kaybedilen · {lostCount}
-            </button>
-          </div>
+          </section>
           <div className="opportunity-filterbar">
             <label className="contact-search">
               <Search size={16} aria-hidden />
@@ -801,7 +856,7 @@ export function OpportunitiesView() {
                 onClick={() => selectOutcome("open")}
                 type="button"
               >
-                Açık ·{" "}
+                {opportunityOutcomeLabels.open} ·{" "}
                 {
                   scopedOpenOpportunities.length
                 }
@@ -811,14 +866,14 @@ export function OpportunitiesView() {
                 onClick={() => selectOutcome("won")}
                 type="button"
               >
-                Kazanılan · {wonCount}
+                {opportunityOutcomeLabels.won} · {wonCount}
               </button>
               <button
                 className={outcomeFilter === "lost" ? "selected" : ""}
                 onClick={() => selectOutcome("lost")}
                 type="button"
               >
-                Kaybedilen · {lostCount}
+                {opportunityOutcomeLabels.lost} · {lostCount}
               </button>
             </div>
           </div>
@@ -878,70 +933,63 @@ export function OpportunitiesView() {
             Filtreleri temizle
           </button>
         </SpCard>
-      ) : view === "board" && outcomeFilter === "open" ? (
-        <section className="opportunity-board" aria-label="Fırsat panosu">
-          {activeStages.map((stage) => {
-            const items = openOpportunities.filter(
-              (item) => item.stage === stage,
-            );
-            return (
-              <div
-                className={`opportunity-column stage-tone-${stageTone[stage] ?? "deed"}`}
-                key={stage}
-              >
-                <div className="opportunity-column-heading">
-                  <span>
-                    {opportunityStageLabel(
-                      stage,
-                      journeyFilter === "requirement"
-                        ? "buyer_requirement"
-                        : "seller_listing",
-                    )}
-                  </span>
-                  <strong>{items.length}</strong>
-                </div>
-                <div className="opportunity-column-list">
-                  {items.map((opportunity) => (
-                    <button
-                      className={`kanban-card ${!opportunity.nextActionAt ? "missing-action" : opportunity.nextActionAt < referenceTime ? "overdue-action" : ""}`}
-                      key={opportunity.id}
-                      onClick={() => setSelected(opportunity)}
-                      type="button"
-                    >
-                      <span>{opportunityTypeLabels[opportunity.type]}</span>
-                      <strong>{opportunity.subjectContactName}</strong>
-                      <small
-                        className={
-                          !opportunity.nextActionAt
-                            ? "missing"
-                            : opportunity.nextActionAt < referenceTime
-                              ? "overdue"
-                              : ""
-                        }
-                      >
-                        {opportunity.nextActionAt
-                          ? `${opportunity.nextActionType ? nextActionTypeLabels[opportunity.nextActionType] : "Sonraki aksiyon"} · ${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(opportunity.nextActionAt)}`
-                          : "Sonraki aksiyon yok"}
-                      </small>
-                      <em>
-                        {Math.max(
-                          0,
-                          Math.floor(
-                            (referenceTime - opportunity.stageEnteredAt) /
-                              86_400_000,
-                          ),
-                        )}{" "}
-                        gündür bu aşamada
-                      </em>
-                    </button>
-                  ))}
-                  {items.length === 0 ? (
-                    <div className="kanban-empty">Bu aşamada fırsat yok</div>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
+      ) : outcomeFilter === "open" ? (
+        <section className="work-queue" aria-label="Açık işler">
+          {groupWorkByUrgency(openOpportunities, referenceTime).map((group) => (
+            <div className="work-group" key={group.urgency}>
+              <p className={`work-group-heading tone-${group.urgency}`}>
+                <span className="eyebrow">{workUrgencyLabels[group.urgency].toLocaleUpperCase("tr-TR")}</span>
+                <span>{group.items.length}</span>
+              </p>
+              <ul className="work-list">
+                {group.items.map((opportunity) => {
+                  const progress = workPathProgress(opportunity.stage);
+                  const stageDays = Math.max(0, Math.floor((referenceTime - opportunity.stageEnteredAt) / 86_400_000));
+                  const highlights = opportunityHighlights(opportunity);
+                  const late = opportunity.nextActionAt !== null && opportunity.nextActionAt < referenceTime;
+                  return (
+                    <li className={`work-row urgency-${group.urgency}`} key={opportunity.id}>
+                      <span className="work-dot" aria-hidden />
+                      <div className="work-row-identity">
+                        <button className="work-row-open" onClick={() => setSelected(opportunity)} type="button">
+                          <span className="work-row-head">
+                            <strong>{opportunity.subjectContactName}</strong>
+                            <span className={`stage-badge stage-${opportunity.type === "seller_listing" || opportunity.type === "landlord_listing" ? "won" : "first_contact"}`}>
+                              {opportunityTypeLabels[opportunity.type]}
+                            </span>
+                          </span>
+                          <small>{highlights.length ? highlights.join(" · ") : contactMemoryLine(opportunity.subjectContactMemory) ?? "Kriterler henüz kaydedilmedi"}</small>
+                        </button>
+                        <RequirementMatchIndicator opportunity={opportunity} summary={matchSummaries.get(opportunity.id)} status={matchesQuery.status} />
+                      </div>
+                      <span className="work-path">
+                        <span className="work-path-pips" aria-hidden>
+                          {workPathStages.map((pathStage, index) => (
+                            <i className={index < progress ? "on" : ""} key={pathStage} />
+                          ))}
+                        </span>
+                        <small>
+                          {opportunityStageLabel(opportunity.stage, opportunity.type)} · {stageDays} gündür bu aşamada
+                        </small>
+                      </span>
+                      <span className="work-next">
+                        <strong className={late || !opportunity.nextActionAt ? "overdue-text" : undefined}>
+                          {opportunity.nextActionType ? nextActionTypeLabels[opportunity.nextActionType] : "Sonraki aksiyon yok"}
+                        </strong>
+                        <small className={late || !opportunity.nextActionAt ? "overdue-text" : undefined}>{dueChip(opportunity.nextActionAt, referenceTime)}</small>
+                      </span>
+                      <div className="work-row-actions">
+                        <OpportunityAction opportunity={opportunity} compact />
+                      <button className="primary-action compact-action work-advance" onClick={() => openMove(opportunity)} type="button">
+                        İlerlet <ArrowRight size={13} />
+                      </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
         </section>
       ) : (
         <section className="opportunity-list-table">
@@ -949,9 +997,7 @@ export function OpportunitiesView() {
             <span>Kişi</span>
             <span>Tür</span>
             <span>Aşama</span>
-            <span>
-              {outcomeFilter === "open" ? "Sonraki aksiyon" : "Sonuç"}
-            </span>
+            <span>Sonuç</span>
             <span>Aşama süresi</span>
           </div>
           {displayedOpportunities.map((opportunity) => (
@@ -979,6 +1025,12 @@ export function OpportunitiesView() {
           ))}
         </section>
       )}
+
+      {listingsQuery.data?.length ? (
+        <div className="work-closing" id="closing">
+          <ClosingSection listings={listingsQuery.data} />
+        </div>
+      ) : null}
 
       {activeSelected ? (
         <div
@@ -1072,7 +1124,7 @@ export function OpportunitiesView() {
                     </li>
                   ))}
                 </ol>
-                <div className="opportunity-detail-actions">
+                {!isOwnerOpportunity(activeSelected.type) ? <RequirementMatches opportunity={detailQuery.data?.opportunity ?? activeSelected} /> : null}<div className="opportunity-detail-actions"><OpportunityAction opportunity={activeSelected} />
                   <Link
                     className="secondary-action inline-link"
                     href={`/capture?contactId=${encodeURIComponent(activeSelected.subjectContactId)}`}
@@ -1132,7 +1184,9 @@ export function OpportunitiesView() {
               <button className="icon-action" aria-label="Kapat" disabled={pending} onClick={() => setCriteriaEditing(null)} type="button"><X size={20} /></button>
             </div>
             <form onKeyDown={handleFormKeyDown} className="form-stack" onSubmit={saveCriteria}>{isOwnerOpportunity(criteriaEditing.type) ? <><label>{opportunityCriteriaCopy.authorization}<SpSelect value={criteriaForm.authorizationType} onChange={(event) => setCriteriaForm((current) => ({ ...current, authorizationType: event.target.value as OwnerOpportunityDetails["authorizationType"] }))}>{portfolioAuthorizationTypes.map((item) => <option key={item} value={item}>{portfolioAuthorizationLabels[item]}</option>)}</SpSelect></label><label>{opportunityCriteriaCopy.motivation}<SpTextarea value={criteriaForm.motivation} onChange={(event) => setCriteriaForm((current) => ({ ...current, motivation: event.target.value }))} /></label></> : <label className="check-label"><SpInput type="checkbox" checked={criteriaForm.locationRequired} onChange={(event) => setCriteriaForm((current) => ({ ...current, locationRequired: event.target.checked }))} />{opportunityCriteriaCopy.locationRequired}</label>}
-              <label>{isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.address : "Bölgeler · virgülle ayır"}<SpInput value={criteriaForm.locations} onChange={(event) => setCriteriaForm((current) => ({ ...current, locations: event.target.value }))} placeholder="Karşıyaka, Bostanlı" /></label>
+              <SpField label={isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.address : "Bölgeler · virgülle ayır"} hint={isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.addressHint : undefined} error={criteriaAddressError}>
+                <SpInput name="criteria-address" aria-label={isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.address : "Bölgeler · virgülle ayır"} aria-required={isOwnerOpportunity(criteriaEditing.type)} aria-invalid={Boolean(criteriaAddressError)} value={criteriaForm.locations} onChange={(event) => { setCriteriaAddressError(null); setCriteriaForm((current) => ({ ...current, locations: event.target.value })); }} placeholder={opportunityCriteriaCopy.locationPlaceholder} />
+              </SpField>
               <fieldset><legend>Mülk türleri</legend><div className="chip-row">{propertyTypes.map((item) => <button className={`choice-chip ${criteriaForm.propertyTypes.includes(item) ? "selected" : ""}`} key={item} aria-pressed={criteriaForm.propertyTypes.includes(item)} onClick={() => setCriteriaForm((current) => ({ ...current, propertyTypes: current.propertyTypes.includes(item) ? current.propertyTypes.filter((value) => value !== item) : [...current.propertyTypes, item] }))} type="button">{propertyTypeLabels[item]}</button>)}</div></fieldset>
               <div className="form-row">
                 {!isOwnerOpportunity(criteriaEditing.type) ? <label>Minimum bütçe<MoneyField currency={criteriaForm.currency} value={criteriaForm.budgetMin} onChange={(value) => setCriteriaForm((current) => ({ ...current, budgetMin: value }))} /></label> : null}
@@ -1140,8 +1194,8 @@ export function OpportunitiesView() {
                 <label>Para birimi<SpSelect value={criteriaForm.currency} onChange={(event) => setCriteriaForm((current) => ({ ...current, currency: event.target.value as CurrencyCode }))}>{currencyCodes.map((item) => <option key={item}>{item}</option>)}</SpSelect></label>
               </div>
               <div className="form-row">
-                <label>Yatak odası<SpInput min="0" type="number" value={criteriaForm.bedrooms} onChange={(event) => setCriteriaForm((current) => ({ ...current, bedrooms: event.target.value }))} /></label>
-                <label>Salon<SpInput min="0" type="number" value={criteriaForm.livingRooms} onChange={(event) => setCriteriaForm((current) => ({ ...current, livingRooms: event.target.value }))} /></label>
+                {criteriaForm.propertyTypes.length === 1 && criteriaForm.propertyTypes[0] === "land" ? null : <><label>Yatak odası<SpInput min="0" type="number" value={criteriaForm.bedrooms} onChange={(event) => setCriteriaForm((current) => ({ ...current, bedrooms: event.target.value }))} /></label>
+                <label>Salon<SpInput min="0" type="number" value={criteriaForm.livingRooms} onChange={(event) => setCriteriaForm((current) => ({ ...current, livingRooms: event.target.value }))} /></label></>}
                 <label>{isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.area : "Minimum m²"}<SpInput min="1" type="number" value={criteriaForm.areaMin} onChange={(event) => setCriteriaForm((current) => ({ ...current, areaMin: event.target.value }))} /></label>
               </div>
               <label>{isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.features : "Olmazsa olmazlar · virgülle ayır"}<SpInput value={criteriaForm.mustHaves} onChange={(event) => setCriteriaForm((current) => ({ ...current, mustHaves: event.target.value }))} placeholder="Havuz, otopark" /></label>
@@ -1197,6 +1251,7 @@ export function OpportunitiesView() {
                   ))}
                 </SpSelect>
               </label>
+              {!isOwnerOpportunity(draftType) ? <><label>Aranan bölgeler<SpInput value={demandLocation} onChange={(event) => setDemandLocation(event.target.value)} placeholder="Örn. Kadıovacık" /></label><label>Aranan mülk türü<SpSelect value={demandPropertyType} onChange={(event) => setDemandPropertyType(event.target.value as PropertyType | "")}><option value="">Henüz bilinmiyor</option>{propertyTypes.map((item) => <option key={item} value={item}>{propertyTypeLabels[item]}</option>)}</SpSelect></label><label>Maksimum bütçe · isteğe bağlı<MoneyField currency="TRY" value={demandBudget} onChange={setDemandBudget} /></label><p className="privacy-hint">Teklif tutarı bütçe sınırı değildir. Bilinmeyen kriterleri boş bırak.</p></> : null}
               <label>
                 Sonraki adım
                 <SpSelect

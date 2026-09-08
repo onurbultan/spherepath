@@ -79,6 +79,7 @@ export interface ContactDataExport {
   deals: Array<Record<string, unknown>>;
   voiceNotes: Array<Record<string, unknown>>;
   inboxItems: Array<Record<string, unknown>>;
+  importedNotes?: Array<Record<string, unknown>>;
 }
 
 export function accessRequestNextStatus(status: DataSubjectRequestStatus, decision: ResolveDataSubjectRequestInput["decision"]): DataSubjectRequestStatus {

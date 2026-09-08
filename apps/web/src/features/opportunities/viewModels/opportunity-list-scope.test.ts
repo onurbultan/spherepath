@@ -12,4 +12,12 @@ describe("opportunitiesForJourney", () => {
     expect(opportunitiesForJourney(opportunities, "owner")).toHaveLength(2);
     expect(opportunitiesForJourney(opportunities, "requirement")).toHaveLength(1);
   });
+
+  it("keeps every journey when the advisor asks for the whole day's work", () => {
+    expect(opportunitiesForJourney(opportunities, "all")).toHaveLength(3);
+  });
+
+  it("does not hand back the caller's own array to mutate", () => {
+    expect(opportunitiesForJourney(opportunities, "all")).not.toBe(opportunities);
+  });
 });

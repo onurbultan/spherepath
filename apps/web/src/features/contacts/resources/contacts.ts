@@ -3,6 +3,7 @@ import { apiClient } from "@/shared/api/client";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
 
 export interface ContactRecord extends Contact {
+  nextActionSummary?: import("@spherepath/shared").ContactNextStep | null;
   id: string;
 }
 
@@ -20,7 +21,14 @@ export interface ContactTaskOutcomeRecord {
 }
 
 export async function listContacts(): Promise<ContactRecord[]> {
-  return (await apiClient.query<undefined, { contacts: ContactRecord[] }>("listContacts", undefined)).contacts;
+  const contacts: ContactRecord[] = [];
+  let cursor: string | null = null;
+  do {
+    const page: { contacts: ContactRecord[]; nextCursor?: string | null } = await apiClient.query<{ cursor?: string }, { contacts: ContactRecord[]; nextCursor?: string | null }>("listContacts", cursor ? { cursor } : {});
+    contacts.push(...page.contacts);
+    cursor = page.nextCursor ?? null;
+  } while (cursor);
+  return contacts.sort((left, right) => right.createdAt - left.createdAt);
 }
 
 export async function listContactInteractions(contactId: string): Promise<{ interactions: ContactInteractionRecord[]; taskOutcomes: ContactTaskOutcomeRecord[] }> {

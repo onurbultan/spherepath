@@ -17,6 +17,9 @@ const allowed = {
   },
   mobile: {
     // Nothing yet. Notification scheduling has no callable of its own.
+    // 2026-09-07 release exception: contact import has source/API parity, but
+    // native delivery awaits EAS project and store signing configuration.
+    // The file-picker dependency needs a new native binary; web ships first.
   },
 };
 

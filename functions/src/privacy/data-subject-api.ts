@@ -223,9 +223,11 @@ export const getContactDataExport = onCall(callableOptions, async (request): Pro
       records("voiceNotes", "contactId", contactId, claims.officeId),
       records("inboxItems", "linkedContactId", contactId, claims.officeId),
     ]);
+    const importedNotes = await firestore.collection("contactImportNotes").where("contactId", "==", contactId).get();
     const contact = contactSnapshot.data()!;
     const relationship = contact.relationship as DocumentData;
     const contactExport: ContactDataExport = {
+      importedNotes: importedNotes.docs.filter((doc) => doc.data().officeId === claims.officeId).map((doc) => publicRecord({ id: doc.id, ...doc.data() })),
       generatedAt: Date.now(),
       contact: publicRecord({ id: contactSnapshot.id, ...contact }),
       relationshipSignals: [

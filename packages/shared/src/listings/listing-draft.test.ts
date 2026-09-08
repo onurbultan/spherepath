@@ -43,6 +43,7 @@ describe("listing draft", () => {
       "Yetki sözleşmesi veya muafiyet doğrulandı",
       "EİDS kaydı veya muafiyet doğrulandı",
       "Fotoğraf ve medya yayına hazır",
+      "İşleme dayanağı doğrulandı",
     ]);
     expect(listingAuthorizationUpdateSchema.parse({ listingId: "listing-1", authorizationType: "open" }).authorizationType).toBe("open");
   });

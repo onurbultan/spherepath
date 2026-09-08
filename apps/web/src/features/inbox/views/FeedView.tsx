@@ -3,15 +3,14 @@
 import { onboardingCopy, dailyTaskQueryKeys } from "@spherepath/shared";
 
 import { useState } from "react";
-import { Archive, ArchiveRestore, Check, ChevronDown, ChevronUp, MapPin, MessagesSquare, Mic, Pencil, PhoneOff, Pin, RefreshCw, RotateCcw, Send, Shuffle, Sparkles } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowRight, Check, ChevronDown, ChevronUp, MapPin, Mic, Pencil, PhoneOff, Pin, RefreshCw, RotateCcw, Send, Shuffle, Target } from "lucide-react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiQueryKeys, dailyTaskResolutionLabels, inboxAnalysisHighlights, inboxItemKinds, inboxItemTrace, inboxKindAfterAnalysis, isInboxItemResolved, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
+import { apiQueryKeys, dailyTaskResolutionLabels, inboxAnalysisHighlights, todayTaskBucket, inboxItemKinds, inboxItemTrace, inboxKindAfterAnalysis, isInboxItemResolved, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
 import { finishDailyTask, loadTodayOverview, replaceDailyTask } from "@/features/today/resources/today";
-import { TaskResolutionSheet, taskDueLabel, taskRecordHref } from "@/features/today/components/TaskResolutionSheet";
+import { TaskResolutionSheet, taskActionLabel, taskContextLine, taskDueChip, taskRecordHref } from "@/features/today/components/TaskResolutionSheet";
 import { changeInboxItem, createInboxNote, listInboxItems, retryInboxItem, undoInboxItem } from "../resources/inbox";
-import { noteViewModes, useNoteViewMode } from "../resources/note-view";
 import { SpCard } from "@/shared/ui/SpCard";
 import { AppShell } from "@/shared/ui/AppShell";
 import { listContacts } from "@/features/contacts/resources/contacts";
@@ -34,9 +33,6 @@ function statusLabel(item: InboxItemRecord): string {
   const created = [...item.appliedActions].reverse().find((action) => action.entityId !== null && action.undoneAt === null);
   return created ? created.label : "Sınıflandırıldı";
 }
-
-/** Grouping follows the order the kind selector uses, so the two never disagree. */
-const noteGroupOrder: InboxItemKind[] = ["property", "requirement", "follow_up", "person", "note"];
 
 interface NoteView {
   showArchived: boolean;
@@ -91,19 +87,6 @@ function NoteActions({ item, view, compact = false }: { item: InboxItemRecord; v
   </>;
 }
 
-function NoteCard({ item, view }: { item: InboxItemRecord; view: NoteView }) {
-  return <article className={`sp-card keep-card kind-${item.kind}`}>
-    <div className="keep-meta"><NoteKind item={item} view={view} /></div>
-    <p className={view.expanded.has(item.id) ? "" : "keep-clamped"}>{view.expanded.has(item.id) ? item.safeText : item.summary}</p>
-    {item.safeText !== item.summary ? <button className="text-button keep-expand" onClick={() => view.onToggleExpanded(item.id)} type="button">{view.expanded.has(item.id) ? <><ChevronUp size={14} /> Kısalt</> : <><ChevronDown size={14} /> Tamamını göster</>}</button> : null}
-    <NoteUnderstanding item={item} view={view} />
-    <NoteTrace item={item} />
-    <NoteLocation item={item} view={view} />
-    <p className="keep-source">{sourceLabels[item.source]} · {statusLabel(item)}</p>
-    {item.id.startsWith("queued-") ? null : <footer><NoteActions item={item} view={view} /></footer>}
-  </article>;
-}
-
 function traceHref(kind: string, entityId: string | null, fallbackContactId: string | null): string | null {
   if (kind === "contact_created" || kind === "contact_linked") return entityId ? `/contacts/__contact__?contactId=${encodeURIComponent(entityId)}` : null;
   if (kind === "opportunity_created") return entityId ? `/opportunities?opportunityId=${encodeURIComponent(entityId)}` : "/opportunities";
@@ -125,7 +108,7 @@ function NoteUnderstanding({ item, view }: { item: InboxItemRecord; view: NoteVi
   // The reading arrives a few seconds after the save, so the card says it is
   // coming rather than looking finished and empty.
   if (item.analysisStatus === "pending") return <p className="keep-understanding is-pending">Not okunuyor…</p>;
-  const highlights = inboxAnalysisHighlights(item.analysis);
+  const highlights = inboxAnalysisHighlights(item.analysis, item.safeText);
   // The note names someone the workspace has never seen. Making the advisor
   // pick a type and retype that name is the system asking for what it just read.
   const foundName = item.linkedContactId ? null : item.analysis?.insights.contactName?.trim() || null;
@@ -160,14 +143,54 @@ function NoteRow({ item, view }: { item: InboxItemRecord; view: NoteView }) {
   </article>;
 }
 
+
+const longDate = new Intl.DateTimeFormat("tr-TR", { weekday: "long", day: "numeric", month: "long" });
+
+/**
+ * One row of the day's plan. The action verb is a real button next to the name
+ * instead of a tick a screen-width away, and the second line carries why this
+ * is here -- the stage, the role, when they were last spoken to -- rather than
+ * repeating the verb that is already on the button.
+ */
+function PlanRow({ task, tone, onResolve, onReplace }: {
+  task: TodayTask;
+  tone: "overdue" | "today" | "later";
+  onResolve(task: TodayTask): void;
+  onReplace(taskId: string): void;
+}) {
+  const context = taskContextLine(task);
+  // On a scheduled task the reason is the verb, which the button already says.
+  // On the others it is the only thing explaining why the row exists.
+  const why = [task.type === "next_action" ? null : task.reason, context].filter(Boolean).join(" · ") || task.reason;
+  const resolved = Boolean(task.resolutionStatus);
+  return <li className={resolved ? `plan-row resolved resolution-${task.resolutionStatus}` : `plan-row tone-${tone}`}>
+    <span className="plan-dot" aria-hidden />
+    {/* The name opens the record; the button beside it performs the action, so
+        a resolved row still leads back to the person it was about. */}
+    <Link className="plan-body" href={resolved ? `/contacts/__contact__?contactId=${encodeURIComponent(task.contactId)}` : taskRecordHref(task)}>
+      <strong>{task.title}</strong>
+      <span>{resolved
+        ? `${dailyTaskResolutionLabels[task.resolutionStatus!]}${task.resolutionNote ? ` · ${task.resolutionNote}` : ""}`
+        : why}</span>
+    </Link>
+    <time className="plan-due">{taskDueChip(task.dueAt)}</time>
+    {resolved
+      ? <span className="plan-actions"><span className="plan-resolved-mark">{task.resolutionStatus === "contact_opt_out" ? <PhoneOff size={15} /> : <Check size={15} />}</span></span>
+      : <span className="plan-actions">
+          <Link className="primary-action compact-action plan-go" href={taskRecordHref(task)}>{taskActionLabel(task)}</Link>
+          <button title="Bugünlük çıkar" aria-label={`${task.title} görevini bugünkü listeden çıkar`} onClick={() => onReplace(task.id)} type="button"><Shuffle size={15} /></button>
+          <button title="Sonuçlandır" aria-label={`${task.title} görevini sonuçlandır`} onClick={() => onResolve(task)} type="button"><Check size={16} /></button>
+        </span>}
+  </li>;
+}
+
 export function FeedView() {
+  const [referenceTime] = useState(Date.now);
   const { session } = useSession(); const client = useQueryClient(); const [text, setText] = useState(""); const [saving, setSaving] = useState(false); const [error, setError] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<TodayTask | null>(null); const [resolving, setResolving] = useState(false); const [taskError, setTaskError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set()); const [locationFor, setLocationFor] = useState<string | null>(null); const [locationText, setLocationText] = useState("");
   const [noteScope, setNoteScope] = useState<"open" | "done" | "archived">("open"); const [activeNote, setActiveNote] = useState<InboxItemRecord | null>(null); const [activeNoteKind, setActiveNoteKind] = useState<InboxItemKind | undefined>();
   const showArchived = noteScope === "archived";
-  const [viewMode, changeViewMode] = useNoteViewMode();
-  const [showAllWork, setShowAllWork] = useState(false);
   const today = useQuery({ queryKey: apiQueryKeys.todayOverviewPeriod("30d"), queryFn: () => loadTodayOverview("30d") });
   const inbox = useQuery({ queryKey: apiQueryKeys.inboxItems, queryFn: () => listInboxItems(session ?? undefined), enabled: Boolean(session), refetchInterval: (query) => (query.state.data as InboxItemRecord[] | undefined)?.some((item) => item.status === "queued" || item.status === "processing" || item.analysisStatus === "pending") ? 1_500 : false });
   const contacts = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts, enabled: Boolean(session) });
@@ -199,9 +222,6 @@ export function FeedView() {
     return noteScope === (isInboxItemResolved(item) ? "done" : "open");
   }).map(interpretedItem);
   const openCount = (inbox.data ?? []).filter((item) => item.status !== "archived" && !isInboxItemResolved(item)).length;
-  const groupedNotes = noteGroupOrder
-    .map((kind) => ({ kind, items: visibleNotes.filter((item) => item.kind === kind) }))
-    .filter((group) => group.items.length > 0);
   const currentActiveNote = activeNote
     ? interpretedItem((inbox.data ?? []).find((entry) => entry.id === activeNote.id) ?? activeNote)
     : null;
@@ -218,23 +238,104 @@ export function FeedView() {
     onLocationSubmit: (id) => void addLocation(id),
   };
 
+  // The day's list is pinned server-side so it does not reshuffle while it is
+  // being worked. Grouping reads that pinned plan rather than re-deriving one
+  // from the buckets, which would drop a task the moment its date moved.
+  const planTasks = today.data?.tasks ?? [];
+  const overdueTasks = planTasks.filter((task) => todayTaskBucket(task, referenceTime) === "overdue");
+  const todayTasks = planTasks.filter((task) => todayTaskBucket(task, referenceTime) === "today");
+  const scheduledTasks = planTasks.filter((task) => todayTaskBucket(task, referenceTime) === "upcoming");
+  const completedCount = today.data?.completedTaskCount ?? 0;
+  const planTotal = planTasks.length;
+  const plannedIds = new Set(planTasks.map((task) => task.id));
+  const railTasks = upcomingTasks.filter((task) => !plannedIds.has(task.id));
+  const focus = today.data?.focus;
+  const focusHref = focus?.targetOpportunityId
+    ? `/opportunities?opportunityId=${encodeURIComponent(focus.targetOpportunityId)}`
+    : focus?.targetContactId
+      ? `/capture?contactId=${encodeURIComponent(focus.targetContactId)}`
+      : "/funnel";
+  const refresh = () => void Promise.all([today.refetch(), inbox.refetch()]);
+  const openTask = (task: TodayTask) => { setTaskError(null); setActiveTask(task); };
+
   return <AppShell><div className="feed-view">{contacts.data?.length === 0 ? <SpCard><h2>{onboardingCopy.startTitle}</h2><p>{onboardingCopy.startHint}</p><div className="header-actions"><Link className="secondary-action inline-link" href="/contacts?create=1">{onboardingCopy.contact}</Link><Link className="secondary-action inline-link" href="/capture">{onboardingCopy.capture}</Link><Link className="secondary-action inline-link" href="/listings?action=add-listing">{onboardingCopy.listing}</Link></div></SpCard> : null}
-    <header className="feed-header"><div><p className="eyebrow">AKIŞ</p><h1>Bugün</h1><p className="context-sentence">Yeni bilgiyi hemen kaydet; sonra beş öncelikli işini bitir.</p></div><button className="topbar-icon-button" onClick={() => void Promise.all([today.refetch(), inbox.refetch()])} aria-label="Yenile"><RefreshCw size={17} /></button></header>
-    {loadingError ? <div className="form-error notice" role="alert"><strong>Veriler yüklenemedi.</strong> {messageFrom(loadingError)} <button className="text-button" type="button" onClick={() => void Promise.all([today.refetch(), inbox.refetch()])}>Yeniden dene</button></div> : null}
-    <section className="sp-card quick-note" aria-labelledby="quick-note-title"><div className="feed-section-heading"><div><p className="eyebrow">HIZLI KAYIT</p><h2 id="quick-note-title">Aklındakini bırak</h2></div><Sparkles size={20} aria-hidden /></div><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Örn. Urla'da bahçeli bir ev duydum…" aria-label="Hızlı not" /><div className="quick-note-actions"><Link className="secondary-action" href="/capture"><Mic size={17} /> Sesli anlat</Link><button disabled={!text.trim() || saving} className="primary-action" onClick={() => void save()}><Send size={17} />{saving ? "Kaydediliyor…" : "Kaydet"}</button></div></section>
-    <section className="sp-card daily-five" aria-labelledby="daily-five-title"><div className="feed-section-heading"><div><p className="eyebrow">BUGÜNÜN 5&apos;İ</p><h2 id="daily-five-title">Önce bunları bitir</h2></div><span className="period-chip">{today.data?.completedTaskCount ?? 0}/{today.data?.tasks.length ?? 0}</span></div>{today.isPending ? <p className="context-sentence">Plan hazırlanıyor…</p> : today.isError ? <p className="context-sentence">Günlük plan şu anda gösterilemiyor.</p> : today.data?.tasks.length ? <ol>{today.data.tasks.map((task) => <li key={task.id} className={task.resolutionStatus ? `resolved resolution-${task.resolutionStatus}` : ""}><span className="daily-number">{task.resolutionStatus === "contact_opt_out" ? <PhoneOff size={15} /> : task.resolutionStatus ? <Check size={15} /> : null}</span><Link className="daily-task-link" href={task.resolutionStatus ? `/contacts/__contact__?contactId=${encodeURIComponent(task.contactId)}` : taskRecordHref(task)}><strong>{task.title}</strong><small>{task.resolutionStatus ? `${dailyTaskResolutionLabels[task.resolutionStatus]}${task.resolutionNote ? ` · ${task.resolutionNote}` : ""}` : `${task.reason} · ${taskDueLabel(task.dueAt)}`}</small></Link>{task.resolutionStatus ? null : <span className="daily-actions"><button title="Bugünlük çıkar" aria-label={`${task.title} görevini bugünkü listeden çıkar`} onClick={() => void replace(task.id)}><Shuffle size={16} /></button><button title="Sonuçlandır" aria-label={`${task.title} görevini sonuçlandır`} onClick={() => { setTaskError(null); setActiveTask(task); }}><Check size={17} /></button></span>}</li>)}</ol> : <p className="context-sentence">{upcomingTasks.length ? "Bugün için iş yok. Yaklaşan takiplerin aşağıda." : "Henüz planlanacak iş yok. İlk notunu veya kişini ekle."}</p>}</section>
-    {upcomingTasks.length ? <section className="sp-card daily-five" aria-labelledby="feed-upcoming-title"><div className="feed-section-heading"><div><p className="eyebrow">YAKLAŞAN</p><h2 id="feed-upcoming-title">Yarın ve sonrası</h2></div><span className="period-chip">{upcomingTasks.length} İŞ</span></div><ol>{upcomingTasks.slice(0, 8).map((task) => <li key={task.id}><span className="daily-number" /><Link className="daily-task-link" href={taskRecordHref(task)}><strong>{task.title}</strong><small>{task.reason} · {taskDueLabel(task.dueAt)}</small></Link></li>)}</ol></section> : null}
-    {recentInteractions.length ? <section className="sp-card daily-five" aria-labelledby="feed-memory-title"><div className="feed-section-heading"><div><p className="eyebrow">GÜNÜN HAFIZASI</p><h2 id="feed-memory-title">Bugün kaydedilen temaslar</h2></div><span className="period-chip">{recentInteractions.length} TEMAS</span></div><ol>{recentInteractions.map((interaction) => <li key={interaction.id}><span className="daily-number"><MessagesSquare size={15} /></span><Link className="daily-task-link" href={`/contacts/__contact__?contactId=${encodeURIComponent(interaction.contactId)}`}><strong>{interaction.contactName}</strong><small>{interaction.outcome}</small></Link><time>{new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(interaction.occurredAt)}</time></li>)}</ol></section> : null}
-    {today.data && today.data.allTasks.length > today.data.tasks.length ? <section className="all-work-section"><button className="secondary-action all-work-toggle" type="button" onClick={() => setShowAllWork((value) => !value)}>{showAllWork ? "Kalan işleri gizle" : `Tüm işleri gör (${today.data.allTasks.length})`}</button>{showAllWork ? <div className="sp-card all-work-list"><h2>Bugünkü tüm işler</h2><p className="context-sentence">İlk beş odak listen; aşağıda kalan işleri de görebilirsin.</p><ol>{today.data.allTasks.filter((task) => !today.data.tasks.some((planned) => planned.id === task.id)).map((task) => <li key={task.id}><Link className="daily-task-link" href={taskRecordHref(task)}><strong>{task.title}</strong><small>{task.reason} · {taskDueLabel(task.dueAt)}</small></Link></li>)}</ol></div> : null}</section> : null}
-    {error ? <p className="form-error notice" role="alert">{error}</p> : null}
-    <div className="feed-title note-list-heading"><div><h2>Notların</h2><p className="context-sentence">Sistem tür önerir; gerçek kayda dönüştürmeye sen karar verirsin.</p></div><div className="note-heading-controls"><div className="note-view-toggle" role="group" aria-label="Not görünümü">{noteViewModes.map((mode) => <button key={mode.id} className={viewMode === mode.id ? "selected" : ""} onClick={() => changeViewMode(mode.id)} type="button">{mode.label}</button>)}</div><div className="note-view-toggle" role="group" aria-label="Not listesi">{([["open", openCount ? `Aktif · ${openCount}` : "Aktif"], ["done", "İşlendi"], ["archived", "Arşiv"]] as const).map(([scope, label]) => <button key={scope} className={noteScope === scope ? "selected" : ""} onClick={() => setNoteScope(scope)} type="button">{label}</button>)}</div></div></div>
-    {inbox.isPending ? <p className="context-sentence">Notlar yükleniyor…</p> : inbox.isError ? <div className="sp-card empty-state"><p>Notlar şu anda gösterilemiyor.</p></div> : visibleNotes.length ? (
-      viewMode === "list"
+    <header className="day-header">
+      <div><p className="eyebrow">{longDate.format(new Date()).toLocaleUpperCase("tr-TR")}</p><h1>Bugün</h1></div>
+      <div className="day-summary">
+        <div><strong className={overdueTasks.length ? "is-overdue" : undefined}>{overdueTasks.length}</strong><span>gecikmiş</span></div>
+        <span className="day-summary-rule" aria-hidden />
+        <div><strong>{todayTasks.length}</strong><span>bugün</span></div>
+        <span className="day-summary-rule" aria-hidden />
+        <div><strong className={completedCount ? "is-done" : undefined}>{completedCount}</strong><span>tamamlanan</span></div>
+        <button className="topbar-icon-button" onClick={refresh} aria-label="Yenile" type="button"><RefreshCw size={16} /></button>
+      </div>
+    </header>
+    {loadingError ? <div className="form-error notice" role="alert"><strong>Veriler yüklenemedi.</strong> {messageFrom(loadingError)} <button className="text-button" type="button" onClick={refresh}>Yeniden dene</button></div> : null}
+
+    {/* One row, not a card: capture is the thing an advisor does between two
+        appointments, so it costs a line of the screen rather than a third of it. */}
+    <section className="capture-bar" aria-label="Hızlı kayıt">
+      <Pencil size={17} aria-hidden />
+      <textarea
+        aria-label="Hızlı not"
+        placeholder="Aklındakini bırak — “Bahçeli satılık bir ev duydum…”"
+        rows={1}
+        value={text}
+        onChange={(event) => { setText(event.target.value); const field = event.currentTarget; field.style.height = "auto"; field.style.height = `${Math.min(140, field.scrollHeight)}px`; }}
+      />
+      <Link className="secondary-action compact-action" href="/capture"><Mic size={15} /> Sesli anlat</Link>
+      <button disabled={!text.trim() || saving} className="primary-action compact-action" onClick={() => void save()} type="button"><Send size={15} />{saving ? "Kaydediliyor…" : "Kaydet"}</button>
+    </section>
+
+    <div className="day-grid">
+      {/* The plan and the notes are one column so a short plan does not leave
+          a hole beside a tall rail. */}
+      <div className="day-column">
+      <section className="sp-card plan-card" aria-labelledby="daily-five-title">
+        <div className="feed-section-heading"><div><p className="eyebrow">GÜNÜN PLANI</p><h2 id="daily-five-title">Önce bunları bitir</h2></div><span className="plan-progress"><span>{completedCount}/{planTotal}</span><span className="plan-progress-track" aria-hidden><span style={{ width: `${planTotal ? Math.round((completedCount / planTotal) * 100) : 0}%` }} /></span></span></div>
+        {today.isPending ? <p className="context-sentence plan-empty">Plan hazırlanıyor…</p>
+          : today.isError ? <p className="context-sentence plan-empty">Günlük plan şu anda gösterilemiyor.</p>
+          : planTasks.length ? <>
+              {([
+                ["overdue", "GECİKMİŞ", overdueTasks],
+                ["today", "BUGÜN", todayTasks],
+                ["scheduled", "PLANLANAN", scheduledTasks],
+              ] as const).map(([key, label, group]) => group.length ? <div key={key}>
+                <p className={key === "overdue" ? "plan-group is-overdue" : "plan-group"}><span className="eyebrow">{label}</span><span>{group.length}</span></p>
+                <ol className="plan-list">{group.map((task) => <PlanRow key={task.id} task={task} tone={key === "overdue" ? "overdue" : key === "today" ? "today" : "later"} onResolve={openTask} onReplace={(id) => void replace(id)} />)}</ol>
+              </div> : null)}
+            </>
+          : <p className="context-sentence plan-empty">{upcomingTasks.length ? "Bugün için iş yok. Yaklaşan takiplerin yanda." : "Henüz planlanacak iş yok. İlk notunu veya kişini ekle."}</p>}
+        {railTasks.length ? <p className="plan-foot"><span>Önümüzdeki günlerde {railTasks.length} iş planlı</span></p> : null}
+      </section>
+
+      {error ? <p className="form-error notice" role="alert">{error}</p> : null}
+      <div className="feed-title note-list-heading"><div><h2>Notların</h2><p className="context-sentence">Sistem tür önerir; gerçek kayda dönüştürmeye sen karar verirsin.</p></div><div className="note-heading-controls"><div className="note-view-toggle" role="group" aria-label="Not listesi">{([["open", openCount ? `Aktif · ${openCount}` : "Aktif"], ["done", "İşlendi"], ["archived", "Arşiv"]] as const).map(([scope, label]) => <button key={scope} className={noteScope === scope ? "selected" : ""} onClick={() => setNoteScope(scope)} type="button">{label}</button>)}</div></div></div>
+      {inbox.isPending ? <p className="context-sentence">Notlar yükleniyor…</p> : inbox.isError ? <div className="sp-card empty-state"><p>Notlar şu anda gösterilemiyor.</p></div> : visibleNotes.length
         ? <section className="note-rows" aria-label="Akış notları">{visibleNotes.map((item) => <NoteRow key={item.id} item={item} view={noteView} />)}</section>
-        : viewMode === "group"
-          ? <div className="note-groups">{groupedNotes.map((group) => <section key={group.kind} aria-label={kindLabels[group.kind]}><div className={`note-group-head kind-${group.kind}`}><span className="note-group-label">{kindLabels[group.kind]}</span><span className="note-group-count">{group.items.length}</span><span className="note-group-rule" /></div><div className="keep-grid">{group.items.map((item) => <NoteCard key={item.id} item={item} view={noteView} />)}</div></section>)}</div>
-          : <section className="keep-grid" aria-label="Akış notları">{visibleNotes.map((item) => <NoteCard key={item.id} item={item} view={noteView} />)}</section>
-    ) : <div className="sp-card empty-state"><p>{noteScope === "archived" ? "Arşivlenmiş not yok." : noteScope === "done" ? "Henüz kayda dönüşmüş not yok." : "Bekleyen not yok."}</p></div>}
+        : <div className="sp-card empty-state"><p>{noteScope === "archived" ? "Arşivlenmiş not yok." : noteScope === "done" ? "Henüz kayda dönüşmüş not yok." : "Bekleyen not yok."}</p></div>}
+      </div>
+
+      <div className="day-rail">
+        {focus ? <section className="sp-card focus-card day-focus" aria-labelledby="day-focus-title">
+          <div className="focus-heading"><div className="card-icon"><Target size={18} aria-hidden /></div><div><p className="eyebrow">ŞİMDİKİ DARBOĞAZ</p><h2 id="day-focus-title">{focus.title}</h2></div></div>
+          <p>{focus.description}</p>
+          <div className="focus-evidence"><span>Önerilen eylem</span><strong>{focus.action}</strong></div>
+          <Link href={focusHref} className="primary-action inline-link">İlgili kaydı aç <ArrowRight size={15} /></Link>
+        </section> : null}
+
+        {railTasks.length ? <section className="sp-card upcoming-card" aria-labelledby="feed-upcoming-title">
+          <div className="feed-section-heading"><div><p className="eyebrow">SIRADAKİ GÜNLER</p><h2 id="feed-upcoming-title">Yarın ve sonrası</h2></div><span className="period-chip">{railTasks.length} İŞ</span></div>
+          <ol className="upcoming-list">{railTasks.slice(0, 6).map((task) => <li key={task.id}><time>{taskDueChip(task.dueAt)}</time><Link href={taskRecordHref(task)}><strong>{task.title}</strong><small>{taskContextLine(task) || task.reason}</small></Link></li>)}</ol>
+        </section> : null}
+
+        {recentInteractions.length ? <section className="sp-card upcoming-card" aria-labelledby="feed-memory-title">
+          <div className="feed-section-heading"><div><p className="eyebrow">GÜNÜN HAFIZASI</p><h2 id="feed-memory-title">Bugün kaydedilen temaslar</h2></div><span className="period-chip">{recentInteractions.length} TEMAS</span></div>
+          <ol className="upcoming-list">{recentInteractions.map((interaction) => <li key={interaction.id}><time>{new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(interaction.occurredAt)}</time><Link href={`/contacts/__contact__?contactId=${encodeURIComponent(interaction.contactId)}`}><strong>{interaction.contactName}</strong><small>{interaction.outcome}</small></Link></li>)}</ol>
+        </section> : null}
+      </div>
+    </div>
+
     {activeTask ? <TaskResolutionSheet task={activeTask} pending={resolving} error={taskError} onClose={() => setActiveTask(null)} onResolve={(outcome) => void resolveTask(outcome)} /> : null}
     {currentActiveNote ? <NoteProcessingSheet item={currentActiveNote} contacts={contacts.data ?? []} initialKind={activeNoteKind} onClose={() => setActiveNote(null)} onChanged={async (updatedItem) => {
       if (updatedItem) client.setQueryData<InboxItemRecord[]>(apiQueryKeys.inboxItems, (current = []) => current.map((entry) => entry.id === updatedItem.id ? updatedItem : entry));

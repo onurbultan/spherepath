@@ -15,7 +15,7 @@ test("hızlı nottan kişi ve talep kaydedilir, alıcı ve satıcı kriterleri a
   await page.getByRole("textbox", { name: "Hızlı not" }).fill("Ayşe Kara bugün aradı. Urla İskele'de bahçeli villa arıyor. Bütçesi 18–35 milyon TL. En az 180 m² olmalı. Yarın 14:00'te aramamı istedi. Telefon: 0555 000 11 22.");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("button", { name: "Kişi kaydını tamamla" })).toBeVisible();
-  await page.getByRole("button", { name: "Düzenle ve işle" }).click();
+  await page.getByRole("button", { name: "İşle", exact: true }).click();
   let dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("textbox", { name: "Adı", exact: true })).toHaveValue("Ayşe Kara");
   await expect(dialog.getByLabel("Telefon numarası")).toHaveValue("555 000 11 22");
@@ -40,11 +40,12 @@ test("hızlı nottan kişi ve talep kaydedilir, alıcı ve satıcı kriterleri a
   await expect(page.getByRole("region", { name: "Kişi özeti ve çalışma alanı" })).toContainText("Belirlenmedi");
 
   await page.goto("/opportunities/");
-  const buyerCard = page.locator(".kanban-card").filter({ hasText: "Alıcı talebi" });
-  await expect(buyerCard).toContainText("Sonraki aksiyon yok");
-  await page.getByRole("button", { name: "Portföy adayları" }).click();
-  await expect(buyerCard).toHaveCount(0);
-  await page.getByRole("button", { name: "Müşteri talepleri" }).click();
+  const buyerRow = page.locator(".work-row").filter({ hasText: "Alıcı talebi" });
+  const buyerCard = buyerRow.locator(".work-row-open");
+  await expect(buyerRow).toContainText("Sonraki aksiyon yok");
+  await page.getByRole("button", { name: /Portföy kazanma/ }).click();
+  await expect(buyerRow).toHaveCount(0);
+  await page.getByRole("button", { name: /Müşteri talepleri/ }).click();
   await buyerCard.click();
   await page.getByRole("button", { name: "Kriterleri düzenle" }).click();
   dialog = page.getByRole("dialog");
@@ -61,14 +62,16 @@ test("hızlı nottan kişi ve talep kaydedilir, alıcı ve satıcı kriterleri a
   await expect(dialog.getByRole("spinbutton", { name: "Minimum m²", exact: true })).toHaveValue("180");
   await dialog.getByRole("button", { name: "Kapat" }).click();
 
-  await page.getByRole("button", { name: "Yeni fırsat", exact: true }).click();
+  await page.getByRole("button", { name: "Yeni iş", exact: true }).click();
   await dialog.getByRole("combobox", { name: "Kişi ara", exact: true }).fill("Ayşe");
   await dialog.getByRole("option", { name: "Ayşe Kara" }).click();
   await dialog.getByRole("combobox", { name: "Fırsat türü", exact: true }).selectOption("seller_listing");
   await dialog.getByRole("button", { name: "Fırsatı oluştur" }).click();
+  await expect(dialog.getByRole("heading", { name: "Ayşe Kara", exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Kapat", exact: true }).click();
   await expect(dialog).toBeHidden();
-  await page.getByRole("button", { name: "Portföy adayları" }).click();
-  const ownerCard = page.locator(".kanban-card").filter({ hasText: "Satılık portföy" });
+  await page.getByRole("button", { name: /Portföy kazanma/ }).click();
+  const ownerCard = page.locator(".work-row").filter({ hasText: "Satılık portföy" }).locator(".work-row-open");
   await ownerCard.click();
   await expect(dialog).not.toContainText("Urla İskele");
   await page.getByRole("button", { name: "Mülk bilgilerini düzenle" }).click();
@@ -115,7 +118,9 @@ test("gönderim açık teyit ister ve terminal kapama yeni aksiyon istemez", asy
     await page.getByLabel("E-posta").fill(email); await page.getByLabel("Şifre").fill(password);
     await page.getByRole("button", { name: "Giriş yap", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Bugün", exact: true })).toBeVisible();
+    // Closing moved onto İşler; the old route must still land on it.
     await page.goto("/closing/");
+    await expect(page).toHaveURL(/\/opportunities/);
     await page.getByRole("button", { name: "Gönderimi doğrula", exact: true }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("button", { name: "Gönderildi olarak kaydet" })).toBeDisabled();

@@ -35,6 +35,7 @@ export const dailyTaskResolutionLabels: Record<DailyTaskResolutionStatus, string
 };
 
 export interface TodayTask {
+  actionType?: Contact["relationship"]["nextActionType"];
   id: string;
   contactId: string;
   title: string;
@@ -195,6 +196,7 @@ export function buildTodayOverview(
       id: `next-action-${contact.id}`,
       contactId: contact.id,
       title: contact.name,
+      actionType: contact.nextActionType,
       reason: contact.nextActionType ? nextActionTypeLabels[contact.nextActionType] : "Sonraki aksiyon",
       dueAt: contact.nextActionAt,
       type: "next_action",
@@ -260,6 +262,7 @@ export function buildTodayOverview(
       contactId: opportunity.subjectContactId,
       opportunityId: opportunity.id,
       title: opportunity.subjectContactName,
+      actionType: opportunity.nextActionType,
       reason: opportunity.nextActionType ? nextActionTypeLabels[opportunity.nextActionType] : "Fırsat aksiyonu",
       dueAt: opportunity.nextActionAt,
       type: "next_action",
@@ -272,6 +275,7 @@ export function buildTodayOverview(
       contactId: deal.buyerContactId!,
       dealId: deal.id,
       title: deal.buyerContactName ?? contacts.find((contact) => contact.id === deal.buyerContactId)?.name ?? "Açık işlem",
+      actionType: deal.nextActionType,
       reason: nextActionTypeLabels[deal.nextActionType!],
       dueAt: deal.nextActionAt!,
       type: "next_action",

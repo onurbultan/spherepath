@@ -4,18 +4,53 @@ import Link from "next/link";
 import { useState } from "react";
 import { CalendarClock, Check, CircleSlash, PhoneOff, X } from "lucide-react";
 import { contactRoleLabels, dailyTaskOutcomeSchema, nextActionTypeLabels, nextActionTypes, opportunityStageLabel, opportunityTypeLabels, type DailyTaskOutcome, type TodayTask } from "@spherepath/shared";
+import { localDateTimeValue, taskActionType } from "@spherepath/shared";
 import { QuickDateField } from "@/shared/ui/QuickDateField";
 import { useSheetDismiss } from "@/shared/ui/useSheetDismiss";
 import { SpSelect, SpTextarea } from "@/shared/ui/SpField";
+
+const clock = new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" });
+const dayAndMonth = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short" });
 
 export function taskDueLabel(value: number | null): string {
   if (value === null) return "Tarihsiz";
   const due = new Date(value);
   const now = new Date();
   const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
-  if (due.toDateString() === yesterday.toDateString()) return `Gecikti · dün ${new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(due)}`;
-  if (due.toDateString() === now.toDateString()) return `Bugün ${new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(due)}`;
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+  if (due.toDateString() === yesterday.toDateString()) return `Gecikti · dün ${clock.format(due)}`;
+  if (due.toDateString() === now.toDateString()) return `Bugün ${clock.format(due)}`;
+  if (due.toDateString() === tomorrow.toDateString()) return `Yarın ${clock.format(due)}`;
   return new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(due);
+}
+
+/**
+ * The chip beside a row answers "when", not "when, to the minute, on which
+ * date, in which month". Overdue work says how late it is, because that is the
+ * only number that changes what the advisor does next.
+ */
+export function taskDueChip(value: number | null, now = Date.now()): string {
+  if (value === null) return "Tarihsiz";
+  const due = new Date(value);
+  const today = new Date(now);
+  if (value < now) {
+    const days = Math.floor((now - value) / 86_400_000);
+    if (days >= 1) return `${days} gün gecikti`;
+    return `Gecikti · ${clock.format(due)}`;
+  }
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  if (due.toDateString() === today.toDateString()) return clock.format(due);
+  if (due.toDateString() === tomorrow.toDateString()) return "Yarın";
+  return dayAndMonth.format(due);
+}
+
+/** What the advisor actually does, as the label on the row's own button. */
+export function taskActionLabel(task: TodayTask): string {
+  if (task.type === "return_call") return "Geri dön";
+  if (task.type === "complete_listing") return "Fiyatı gir";
+  if (task.type === "record_interaction") return "Temas kaydet";
+  // `reason` on a scheduled task is already the agreed next action's own label.
+  return task.reason;
 }
 
 export function tomorrowAtTen(): string {
@@ -24,6 +59,14 @@ export function tomorrowAtTen(): string {
   date.setHours(10, 0, 0, 0);
   const offset = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+/**
+ * Why this row is on the list. The action verb is already the button; this is
+ * the thing the advisor would otherwise have to open the record to remember.
+ */
+export function taskContextLine(task: TodayTask): string {
+  return taskContext(task).join(" · ");
 }
 
 function taskContext(task: TodayTask): string[] {
@@ -42,7 +85,7 @@ export function taskRecordHref(task: TodayTask): string {
   // Returning a call starts on the contact, where the dial button is.
   if (task.type === "return_call") return `/contacts/__contact__?contactId=${encodeURIComponent(task.contactId)}`;
   if (task.type === "complete_listing") return "/listings";
-  if (task.dealId) return "/listings#closing";
+  if (task.dealId) return "/opportunities#closing";
   return task.opportunityId
     ? `/opportunities?opportunityId=${encodeURIComponent(task.opportunityId)}`
     : `/capture?contactId=${encodeURIComponent(task.contactId)}`;
@@ -53,17 +96,18 @@ export function taskRecordHref(task: TodayTask): string {
  * counters come from, so both the daily plan and the feed resolve tasks through this
  * one sheet rather than each having its own idea of what "done" means.
  */
-export function TaskResolutionSheet({ task, pending, error, onClose, onResolve }: {
+export function TaskResolutionSheet({ task, pending, error, onClose, onResolve, initialStatus = "completed" }: {
   task: TodayTask;
+  initialStatus?: DailyTaskOutcome["status"];
   pending: boolean;
   error: string | null;
   onClose(): void;
   onResolve(outcome: DailyTaskOutcome): void;
 }) {
-  const [status, setStatus] = useState<DailyTaskOutcome["status"]>("completed");
+  const [status, setStatus] = useState<DailyTaskOutcome["status"]>(initialStatus);
   const [note, setNote] = useState("");
-  const [rescheduledAt, setRescheduledAt] = useState(tomorrowAtTen);
-  const [rescheduledActionType, setRescheduledActionType] = useState<NonNullable<DailyTaskOutcome["rescheduledActionType"]>>("call");
+  const [rescheduledAt, setRescheduledAt] = useState(() => task.dueAt ? localDateTimeValue(task.dueAt) : tomorrowAtTen());
+  const [rescheduledActionType, setRescheduledActionType] = useState<NonNullable<DailyTaskOutcome["rescheduledActionType"]>>(() => taskActionType(task));
   const [localError, setLocalError] = useState<string | null>(null);
 
   useSheetDismiss(true, () => { if (!pending) onClose(); });

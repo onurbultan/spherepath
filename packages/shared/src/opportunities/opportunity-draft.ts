@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ContactRole, Opportunity, OpportunityStage, OpportunityType, TenantOwned } from "../domain/entities.js";
+import { voicePropertyPreferencesSchema } from "../voice/voice-note.js";
 import { nextActionTypes } from "../interactions/manual-interaction.js";
 
 export const opportunityTypes = ["seller_listing", "landlord_listing", "buyer_requirement", "tenant_requirement"] as const satisfies readonly OpportunityType[];
@@ -72,6 +73,7 @@ export function opportunityPath(type: OpportunityType): readonly OpportunityPath
 }
 
 export const opportunityDraftSchema = z.object({
+  criteria: z.lazy(() => voicePropertyPreferencesSchema).optional(),
   subjectContactId: z.string().min(1).max(160),
   type: z.enum(opportunityTypes),
   nextActionType: z.enum(nextActionTypes),
@@ -84,6 +86,7 @@ export function createOpportunity(draft: OpportunityDraft, tenant: TenantOwned, 
   const parsed = opportunityDraftSchema.parse(draft);
   return {
     ...tenant,
+    ...(parsed.criteria ? { criteria: { ...parsed.criteria, transactionType: parsed.type === "buyer_requirement" ? "buy" : parsed.type === "tenant_requirement" ? "rent" : parsed.type === "landlord_listing" ? "let" : "sell" } } : {}),
     type: parsed.type,
     subjectContactId: parsed.subjectContactId,
     sourceContactId: null,
@@ -102,4 +105,8 @@ export function createOpportunity(draft: OpportunityDraft, tenant: TenantOwned, 
     createdAt: now,
     updatedAt: now,
   };
+}
+
+export function neutralOpportunityStageLabel(stage: OpportunityStage): string {
+  return ({ new_lead: "Yeni", first_contact: "Görüşüldü", appointment: "Randevu", valuation: "İhtiyaç / değer", mandate_offer: "Hizmet / yetki", won: "Yetki / müşteri kazanıldı", lost: "Sonuçlanmadı" } as const)[stage];
 }

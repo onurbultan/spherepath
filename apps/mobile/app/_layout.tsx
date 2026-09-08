@@ -3,7 +3,7 @@ import { Slot } from "expo-router";
 import { useFonts } from "expo-font";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
-import { QueryClient, useQueryClient } from "@tanstack/react-query";
+import { defaultShouldDehydrateQuery, QueryClient, useQueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -78,7 +78,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister, maxAge: 24 * 60 * 60 * 1_000, buster: "spherepath-v2" }}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister, maxAge: 24 * 60 * 60 * 1_000, buster: "spherepath-v2", dehydrateOptions: { shouldDehydrateQuery: (query) => query.meta?.persist !== false && defaultShouldDehydrateQuery(query), shouldDehydrateMutation: () => false } }}>
         <SessionProvider><SessionCacheBoundary><SessionGate /></SessionCacheBoundary></SessionProvider>
       </PersistQueryClientProvider>
     </SafeAreaProvider>

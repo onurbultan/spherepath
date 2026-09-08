@@ -1,6 +1,7 @@
 import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
+  appendDealOffer, type Deal,
   applyInteractionToRelationship,
   createInteraction,
   interactionOccurredAtError,
@@ -57,6 +58,19 @@ export const recordInteraction = onCall(
         (contact.ownerUid === claims.uid || claims.role === "broker") && contact.deletedAt === null;
       if (!canManage) throw new HttpsError("permission-denied", "Contact is outside your workspace.");
 
+      const targetId = parsed.data.nextActionContactId ?? parsed.data.contactId;
+      const targetRef = firestore.collection("contacts").doc(targetId);
+      const targetSnapshot = targetId === contactRef.id ? contactSnapshot : await transaction.get(targetRef);
+      const target = targetSnapshot.data();
+      if (!target || target.officeId !== claims.officeId || (target.ownerUid !== claims.uid && claims.role !== "broker") || target.deletedAt !== null) throw new HttpsError("permission-denied", "Action contact is outside your workspace.");
+      const opportunityRef = parsed.data.nextActionOpportunityId ? firestore.collection("opportunities").doc(parsed.data.nextActionOpportunityId) : null;
+      const opportunity = opportunityRef ? (await transaction.get(opportunityRef)).data() : null;
+      if (opportunityRef && (!opportunity || opportunity.officeId !== claims.officeId || (opportunity.ownerUid !== claims.uid && claims.role !== "broker") || opportunity.subjectContactId !== targetId || opportunity.deletedAt !== null || ["won", "lost"].includes(opportunity.stage as string))) throw new HttpsError("permission-denied", "Action requirement is unavailable.");
+      const dealRef = parsed.data.dealId ? firestore.collection("deals").doc(parsed.data.dealId) : null;
+      const deal = dealRef ? (await transaction.get(dealRef)).data() : null;
+      if (dealRef && (!deal || deal.officeId !== claims.officeId || (deal.ownerUid !== claims.uid && claims.role !== "broker") || deal.deletedAt !== null || ["closed", "lost"].includes(deal.stage as string))) throw new HttpsError("permission-denied", "Related deal is unavailable.");
+      if (deal && deal.buyerContactId !== targetId && parsed.data.nextActionType) throw new HttpsError("invalid-argument", "İşlemin sonraki aksiyonu için ilgili alıcıyı seç.");
+      if (deal && opportunityRef && deal.buyerOpportunityId !== opportunityRef.id) throw new HttpsError("invalid-argument", "Seçilen talep bu işleme bağlı değil.");
       const now = Date.now();
       const interaction = createInteraction(
         parsed.data,
@@ -69,7 +83,24 @@ export const recordInteraction = onCall(
         lastTouchAt: storedRelationship.lastTouchAt instanceof Timestamp ? storedRelationship.lastTouchAt.toMillis() : null,
         nextActionAt: storedRelationship.nextActionAt instanceof Timestamp ? storedRelationship.nextActionAt.toMillis() : null,
       }, interaction);
+      const separateAction = targetId !== contactRef.id || opportunityRef !== null || dealRef !== null;
+      if (separateAction) {
+        relationship.nextActionType = storedRelationship.nextActionType ?? null;
+        relationship.nextActionAt = storedRelationship.nextActionAt instanceof Timestamp ? storedRelationship.nextActionAt.toMillis() : null;
+      }
       const nowTimestamp = Timestamp.fromMillis(now);
+      const actionUpdate = { nextActionType: parsed.data.nextActionType, nextActionAt: timestamp(parsed.data.nextActionAt), updatedAt: nowTimestamp };
+      let dealUpdate: DocumentData = { updatedAt: nowTimestamp };
+      if (dealRef && deal && parsed.data.dealOffer) {
+        const offer = parsed.data.dealOffer;
+        const transition = { dealId: dealRef.id, toStage: "offer" as const, offerParty: offer.party, offerAmount: offer.amount, currency: offer.currency, occurredAt: interaction.occurredAt, evidenceNote: parsed.data.outcome, sourceInteractionId: interactionRef.id, nextActionType: parsed.data.nextActionType, nextActionAt: parsed.data.nextActionAt, actualAmount: null, commissionAmount: null, lostReason: null };
+        try { dealUpdate = { ...dealUpdate, stage: "offer", stageEnteredAt: deal.stage === "offer" ? deal.stageEnteredAt : Timestamp.fromMillis(interaction.occurredAt), offers: appendDealOffer(deal as Deal, transition, interactionRef.id, now), offerAmount: offer.amount, currency: offer.currency, lastStageNote: parsed.data.outcome }; }
+        catch { throw new HttpsError("invalid-argument", "Teklif, tarih ve sonraki aksiyonu kontrol et."); }
+        transaction.create(firestore.collection("stageEvents").doc(), { officeId: deal.officeId, ownerUid: deal.ownerUid, entityType: "deal", entityId: dealRef.id, fromStage: deal.stage, toStage: "offer", reason: parsed.data.outcome, commandId, occurredAt: Timestamp.fromMillis(interaction.occurredAt), createdAt: nowTimestamp });
+      }
+      if (dealRef) transaction.update(dealRef, { ...dealUpdate, ...(parsed.data.nextActionType ? actionUpdate : {}) });
+      else if (opportunityRef && parsed.data.nextActionType) transaction.update(opportunityRef, actionUpdate);
+      else if (targetId !== contactRef.id && parsed.data.nextActionType) transaction.update(targetRef, { "relationship.nextActionType": parsed.data.nextActionType, "relationship.nextActionAt": timestamp(parsed.data.nextActionAt), updatedAt: nowTimestamp });
 
       transaction.create(interactionRef, {
         ...interaction,

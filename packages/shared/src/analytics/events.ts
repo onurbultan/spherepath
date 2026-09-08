@@ -1,4 +1,6 @@
 export const analyticsEvents = {
+  CONTACT_IMPORT_CONFIRMED: "contact_import_confirmed",
+  CONTACT_IMPORT_COMPLETED: "contact_import_completed",
   DAILY_PLAN_OPENED: "daily_plan_opened",
   DAILY_TASK_COMPLETED: "daily_task_completed",
   INTERACTION_SAVED: "interaction_saved",

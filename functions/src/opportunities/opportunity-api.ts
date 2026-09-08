@@ -1,3 +1,4 @@
+import { readQueryPages } from "../api/paged-query.js";
 import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
@@ -164,8 +165,8 @@ export const listOpportunities = onCall(callableOptions, async (request): Promis
     const firestore = getFirestore();
     let opportunitiesQuery: FirebaseFirestore.Query = firestore.collection("opportunities").where("officeId", "==", claims.officeId);
     if (claims.role !== "broker") opportunitiesQuery = opportunitiesQuery.where("ownerUid", "==", claims.uid);
-    const snapshot = await opportunitiesQuery.limit(1_000).get();
-    const activeDocuments = snapshot.docs.filter((item) => item.data().deletedAt === null);
+    const snapshot = await readQueryPages(opportunitiesQuery);
+    const activeDocuments = snapshot.filter((item) => item.data().deletedAt === null);
     const contactIds = [...new Set(activeDocuments.map((item) => item.data().subjectContactId as string))];
     const contactSnapshots = contactIds.length
       ? await firestore.getAll(...contactIds.map((id) => firestore.collection("contacts").doc(id)))
@@ -297,24 +298,8 @@ export const updateOpportunityCriteria = onCall(callableOptions, async (request)
 
       const type = opportunity.type as Opportunity["type"];
       if (parsed.data.ownerDetails && !isOwnerOpportunity(type)) throw new HttpsError("invalid-argument", "Owner details require an owner opportunity.");
-      const propertyContext = isOwnerOpportunity(type) ? "subject_property" : "search_preference";
       const preferences = { ...parsed.data.preferences, transactionType: opportunityTransactionType(type) };
-      const currentMemory = contactMemory(contact);
-      const nextSituation = { propertyContext, summary: opportunityCriteriaSummary(type, preferences), propertyPreferences: preferences };
-      const matchingIndex = currentMemory.propertySituations.findIndex((item) => item.propertyContext === propertyContext);
-      const propertySituations = matchingIndex >= 0
-        ? currentMemory.propertySituations.map((item, index) => index === matchingIndex ? nextSituation : item)
-        : [nextSituation, ...currentMemory.propertySituations].slice(0, 3);
       const now = Timestamp.now();
-      transaction.update(contactRef, {
-        memory: {
-          ...currentMemory,
-          propertyPreferences: propertyContext === "search_preference" ? preferences : currentMemory.propertyPreferences,
-          propertySituations,
-          updatedAt: now,
-        },
-        updatedAt: now,
-      });
       transaction.update(opportunityRef, { criteria: preferences, ...(parsed.data.ownerDetails ? { ownerDetails: parsed.data.ownerDetails } : {}), updatedAt: now });
       transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "updateOpportunityCriteria", opportunityId: opportunityRef.id, createdAt: now });
     });

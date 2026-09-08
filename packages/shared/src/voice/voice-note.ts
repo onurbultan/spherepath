@@ -169,8 +169,8 @@ export const confirmVoiceNoteSchema = z.object({
   voiceNoteId: z.string().min(1).max(160),
   interaction: manualInteractionSchema,
   approvedInsights: voiceInsightsSchema.default(emptyVoiceInsights),
-  opportunity: opportunityDraftSchema.omit({ subjectContactId: true }).nullable().default(null),
-  opportunities: z.array(opportunityDraftSchema.omit({ subjectContactId: true })).max(3).default([]),
+  opportunity: z.lazy(() => opportunityDraftSchema.omit({ subjectContactId: true })).nullable().default(null),
+  opportunities: z.array(z.lazy(() => opportunityDraftSchema.omit({ subjectContactId: true }))).max(3).default([]),
 }).strict();
 
 export const getVoiceNoteSchema = z.object({
@@ -304,6 +304,21 @@ export function mergePropertySituations(
  * the two lists that decide a viewing. Shared because both platforms have to
  * summarise the same memory the same way.
  */
+/**
+ * One line an advisor reads at a glance in a list: what this person is actually
+ * trying to do. What they said about a property wins over what the system
+ * derived from it, and a free-form note wins over a list of parsed criteria --
+ * a row that says "Bölge: Alsancak · Oda: 3+1" is data, not a reason to call.
+ */
+export function contactMemoryLine(memory: ContactMemory): string | null {
+  const situation = memory.propertySituations.map((item) => item.summary.trim()).find(Boolean);
+  if (situation) return situation;
+  const remembered = memory.keyThingsToRemember.map((item) => item.trim()).filter(Boolean);
+  if (remembered.length) return remembered.slice(0, 2).join(" · ");
+  const highlights = buildMemoryHighlights(memory);
+  return highlights.length ? highlights.slice(0, 3).join(" · ") : null;
+}
+
 export function buildMemoryHighlights(memory: ContactMemory): string[] {
   const preferences = memory.propertyPreferences;
   const budget = preferences.budgetRange;

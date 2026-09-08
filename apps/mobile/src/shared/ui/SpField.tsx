@@ -134,6 +134,7 @@ export function SpChoice({
   onPress,
   disabled,
   accessibilityLabel,
+  accessibilityRole = "radio",
   style,
 }: {
   label: ReactNode;
@@ -141,13 +142,14 @@ export function SpChoice({
   onPress: () => void;
   disabled?: boolean;
   accessibilityLabel?: string;
+  accessibilityRole?: "radio" | "checkbox";
   style?: ViewStyle;
 }) {
   const theme = useSpTheme();
   return (
     <Pressable
       accessibilityLabel={accessibilityLabel}
-      accessibilityRole="radio"
+      accessibilityRole={accessibilityRole}
       accessibilityState={{ checked: selected, disabled: Boolean(disabled) }}
       disabled={disabled}
       onPress={onPress}
@@ -166,7 +168,7 @@ export function SpChoice({
   );
 }
 
-type ButtonTone = "primary" | "secondary" | "danger";
+type ButtonTone = "primary" | "secondary" | "danger" | "quiet";
 
 /**
  * `lg` is the full-width action that closes a sheet; everything else sits at the
@@ -195,6 +197,7 @@ export function SpButton({
     primary: { backgroundColor: theme.deed, borderColor: theme.deed },
     secondary: { backgroundColor: theme.background, borderColor: theme.line },
     danger: { backgroundColor: theme.ask, borderColor: theme.ask },
+    quiet: { backgroundColor: "transparent", borderColor: "transparent" },
   };
   const labelColor = tone === "primary" ? theme.onDeed : tone === "danger" ? theme.onAsk : theme.textPrimary;
   return (
@@ -225,3 +228,12 @@ const styles = StyleSheet.create({
   choice: choiceMetrics,
   button: buttonMetrics,
 });
+
+/** Compact inline selection, with a full accessible touch target. */
+export function SpCheckbox({ label, selected, disabled, onPress }: { label: string; selected: boolean; disabled?: boolean; onPress: () => void }) {
+  const theme = useSpTheme();
+  return <Pressable accessibilityRole="checkbox" accessibilityLabel={label} accessibilityState={{ checked: selected, disabled: Boolean(disabled) }} disabled={disabled} onPress={onPress} style={{ minHeight: hit.min, flexDirection: "row", alignItems: "center", gap: space.md, flex: 1 }}>
+    <View style={{ width: 20, height: 20, borderWidth: 1, borderRadius: radius.sm, borderColor: selected ? theme.deed : theme.line, backgroundColor: selected ? theme.deed : theme.background, alignItems: "center", justifyContent: "center" }}>{selected ? <SpText variant="caption" style={{ color: theme.onDeed }}>✓</SpText> : null}</View>
+    <SpText variant="bodySmall" color={disabled ? "secondary" : "primary"} style={{ flex: 1, fontWeight: "700" }}>{label}</SpText>
+  </Pressable>;
+}

@@ -1,5 +1,6 @@
 import {
   createCommandId,
+  apiQueryKeys,
   type PortfolioItemDraft,
   type PortfolioItemRecord,
   type PortfolioMatchNotificationRecord,
@@ -15,20 +16,33 @@ export async function listPortfolioItems(): Promise<PortfolioItemRecord[]> {
   return (await apiClient.query<undefined, { portfolioItems: PortfolioItemRecord[] }>("listPortfolioItems", undefined)).portfolioItems;
 }
 
-export interface PortfolioMatchResult { matches: PortfolioMatchRecord[]; nearMisses: PortfolioMatchRecord[] }
+export interface PortfolioMatchResult { matches: PortfolioMatchRecord[]; nearMisses: PortfolioMatchRecord[]; candidateCount?: number; demandCount?: number }
 export async function listPortfolioMatches(): Promise<PortfolioMatchResult> {
-  const result = await apiClient.query<undefined, PortfolioMatchResult>("listPortfolioMatches", undefined);
-  return { matches: result.matches ?? [], nearMisses: result.nearMisses ?? [] };
+  const combined: PortfolioMatchResult = { matches: [], nearMisses: [] };
+  let cursor: number | null = 0;
+  do {
+    const page: PortfolioMatchResult & { nextCursor?: number | null } = await apiClient.query("listPortfolioMatches", { cursor });
+    combined.matches.push(...(page.matches ?? [])); combined.nearMisses.push(...(page.nearMisses ?? []));
+    combined.candidateCount = page.candidateCount; combined.demandCount = page.demandCount;
+    cursor = page.nextCursor ?? null;
+  } while (cursor !== null);
+  return combined;
 }
+
+export const portfolioMatchesQueryOptions = {
+  queryKey: apiQueryKeys.portfolioMatches,
+  queryFn: listPortfolioMatches,
+  staleTime: 30_000,
+};
 
 export async function listMatchNotifications(): Promise<PortfolioMatchNotificationRecord[]> {
   return (await apiClient.query<undefined, { notifications: PortfolioMatchNotificationRecord[] }>("listMatchNotifications", undefined)).notifications;
 }
 
 export async function markMatchNotificationsRead(session: WorkspaceSession, notificationIds: string[]): Promise<void> {
-  await apiClient.command<{ notificationIds: string[] }, { markedCount: number }>(
-    "markMatchNotificationsRead", { notificationIds }, createCommandId(session.uid),
-  );
+  for (let index = 0; index < notificationIds.length; index += 100) {
+    await apiClient.command<{ notificationIds: string[] }, { markedCount: number }>("markMatchNotificationsRead", { notificationIds: notificationIds.slice(index, index + 100) }, createCommandId(session.uid));
+  }
 }
 
 export async function analyzePortfolioText(text: string, source: PortfolioSource): Promise<PortfolioItemDraft> {

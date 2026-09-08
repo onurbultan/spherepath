@@ -40,6 +40,7 @@ export type NextActionType =
   | "call"
   | "message"
   | "appointment"
+  | "appointment_confirmed"
   | "valuation"
   | "offer"
   | "complete_permission"
@@ -145,6 +146,8 @@ export interface User extends Audited {
 
 export interface Contact extends TenantOwned, Audited {
   phone: string | null;
+  additionalPhones?: string[];
+  emails?: string[];
   phoneHash: string | null;
   fullName: string | null;
   /** Advisor-only shorthand; never use this field in customer-facing copy. */
@@ -152,7 +155,7 @@ export interface Contact extends TenantOwned, Audited {
   /** Legacy identity fallback retained for existing records. */
   label: string | null;
   metAtPlace: string | null;
-  metAt: Instant;
+  metAt: Instant | null;
   source: ContactSource;
   roles: ContactRole[];
   relationship: {
@@ -186,6 +189,9 @@ export interface Contact extends TenantOwned, Audited {
 }
 
 export interface Interaction extends TenantOwned {
+  nextActionContactId?: string | null;
+  nextActionOpportunityId?: string | null;
+  dealId?: string | null;
   contactId: string;
   channel: InteractionChannel;
   occurredAt: Instant;
@@ -307,8 +313,21 @@ export interface Presentation extends TenantOwned, Audited {
   deletedAt: Instant | null;
 }
 
-export type DealStage = "presentation" | "viewing" | "offer" | "contract" | "closed" | "lost";
+export type DealStage = "inquiry" | "presentation" | "viewing" | "offer" | "contract" | "closed" | "lost";
+export interface DealOffer {
+  id: string;
+  party: "buyer" | "seller";
+  amount: number;
+  currency: CurrencyCode;
+  occurredAt: Instant;
+  recordedAt: Instant;
+  note: string;
+  previousOfferId: string | null;
+  sourceInteractionId: string | null;
+}
+
 export interface Deal extends TenantOwned, Audited {
+  offers?: DealOffer[];
   listingId: string;
   buyerContactId: string | null;
   buyerOpportunityId: string | null;

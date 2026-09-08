@@ -1,4 +1,4 @@
-import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/firestore";
+import { getFirestore, Timestamp, FieldPath, type DocumentData } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   contactDraftSchema,
@@ -58,7 +58,7 @@ function toContactRecord(id: string, data: DocumentData): ContactRecord {
   return {
     ...(data as Contact),
     id,
-    metAt: millis(data.metAt) ?? 0,
+    metAt: millis(data.metAt),
     createdAt: millis(data.createdAt) ?? 0,
     updatedAt: millis(data.updatedAt) ?? 0,
     deletedAt: millis(data.deletedAt),
@@ -135,21 +135,29 @@ function validateCommandReceipt(data: DocumentData, claims: SpherepathClaims, ty
   return data.contactId;
 }
 
-export const listContacts = onCall(callableOptions(), async (request): Promise<{ contacts: ContactRecord[] }> => {
+export const listContacts = onCall(callableOptions(), async (request): Promise<{ contacts: ContactRecord[]; nextCursor: string | null }> => {
   const claims = requireSpherepathClaims(request);
-  const envelope = readApiEnvelope<undefined>(request.data);
+  const envelope = readApiEnvelope<{ cursor?: unknown } | undefined>(request.data);
+  const cursor = envelope.data?.cursor;
+  if (cursor !== undefined && (typeof cursor !== "string" || !/^[a-zA-Z0-9_-]{1,160}$/u.test(cursor))) throw new HttpsError("invalid-argument", "Invalid cursor.");
   return observeApiRequest("listContacts", envelope.requestId, async () => {
     const firestore = getFirestore();
     let contactsQuery: FirebaseFirestore.Query = firestore.collection("contacts")
       .where("officeId", "==", claims.officeId);
     if (claims.role !== "broker") contactsQuery = contactsQuery.where("ownerUid", "==", claims.uid);
 
-    const snapshot = await contactsQuery.limit(1_000).get();
-    const contacts = snapshot.docs
+    contactsQuery = contactsQuery.orderBy(FieldPath.documentId());
+    if (typeof cursor === "string") contactsQuery = contactsQuery.startAfter(cursor);
+    // Older clients sent undefined and expect the original first 1,000 rows.
+    // Current resources opt into 500-row cursor pagination with an object.
+    const pageSize = envelope.data == null ? 1_000 : 500;
+    const snapshot = await contactsQuery.limit(pageSize + 1).get();
+    const page = snapshot.docs.slice(0, pageSize);
+    const contacts = page
       .map((item) => toContactRecord(item.id, item.data()))
       .filter((contact) => contact.deletedAt === null)
       .sort((left, right) => right.createdAt - left.createdAt);
-    return { contacts };
+    return { contacts, nextCursor: snapshot.size > pageSize ? page.at(-1)!.id : null };
   });
 });
 

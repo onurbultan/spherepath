@@ -20,7 +20,9 @@ export * from "./funnel/funnel-metrics.js";
 export * from "./listings/index.js";
 export * from "./matching/match-message.js";
 export * from "./matching/portfolio-match.js";
+export * from "./matching/opportunity-match-summary.js";
 export * from "./opportunities/opportunity-situation.js";
+export * from "./opportunities/opportunity-list-summary.js";
 export * from "./opportunities/index.js";
 export * from "./referrals/index.js";
 export * from "./privacy/index.js";
@@ -31,3 +33,9 @@ export * from "./voice/index.js";
 export * from "./api/client.js";
 
 export * from "./auth/onboarding.js";
+export * from "./contacts/contact-import.js";
+
+export * from "./contacts/next-step.js";
+export * from "./matching/listing-candidate.js";
+export * from "./closing/advisor-copy.js";
+export * from "./closing/test-workspace-copy.js";

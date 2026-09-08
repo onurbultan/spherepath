@@ -26,6 +26,7 @@ function localDateTime(days: number, hour = 10): string {
 
 const futurePresets = [
   { label: "Yarın sabah", days: 1, hour: 10 },
+  { label: "Yarın öğlen", days: 1, hour: 12 },
   { label: "Gelecek hafta", days: 7, hour: 10 },
   { label: "2 hafta", days: 14, hour: 10 },
   { label: "1 ay", days: 30, hour: 10 },

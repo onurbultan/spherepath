@@ -77,7 +77,7 @@ test("ilk kez kullanan danışman beş görüşmelik gününü kayıpsız yönet
   for (const meeting of meetings) await expect(memory).toContainText(meeting.name);
 
   await page.goto("/opportunities");
-  await page.getByRole("button", { name: "Portföy adayları" }).click();
+  await page.getByRole("button", { name: /Portföy kazanma/ }).click();
   await advanceSeller(page, "İlk ihtiyaç görüşmesi tamamlandı.", "Randevu yap", "Yarın sabah");
   await advanceSeller(page, "Yerinde inceleme randevusu alındı.", "Değerleme", "Gelecek hafta");
   await advanceSeller(page, "Değerleme raporu hazırlandı.", "Teklif hazırla", "Gelecek hafta");

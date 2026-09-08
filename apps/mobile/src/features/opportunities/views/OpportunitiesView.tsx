@@ -1,4 +1,8 @@
-import { useEffect, useState } from "react";
+import { OpportunityAction } from "../components/OpportunityAction";
+import { RequirementMatches } from "../components/RequirementMatches";
+import { RequirementMatchIndicator } from "../components/RequirementMatchIndicator";
+import { portfolioMatchesQueryOptions } from "@/features/matching/resources/portfolio";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -20,8 +24,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   apiQueryKeys,
-  defaultOpportunityJourney,
+  opportunitiesForJourney, opportunityListSummary, opportunityJourneyFilters, opportunityJourneyLabels, opportunityOutcomeLabels, type OpportunityJourneyFilter, type OpportunityOutcomeFilter,
   isOwnerOpportunity,
+  isOpenRequirement,
+  summarizeOpportunityMatches,
   emptyVoicePropertyPreferences,
   opportunityCriteriaCopy,
   portfolioAuthorizationLabels,
@@ -41,6 +47,7 @@ import {
   opportunityTransitionSchema,
   opportunityTypeLabels,
   opportunityTypes,
+  parseMoneyInput,
   propertyTypeLabels,
   propertyTypes,
   suggestOpportunityTypeForRoles,
@@ -52,6 +59,8 @@ import {
 } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
 import { listContacts, type ContactRecord } from "@/features/contacts/resources/contacts";
+import { ClosingSection } from "@/features/closing/views/ClosingSection";
+import { listListings } from "@/features/listings/resources/listings";
 import { SpCard } from "@/shared/ui/SpCard";
 import { SpText } from "@/shared/ui/SpText";
 import { SpDateField } from "@/shared/ui/SpDateField";
@@ -68,6 +77,8 @@ import {
   type OpportunityRecord,
 } from "../resources/opportunities";
 import {
+  SpField,
+  SpInput,
   buttonMetrics,
   choiceMetrics,
   controlMetrics,
@@ -184,14 +195,24 @@ export default function OpportunitiesView() {
     queryKey: apiQueryKeys.contacts,
     queryFn: listContacts,
   });
+  // Marketing a mandate and closing on it are the second half of the same
+  // pipeline, so they sit under the first half rather than on the portfolio.
+  const listingsQuery = useQuery({
+    queryKey: apiQueryKeys.listings,
+    queryFn: listListings,
+  });
   const contacts = contactsQuery.data ?? [];
   const opportunities = (opportunitiesQuery.data ?? emptyOpportunities).map((opportunity) => withCurrentContactMemory(opportunity, contacts));
+  const [demandLocation, setDemandLocation] = useState("");
+  const [demandPropertyType, setDemandPropertyType] = useState<PropertyType | "">("");
+  const [demandBudget, setDemandBudget] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const activeCreateOpen = createOpen || params.create === "1";
   const [moving, setMoving] = useState<OpportunityRecord | null>(null);
   const [correcting, setCorrecting] = useState<OpportunityRecord | null>(null);
   const [selected, setSelected] = useState<OpportunityRecord | null>(null);
   const [criteriaEditing, setCriteriaEditing] = useState<OpportunityRecord | null>(null);
+  const [criteriaAddressError, setCriteriaAddressError] = useState<string | null>(null);
   const [criteriaForm, setCriteriaForm] = useState<CriteriaForm>({ locationRequired: false, authorizationType: "unknown", motivation: "", locations: "", propertyTypes: [], budgetMin: "", budgetMax: "", currency: "TRY", bedrooms: "", livingRooms: "", areaMin: "", mustHaves: "", timeline: "" });
   const detailQuery = useQuery({
     queryKey: apiQueryKeys.opportunityDetail(selected?.id ?? "none"),
@@ -211,8 +232,8 @@ export default function OpportunitiesView() {
   const [lostReason, setLostReason] = useState("");
   const [lostKind, setLostKind] = useState<"lost" | "duplicate">("lost");
   const [correctionReason, setCorrectionReason] = useState("");
-  const [chosenJourney, setJourneyFilter] = useState<"owner" | "requirement" | null>(null);
-  const journeyFilter = chosenJourney ?? defaultOpportunityJourney(opportunities);
+  const [journeyFilter, setJourneyFilter] = useState<OpportunityJourneyFilter>("all");
+  const [outcomeFilter, setOutcomeFilter] = useState<OpportunityOutcomeFilter>("open");
   useEffect(() => {
     if (typeof params.opportunityId !== "string") return;
     const linked = opportunities.find((item) => item.id === params.opportunityId);
@@ -220,6 +241,7 @@ export default function OpportunitiesView() {
     // A deep link is external navigation state; reflect it once in the local sheet.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelected((current) => current?.id === linked.id ? current : linked);
+    setOutcomeFilter(linked.stage === "won" || linked.stage === "lost" ? linked.stage : "open");
     setJourneyFilter(linked.type === "buyer_requirement" || linked.type === "tenant_requirement" ? "requirement" : "owner");
   }, [opportunities, params.opportunityId]);
 
@@ -227,12 +249,11 @@ export default function OpportunitiesView() {
     setSelected(null);
     if (params.opportunityId) router.setParams({ opportunityId: undefined });
   }
-  const visibleOpportunities = opportunities.filter((opportunity) => {
-    const requirement =
-      opportunity.type === "buyer_requirement" ||
-      opportunity.type === "tenant_requirement";
-    return (journeyFilter === "requirement") === requirement;
-  });
+  const journeyOpportunities = opportunitiesForJourney(opportunities, journeyFilter);
+  const outcomeCounts = opportunityListSummary(journeyOpportunities);
+  const visibleOpportunities = journeyOpportunities.filter((item) => outcomeFilter === "open" ? item.stage !== "won" && item.stage !== "lost" : item.stage === outcomeFilter);
+  const matchesQuery = useQuery({ ...portfolioMatchesQueryOptions, enabled: visibleOpportunities.some(isOpenRequirement), refetchInterval: 60_000 });
+  const matchSummaries = useMemo(() => summarizeOpportunityMatches(matchesQuery.data ?? { matches: [], nearMisses: [] }), [matchesQuery.data]);
   const selectedContactId =
     contactId ||
     (contacts.some((contact) => contact.id === requestedContactId)
@@ -300,6 +321,7 @@ export default function OpportunitiesView() {
     const parsed = opportunityDraftSchema.safeParse({
       subjectContactId: selectedContactId,
       type: effectiveType,
+      ...(!isOwnerOpportunity(effectiveType) ? { criteria: { ...emptyVoicePropertyPreferences, transactionType: opportunityTransactionType(effectiveType), preferredLocations: demandLocation.split(",").map((item) => item.trim()).filter(Boolean), propertyTypes: demandPropertyType ? [demandPropertyType] : [], budgetRange: parseMoneyInput(demandBudget) === null ? null : { min: null, max: parseMoneyInput(demandBudget), currency: "TRY" } } } : {}),
       nextActionType: actionType,
       nextActionAt: new Date(actionAt).getTime(),
     });
@@ -310,7 +332,8 @@ export default function OpportunitiesView() {
     setPending(true);
     setError(null);
     try {
-      await saveOpportunity(session, parsed.data);
+      const created = await saveOpportunity(session, parsed.data);
+      setOutcomeFilter("open");
       setJourneyFilter(
         effectiveType === "buyer_requirement" ||
           effectiveType === "tenant_requirement"
@@ -319,6 +342,8 @@ export default function OpportunitiesView() {
       );
       closeCreate();
       await invalidate();
+      setSelected(created);
+      setDemandLocation(""); setDemandPropertyType(""); setDemandBudget("");
     } catch (nextError) {
       setError(messageFrom(nextError));
     } finally {
@@ -400,6 +425,7 @@ export default function OpportunitiesView() {
   function openCriteriaEditor(opportunity: OpportunityRecord) {
     const current = withCurrentContactMemory(detailQuery.data?.opportunity.id === opportunity.id ? detailQuery.data.opportunity : opportunity, contacts);
     const preferences = preferencesFor(current);
+    setCriteriaAddressError(null);
     setCriteriaEditing(current);
     setCriteriaForm({
       locationRequired: preferences.locationRequired ?? false,
@@ -416,23 +442,32 @@ export default function OpportunitiesView() {
   async function saveCriteria() {
     if (!session || !criteriaEditing) return;
     const current = preferencesFor(criteriaEditing);
+    const onlyLand = criteriaForm.propertyTypes.length === 1 && criteriaForm.propertyTypes[0] === "land";
     const budgetMin = optionalNumber(criteriaForm.budgetMin); const budgetMax = optionalNumber(criteriaForm.budgetMax);
     const parsed = opportunityCriteriaUpdateSchema.safeParse({ opportunityId: criteriaEditing.id, ...(isOwnerOpportunity(criteriaEditing.type) ? { ownerDetails: { address: criteriaForm.locations, authorizationType: criteriaForm.authorizationType, motivation: criteriaForm.motivation.trim() || null } } : {}), preferences: {
       ...current, transactionType: opportunityTransactionType(criteriaEditing.type), propertyTypes: criteriaForm.propertyTypes,
       preferredLocations: criteriaForm.locations.split(",").map((item) => item.trim()).filter(Boolean),
         locationRequired: criteriaForm.locationRequired,
       budgetRange: budgetMin !== null || budgetMax !== null ? { min: isOwnerOpportunity(criteriaEditing.type) ? budgetMax : budgetMin, max: budgetMax, currency: criteriaForm.currency } : null,
-      bedroomCountMin: optionalNumber(criteriaForm.bedrooms), livingRoomCountMin: optionalNumber(criteriaForm.livingRooms), roomCountMin: optionalNumber(criteriaForm.bedrooms), areaMinM2: optionalNumber(criteriaForm.areaMin),
+      bedroomCountMin: onlyLand ? null : optionalNumber(criteriaForm.bedrooms), livingRoomCountMin: onlyLand ? null : optionalNumber(criteriaForm.livingRooms), roomCountMin: onlyLand ? null : optionalNumber(criteriaForm.bedrooms), areaMinM2: optionalNumber(criteriaForm.areaMin),
       mustHaves: criteriaForm.mustHaves.split(",").map((item) => item.trim()).filter(Boolean), timeline: criteriaForm.timeline.trim() || null,
     }});
-    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Kriterleri kontrol et.");
+    if (!parsed.success) {
+      const addressError = parsed.error.issues.find((issue) => issue.path.join(".") === "ownerDetails.address")?.message ?? null;
+      setCriteriaAddressError(addressError);
+      setError(addressError ? null : parsed.error.issues[0]?.message ?? "Kriterleri kontrol et.");
+      return;
+    }
+    setCriteriaAddressError(null);
     setPending(true); setError(null);
     try {
-      await updateOpportunityCriteria(session, parsed.data); const opportunityId = criteriaEditing.id; setCriteriaEditing(null);
+      await updateOpportunityCriteria(session, parsed.data); const opportunityId = criteriaEditing.id;
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunities }), queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
-        queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunityDetail(opportunityId) }), queryClient.invalidateQueries({ queryKey: apiQueryKeys.portfolioMatches }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.opportunityDetail(opportunityId) }), queryClient.invalidateQueries({ queryKey: apiQueryKeys.portfolioMatches }), queryClient.invalidateQueries({ queryKey: apiQueryKeys.matchNotifications }),
       ]);
+      await queryClient.fetchQuery({ queryKey: apiQueryKeys.opportunityDetail(opportunityId), queryFn: () => getOpportunityDetail(opportunityId), staleTime: 0 });
+      setCriteriaEditing(null);
     } catch (nextError) { setError(messageFrom(nextError)); }
     finally { setPending(false); }
   }
@@ -445,11 +480,12 @@ export default function OpportunitiesView() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <SpText variant="eyebrow" color="deed">
-            AKTİF TALEPLER
+            TALEPTEN KAPANIŞA
           </SpText>
-          <SpText variant="hero">Fırsatlar</SpText>
+          <SpText variant="hero">İşler</SpText>
           <SpText color="secondary">
-            Her talebi bulunduğu aşama ve sıradaki işle birlikte ilerlet.
+            Fırsat, sunum, gezi ve teklif tek akışta. Her işi bulunduğu aşama ve
+            sıradaki adımıyla ilerlet.
           </SpText>
         </View>
         <Pressable
@@ -467,47 +503,29 @@ export default function OpportunitiesView() {
           ]}
         >
           <Plus color={theme.onAsk} size={19} />
-          <SpText style={{ color: theme.onAsk }}>Yeni fırsat</SpText>
+          <SpText style={{ color: theme.onAsk }}>Yeni iş</SpText>
         </Pressable>
         {error && !createOpen && !moving ? (
           <View style={[styles.error, { backgroundColor: theme.askBg }]}>
             <SpText color="ask">{error}</SpText>
           </View>
         ) : null}
-        {opportunities.length ? (
-          <View style={styles.choices}>
-            <Pressable
-              onPress={() => setJourneyFilter("owner")}
-              style={choice(journeyFilter === "owner")}
-            >
-              <SpText
-                variant="bodySmall"
-                color={journeyFilter === "owner" ? "deed" : "secondary"}
-              >
-                Portföy adayları
-              </SpText>
-            </Pressable>
-            <Pressable
-              onPress={() => setJourneyFilter("requirement")}
-              style={choice(journeyFilter === "requirement")}
-            >
-              <SpText
-                variant="bodySmall"
-                color={journeyFilter === "requirement" ? "deed" : "secondary"}
-              >
-                Müşteri talepleri
-              </SpText>
-            </Pressable>
+        {opportunities.length ? <>
+          <View style={styles.choices} accessibilityLabel="İş yolu">
+            {opportunityJourneyFilters.map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: journeyFilter === value }} onPress={() => setJourneyFilter(value)} style={choice(journeyFilter === value)}><SpText variant="bodySmall" color={journeyFilter === value ? "deed" : "secondary"}>{opportunityJourneyLabels[value]} · {opportunityListSummary(opportunitiesForJourney(opportunities, value)).total}</SpText></Pressable>)}
           </View>
-        ) : null}
+          <View style={styles.choices} accessibilityLabel="Fırsat durumu">
+            {(["open", "won", "lost"] as const).map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: outcomeFilter === value }} onPress={() => setOutcomeFilter(value)} style={choice(outcomeFilter === value)}><SpText variant="bodySmall" color={outcomeFilter === value ? "deed" : "secondary"}>{opportunityOutcomeLabels[value]} · {outcomeCounts[value]}</SpText></Pressable>)}
+          </View>
+        </> : null}
         {opportunitiesQuery.isPending ? (
           <View style={styles.state}>
             <ActivityIndicator color={theme.deed} />
-            <SpText color="secondary">Fırsatlar yükleniyor…</SpText>
+            <SpText color="secondary">İşler yükleniyor…</SpText>
           </View>
         ) : opportunitiesQuery.error ? (
           <SpCard style={styles.state}>
-            <SpText variant="title">Fırsatlar yüklenemedi</SpText>
+            <SpText variant="title">İşler yüklenemedi</SpText>
             <SpText color="secondary">
               {messageFrom(opportunitiesQuery.error)}
             </SpText>
@@ -556,10 +574,12 @@ export default function OpportunitiesView() {
               <SpText variant="title">{opportunity.subjectContactName}</SpText>
               <SpText color="secondary">
                 {opportunity.nextActionAt
-                  ? `${opportunity.nextActionType ? nextActionTypeLabels[opportunity.nextActionType] : "Sonraki aksiyon"} · ${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short" }).format(opportunity.nextActionAt)}`
-                  : "Fırsat kapandı"}
+                  ? `${opportunity.nextActionType ? nextActionTypeLabels[opportunity.nextActionType] : "Sonraki aksiyon"} · ${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(opportunity.nextActionAt)}`
+                  : opportunity.stage === "won" || opportunity.stage === "lost" ? "Fırsat kapandı" : "Sonraki aksiyon yok"}
               </SpText>
+              <RequirementMatchIndicator opportunity={opportunity} summary={matchSummaries.get(opportunity.id)} status={matchesQuery.status} />
               <View style={styles.cardActions}>
+                <OpportunityAction opportunity={opportunity} compact />
                 <Pressable
                   onPress={() => setSelected(opportunity)}
                   style={[
@@ -588,6 +608,7 @@ export default function OpportunitiesView() {
             </SpCard>
           ))
         )}
+        {listingsQuery.data?.length ? <ClosingSection listings={listingsQuery.data} /> : null}
       </ScrollView>
 
       <Modal
@@ -719,7 +740,7 @@ export default function OpportunitiesView() {
                   ))}
                 </View>
                 {selected ? (
-                  <><Pressable onPress={() => openCriteriaEditor(withCurrentContactMemory(detailQuery.data?.opportunity ?? selected, contacts))} style={[styles.secondary, { borderColor: theme.line }]}>
+                  <><OpportunityAction opportunity={selected} />{!isOwnerOpportunity(selected.type) ? <RequirementMatches opportunity={detailQuery.data?.opportunity ?? selected} /> : null}<Pressable onPress={() => openCriteriaEditor(withCurrentContactMemory(detailQuery.data?.opportunity ?? selected, contacts))} style={[styles.secondary, { borderColor: theme.line }]}>
                     <SpText variant="bodySmall">{isOwnerOpportunity(selected.type) ? opportunityCriteriaCopy.ownerAction : opportunityCriteriaCopy.demandAction}</SpText>
                   </Pressable><Pressable
                     onPress={() => {
@@ -747,10 +768,12 @@ export default function OpportunitiesView() {
           <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
             <View style={styles.sheetHeader}><View><SpText variant="eyebrow" color="deed">{criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.ownerTitle : opportunityCriteriaCopy.demandTitle}</SpText><SpText variant="hero">{criteriaEditing?.subjectContactName}</SpText></View><Pressable disabled={pending} onPress={() => setCriteriaEditing(null)} style={[styles.iconButton, { borderColor: theme.line }]}><X color={theme.textSecondary} size={20} /></Pressable></View>
             <SpText color="secondary">Bu bilgiler eşleşme motorunda ve fırsat detayında birlikte kullanılır.</SpText>{criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? <><SpText variant="title">{opportunityCriteriaCopy.authorization}</SpText><View style={styles.choices}>{portfolioAuthorizationTypes.map((item) => <Pressable key={item} accessibilityRole="radio" accessibilityState={{ checked: criteriaForm.authorizationType === item }} style={choice(criteriaForm.authorizationType === item)} onPress={() => setCriteriaForm((current) => ({ ...current, authorizationType: item }))}><SpText>{portfolioAuthorizationLabels[item]}</SpText></Pressable>)}</View><SpText variant="title">{opportunityCriteriaCopy.motivation}</SpText><TextInput style={inputStyle} value={criteriaForm.motivation} onChangeText={(motivation) => setCriteriaForm((current) => ({ ...current, motivation }))} /></> : <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: criteriaForm.locationRequired }} style={choice(criteriaForm.locationRequired)} onPress={() => setCriteriaForm((current) => ({ ...current, locationRequired: !current.locationRequired }))}><SpText>{criteriaForm.locationRequired ? "✓ " : ""}{opportunityCriteriaCopy.locationRequired}</SpText></Pressable>}
-            <SpText variant="title">{criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.address : "Bölgeler · virgülle ayır"}</SpText><TextInput placeholder="Karşıyaka, Bostanlı" placeholderTextColor={theme.textTertiary} style={inputStyle} value={criteriaForm.locations} onChangeText={(locations) => setCriteriaForm((current) => ({ ...current, locations }))} />
+            <SpField label={criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.address : "Bölgeler · virgülle ayır"} hint={criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.addressHint : undefined} error={criteriaAddressError}>
+              <SpInput accessibilityLabel={criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.address : "Bölgeler · virgülle ayır"} placeholder={opportunityCriteriaCopy.locationPlaceholder} value={criteriaForm.locations} onChangeText={(locations) => { setCriteriaAddressError(null); setCriteriaForm((current) => ({ ...current, locations })); }} />
+            </SpField>
             <SpText variant="title">Mülk türleri</SpText><View style={styles.choices}>{propertyTypes.map((item) => <Pressable key={item} accessibilityRole="checkbox" accessibilityState={{ checked: criteriaForm.propertyTypes.includes(item) }} onPress={() => setCriteriaForm((current) => ({ ...current, propertyTypes: current.propertyTypes.includes(item) ? current.propertyTypes.filter((value) => value !== item) : [...current.propertyTypes, item] }))} style={choice(criteriaForm.propertyTypes.includes(item))}><SpText variant="bodySmall" color={criteriaForm.propertyTypes.includes(item) ? "deed" : "secondary"}>{propertyTypeLabels[item]}</SpText></Pressable>)}</View>
             <SpText variant="title">{criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.expectedPrice : "Bütçe"}</SpText><View style={styles.fieldRow}>{criteriaEditing && !isOwnerOpportunity(criteriaEditing.type) ? <TextInput keyboardType="numeric" placeholder="Minimum" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.budgetMin} onChangeText={(budgetMin) => setCriteriaForm((current) => ({ ...current, budgetMin }))} /> : null}<TextInput keyboardType="numeric" placeholder={criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.expectedPrice : "Maksimum"} placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.budgetMax} onChangeText={(budgetMax) => setCriteriaForm((current) => ({ ...current, budgetMax }))} /></View><View style={styles.choices}>{currencyCodes.map((item) => <Pressable key={item} onPress={() => setCriteriaForm((current) => ({ ...current, currency: item }))} style={choice(criteriaForm.currency === item)}><SpText variant="bodySmall" color={criteriaForm.currency === item ? "deed" : "secondary"}>{item}</SpText></Pressable>)}</View>
-            <SpText variant="title">Oda ve alan</SpText><View style={styles.fieldRow}><TextInput keyboardType="numeric" placeholder="Yatak odası" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.bedrooms} onChangeText={(bedrooms) => setCriteriaForm((current) => ({ ...current, bedrooms }))} /><TextInput keyboardType="numeric" placeholder="Salon" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.livingRooms} onChangeText={(livingRooms) => setCriteriaForm((current) => ({ ...current, livingRooms }))} /><TextInput keyboardType="numeric" placeholder={criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.area : "Min. m²"} placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.areaMin} onChangeText={(areaMin) => setCriteriaForm((current) => ({ ...current, areaMin }))} /></View>
+            <SpText variant="title">Alan ve uygulanabilir oda bilgileri</SpText><View style={styles.fieldRow}>{criteriaForm.propertyTypes.length === 1 && criteriaForm.propertyTypes[0] === "land" ? null : <><TextInput keyboardType="numeric" placeholder="Yatak odası" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.bedrooms} onChangeText={(bedrooms) => setCriteriaForm((current) => ({ ...current, bedrooms }))} /><TextInput keyboardType="numeric" placeholder="Salon" placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.livingRooms} onChangeText={(livingRooms) => setCriteriaForm((current) => ({ ...current, livingRooms }))} /></>}<TextInput keyboardType="numeric" placeholder={criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.area : "Min. m²"} placeholderTextColor={theme.textTertiary} style={[inputStyle, styles.flexField]} value={criteriaForm.areaMin} onChangeText={(areaMin) => setCriteriaForm((current) => ({ ...current, areaMin }))} /></View>
             <SpText variant="title">{criteriaEditing && isOwnerOpportunity(criteriaEditing.type) ? opportunityCriteriaCopy.features : "Olmazsa olmazlar · virgülle ayır"}</SpText><TextInput placeholder="Havuz, otopark" placeholderTextColor={theme.textTertiary} style={inputStyle} value={criteriaForm.mustHaves} onChangeText={(mustHaves) => setCriteriaForm((current) => ({ ...current, mustHaves }))} />
             <SpText variant="title">Zamanlama</SpText><TextInput placeholder="1 Ekim'de taşınacak" placeholderTextColor={theme.textTertiary} style={inputStyle} value={criteriaForm.timeline} onChangeText={(timeline) => setCriteriaForm((current) => ({ ...current, timeline }))} />
             {error ? <View style={[styles.error, { backgroundColor: theme.askBg }]}><SpText color="ask">{error}</SpText></View> : null}
@@ -806,6 +829,7 @@ export default function OpportunitiesView() {
                 </Pressable>
               ))}
             </View>
+            {!isOwnerOpportunity(effectiveType) ? <><SpField label="Aranan bölgeler"><SpInput value={demandLocation} onChangeText={setDemandLocation} placeholder="Örn. Kadıovacık" /></SpField><SpText>Aranan mülk türü</SpText><View style={styles.choices}>{propertyTypes.map((item) => <Pressable key={item} style={choice(demandPropertyType === item)} onPress={() => setDemandPropertyType(item)}><SpText>{propertyTypeLabels[item]}</SpText></Pressable>)}</View><SpField label="Maksimum bütçe · isteğe bağlı"><SpInput keyboardType="numeric" value={demandBudget} onChangeText={setDemandBudget} /></SpField><SpText color="secondary">Teklif tutarı bütçe sınırı değildir. Bilinmeyen kriterleri boş bırak.</SpText></> : null}
             <ActionFields
               actionType={actionType}
               actionAt={actionAt}

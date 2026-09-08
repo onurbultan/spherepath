@@ -8,7 +8,7 @@ const transport: ApiTransport = async <TData, TResponse>({ endpoint, requestId, 
   commandId?: string;
   data: TData;
 }) => {
-  const callable = httpsCallable<ApiRequest<TData>, TResponse>(firebaseServices().functions, endpoint);
+  const callable = httpsCallable<ApiRequest<TData>, TResponse>(firebaseServices().functions, endpoint, { timeout: ["prepareContactImport", "finishGoogleContactImport"].includes(endpoint) ? 300_000 : 70_000 });
   return (await callable({ requestId, commandId, data })).data;
 };
 

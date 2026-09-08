@@ -33,6 +33,7 @@ export const listingStatusLabels: Record<ListingStatus, string> = {
 };
 
 export const listingDraftSchema = z.object({
+  acquiredAt: z.number().int().positive().optional(),
   opportunityId: z.string().trim().min(1).max(160),
   address: z.string().trim().min(3).max(500),
   regionSlug: z.string().trim().min(2).max(160),
@@ -92,12 +93,12 @@ export const listingReadinessUpdateSchema = z.object({
 
 export type ListingReadinessUpdate = z.infer<typeof listingReadinessUpdateSchema>;
 
-export function initialListingReadinessEvidence(authorizationType: AuthorizationType): ListingReadinessEvidence {
+export function initialListingReadinessEvidence(_authorizationType: AuthorizationType): ListingReadinessEvidence {
   return {
-    mandate: authorizationType === "verbal" ? "not_required" : "pending",
+    mandate: "pending",
     eids: "pending",
     media: "pending",
-    processingBasis: "verified",
+    processingBasis: "pending",
   };
 }
 
@@ -107,9 +108,9 @@ export function createPropertyAndListing(draft: ListingDraft, tenant: TenantOwne
     address: parsed.address,
     regionSlug: parsed.regionSlug.toLocaleLowerCase("tr-TR").replace(/\s+/g, "-").replace(/[^a-z0-9çğıöşü-]/g, ""),
     type: parsed.propertyType,
-    roomCount: parsed.roomCount,
+    roomCount: parsed.propertyType === "land" ? null : parsed.roomCount,
     areaM2: parsed.areaM2,
-    features: parsed.features,
+    features: parsed.features.filter((feature) => propertyFeaturesForType(parsed.propertyType).includes(feature)),
   };
   return {
     property: {
@@ -121,7 +122,23 @@ export function createPropertyAndListing(draft: ListingDraft, tenant: TenantOwne
       ...tenant, propertyId, opportunityId: parsed.opportunityId, authorizationType: parsed.authorizationType,
       propertySummary: summary, askingPrice: parsed.askingPrice, currency: parsed.currency, status: "preparing",
       readinessEvidence: initialListingReadinessEvidence(parsed.authorizationType),
-      acquiredAt: now, expiresAt: parsed.expiresAt, deletedAt: null, createdAt: now, updatedAt: now,
+      acquiredAt: parsed.acquiredAt ?? now, expiresAt: parsed.expiresAt, deletedAt: null, createdAt: now, updatedAt: now,
     },
   };
+}
+
+
+export function propertyFeaturesForType(type: PropertyType): readonly PropertyFeature[] {
+  return type === "land" ? ["sea_view"] : propertyFeatures;
+}
+
+export function portfolioInventorySummary(listings: readonly Pick<Listing, "status" | "askingPrice" | "currency">[]): string {
+  const group = (statuses: ListingStatus[]) => {
+    const items = listings.filter((item) => statuses.includes(item.status));
+    const totals = new Map<string, number>();
+    for (const item of items) if (item.askingPrice !== null) totals.set(item.currency, (totals.get(item.currency) ?? 0) + item.askingPrice);
+    const amounts = [...totals].map(([currency, amount]) => new Intl.NumberFormat("tr-TR", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount));
+    return `${items.length}${amounts.length ? ` / ${amounts.join(" + ")}` : ""}`;
+  };
+  return `Hazırlanan: ${group(["preparing"])} · Aktif: ${group(["active", "reserved"])}`;
 }

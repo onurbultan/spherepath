@@ -1,6 +1,6 @@
 "use client";
 
-import type { KeyboardEvent, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import type { ComponentPropsWithRef, KeyboardEvent, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
 /**
  * The form control layer. Every field on every screen comes from here, so its
@@ -19,7 +19,7 @@ function classes(...values: Array<string | false | undefined>): string {
 /** Checkboxes and radios are their own thing and must not be stretched into fields. */
 const controlTypes = new Set(["checkbox", "radio", "range", "file", "color", "hidden", "submit", "button", "reset", "image"]);
 
-export function SpInput({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+export function SpInput({ className, ...props }: ComponentPropsWithRef<"input">) {
   const bare = props.type ? controlTypes.has(props.type) : false;
   return <input {...props} className={classes(!bare && "sp-control", className)} />;
 }
@@ -76,4 +76,9 @@ export function handleFormKeyDown(event: KeyboardEvent<HTMLFormElement>) {
   } else if (target.tagName === "INPUT" && !["submit", "button", "checkbox", "radio"].includes((target as HTMLInputElement).type)) {
     event.preventDefault();
   }
+}
+
+/** Inline selection keeps its label and touch target together in dense lists. */
+export function SpCheckbox({ label, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & { label: string }) {
+  return <label className="sp-checkbox"><SpInput {...props} type="checkbox" /><span>{label}</span></label>;
 }

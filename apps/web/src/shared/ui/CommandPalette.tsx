@@ -8,6 +8,7 @@ import {
   House,
   ListTodo,
   MessageSquarePlus,
+  Pyramid,
   Search,
   Settings,
 } from "lucide-react";
@@ -34,17 +35,18 @@ interface PaletteItem {
 }
 
 const pages: PaletteItem[] = [
-  { id: "page-today", group: "Sayfalar", title: "Bugün", subtitle: "Darboğaz teşhisi ve günlük plan", href: "/", icon: ListTodo },
+  { id: "page-today", group: "Sayfalar", title: "Bugün", subtitle: "Günün planı ve işlenmemiş notlar", href: "/", icon: ListTodo },
   { id: "page-contacts", group: "Sayfalar", title: "Kişiler", subtitle: "İlişki ağı ve uyum kayıtları", href: "/contacts", icon: ContactRound },
-  { id: "page-opportunities", group: "Sayfalar", title: "Fırsatlar", subtitle: "Aşamalar ve sonraki aksiyonlar", href: "/opportunities", icon: BriefcaseBusiness },
-  { id: "page-listings", group: "Sayfalar", title: "Portföy", subtitle: "Envanter, ofis havuzu ve kapama", href: "/listings", icon: House },
+  { id: "page-work", group: "Sayfalar", title: "İşler", subtitle: "Talepten kapanışa tek akış", href: "/opportunities", icon: BriefcaseBusiness },
+  { id: "page-listings", group: "Sayfalar", title: "Portföy", subtitle: "Aktif envanter ve ofis havuzu", href: "/listings", icon: House },
+  { id: "page-funnel", group: "Sayfalar", title: "Huni", subtitle: "Nerede takıldığının teşhisi", href: "/funnel", icon: Pyramid },
   { id: "page-capture", group: "Sayfalar", title: "Temas kaydet", subtitle: "Sesli not veya manuel kayıt", href: "/capture", icon: MessageSquarePlus },
-  { id: "page-settings", group: "Sayfalar", title: "Ayarlar ve uyum", subtitle: "Profil, ofis ekibi, veri sahibi talepleri", href: "/settings", icon: Settings },
+  { id: "page-settings", group: "Sayfalar", title: "Ayarlar ve ekip", subtitle: "Profil, ofis ekibi, veri sahibi talepleri", href: "/settings", icon: Settings },
 ];
 
 const actions: PaletteItem[] = [
-  { id: "action-voice", group: "Eylemler", title: "Sesli temas notu başlat", subtitle: "⌘⇧V · görüşme sonrası not", href: "/capture", icon: MessageSquarePlus },
-  { id: "action-opportunity", group: "Eylemler", title: "Yeni fırsat oluştur", subtitle: "⌘⇧F · kişi ve sonraki aksiyon", href: "/opportunities?create=1", icon: BriefcaseBusiness },
+  { id: "action-voice", group: "Eylemler", title: "Sesli temas notu başlat", subtitle: "\u2318\u21e7V \u00b7 görüşme sonrası not", href: "/capture", icon: MessageSquarePlus },
+  { id: "action-opportunity", group: "Eylemler", title: "Yeni iş oluştur", subtitle: "\u2318\u21e7F \u00b7 kişi ve sonraki aksiyon", href: "/opportunities?create=1", icon: BriefcaseBusiness },
 ];
 
 const normalize = (value: string) => value.toLocaleLowerCase("tr-TR");

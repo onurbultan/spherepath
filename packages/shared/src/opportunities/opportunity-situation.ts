@@ -1,12 +1,23 @@
 import { z } from "zod";
 import type { ContactMemory, ContactPropertySituation, ContactRole, OpportunityType, PropertyTransactionType } from "../domain/entities.js";
-import { voicePropertyPreferencesSchema, type VoicePropertyPreferences } from "../voice/voice-note.js";
+import { voicePropertyPreferencesSchema, type VoicePropertyPreferences, type VoiceInsights } from "../voice/voice-note.js";
+
+/** Bind only this reviewed note's matching context to the new work. */
+export function approvedOpportunityCriteria(insights: VoiceInsights, type: OpportunityType): VoicePropertyPreferences | undefined {
+  const context = isOwnerOpportunity(type) ? "subject_property" : "search_preference";
+  const transaction = opportunityTransactionType(type);
+  const candidates = insights.propertySituations.filter((item) => item.propertyContext === context && (item.propertyPreferences.transactionType === transaction || item.propertyPreferences.transactionType === null));
+  if (candidates.length > 1) return undefined;
+  const preferences = candidates[0]?.propertyPreferences ?? (insights.propertyContext === context ? insights.propertyPreferences : undefined);
+  if (!preferences || (preferences.transactionType !== null && preferences.transactionType !== transaction)) return undefined;
+  return { ...preferences, transactionType: transaction };
+}
 
 export const opportunityCriteriaUpdateSchema = z.object({
   opportunityId: z.string().trim().min(1).max(160),
   preferences: voicePropertyPreferencesSchema,
   ownerDetails: z.object({
-    address: z.string().trim().min(3).max(240),
+    address: z.string().trim().min(3, "Mülkün bulunduğu adresi veya bölgeyi en az 3 karakterle yaz.").max(240, "Mülk adresi / bölgesi en fazla 240 karakter olabilir."),
     authorizationType: z.enum(["exclusive", "open", "verbal", "none", "unknown"]),
     motivation: z.string().trim().min(2).max(500).nullable(),
   }).strict().optional(),
@@ -68,6 +79,8 @@ export const opportunityCriteriaCopy = {
   ownerAction: "Mülk bilgilerini düzenle",
   demandAction: "Kriterleri düzenle",
   address: "Mülk adresi / bölgesi",
+  addressHint: "Zorunlu alan. İlçe veya mahalle yazman yeterli.",
+  locationPlaceholder: "Örn. Karşıyaka, Bostanlı",
   expectedPrice: "Beklenen fiyat",
   authorization: "Yetki durumu",
   motivation: "Satma / kiraya verme nedeni",
