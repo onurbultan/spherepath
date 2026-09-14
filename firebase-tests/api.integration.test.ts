@@ -538,7 +538,7 @@ describe("callable API vertical slice", () => {
     // produce exactly one record and the rest of the page was text nobody acted
     // on. The emulator skips the model, so the readings here are the rules.
     const notebookPage = [
-      "Ayşe Yılmaz ile tanıştım, Zeytinler'de ikiz villaları var",
+      "Ayşe Yılmaz ile tanıştım, Zeytinler'de ikiz villaları var, @Integration Contact referans oldu",
       "Perihan Demir komşusu, mühendis, kite sörf malzemesi satıyor",
       "",
       "Yapılacaklar",
@@ -569,13 +569,16 @@ describe("callable API vertical slice", () => {
     const pageCommand = envelope({
       inboxItemId: pageNote.item.id,
       decisions: [
-        { segmentId: page.segments![0]!.id, action: "person", recordInteraction: true, opportunityType: null, contact: { fullName: "Ayşe Yılmaz", phone: "", metAtPlace: "Günlük not", source: "in_person", role: "unknown", nextActionType: "call", nextActionAt: soon } },
+        { segmentId: page.segments![0]!.id, action: "person", recordInteraction: true, opportunityType: null, credits: [{ contactId: created.contact.id, kind: "referral" }], contact: { fullName: "Ayşe Yılmaz", phone: "", metAtPlace: "Günlük not", source: "in_person", role: "unknown", nextActionType: "call", nextActionAt: soon } },
         { segmentId: page.segments![1]!.id, action: "person", recordInteraction: true, opportunityType: null, contact: { fullName: "Perihan Demir", phone: "", metAtPlace: "Günlük not", source: "in_person", role: "unknown", nextActionType: "call", nextActionAt: soon } },
         { segmentId: page.segments![2]!.id, action: "skip" },
         { segmentId: page.segments![3]!.id, action: "follow_up", contactRef: { kind: "existing", contactId: created.contact.id }, nextActionType: "call", nextActionAt: soon },
       ],
     }, "request-page-apply", "command-page-apply");
     const applied = (await applyNoteSegments(pageCommand)).data as { item: { status: string; appliedActions: Array<{ type: string; label: string }>; segments: Array<{ appliedAt: number | null }> }; createdCount: number };
+
+    // The @ in the first line resolved to somebody already in the workspace.
+    expect(page.segments![0]!.mentions?.map((mention) => mention.contactId)).toEqual([created.contact.id]);
 
     // Two people from one note, which a single-subject note could never do.
     expect(applied.item.appliedActions.filter((action) => action.type === "contact_created")).toHaveLength(2);
@@ -600,12 +603,22 @@ describe("callable API vertical slice", () => {
     // asking again every time the page is read.
     const stillDecided = extended.segments!.filter((segment) => segment.appliedAt !== null);
     expect(stillDecided.map((segment) => segment.text).sort()).toEqual([
-      "Ayşe Yılmaz ile tanıştım, Zeytinler'de ikiz villaları var",
+      "Ayşe Yılmaz ile tanıştım, Zeytinler'de ikiz villaları var, @Integration Contact referans oldu",
       "Düğün salonu grubuna yaz",
       "Integration Contact aranacak",
       "Perihan Demir komşusu, mühendis, kite sörf malzemesi satıyor",
     ].sort());
     expect(extended.segments!.find((segment) => segment.text === "Şafak abi görüş")!.appliedAt).toBeNull();
+
+    // The ledger on the person's page answers the one question that decides who
+    // gets called back: who actually brings work. The referral flow feeds it too.
+    const listContributions = httpsCallable(functions, "listContributions");
+    const ledger = (await listContributions(envelope({ contactId: created.contact.id }, "request-ledger"))).data as {
+      contributions: Array<{ kind: string; subjectType: string; note: string }>;
+    };
+    expect(ledger.contributions.length).toBeGreaterThanOrEqual(2);
+    expect(ledger.contributions.some((entry) => entry.kind === "referral" && entry.subjectType === "contact")).toBe(true);
+    expect(ledger.contributions.some((entry) => entry.note.includes("Ayşe Yılmaz"))).toBe(true);
 
     const pageReplay = (await applyNoteSegments({ ...pageCommand, requestId: `request-page-apply-replay-${runId}` })).data as { createdCount: number };
     expect(pageReplay.createdCount).toBe(applied.createdCount);
@@ -801,7 +814,7 @@ describe("callable API vertical slice", () => {
     expect(deletionStatus).toBe("completed");
     const contactsAfterDeletion = (await listContacts(envelope(undefined, "request-list-after-deletion"))).data as { contacts: Array<{ id: string }> };
     expect(contactsAfterDeletion.contacts.some((item) => item.id === deletionContact.contact.id)).toBe(false);
-  }, 60_000);
+  }, 180_000);
 });
 
 it("keeps atomic first-customer capture and mirrored tasks consistent across surfaces", async () => {

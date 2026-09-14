@@ -29,8 +29,12 @@ import {
   type InboxItemRecord,
   applyNoteSegmentsSchema,
   matchSegmentContact,
+  contributionKindLabels,
+  createContribution,
   orderedSegmentDecisions,
+  resolveMentions,
   segmentContactName,
+  suggestedContributionKind,
   segmentKindFor,
   segmentNeedsReading,
   splitNoteIntoSegments,
@@ -38,6 +42,7 @@ import {
   type InboxItemAnalysis,
   type NoteSegment,
   type NoteSegmentReading,
+  type ContributionSubjectType,
   type SegmentContactRef,
   type PortfolioItemDraft,
 } from "../../../packages/shared/src/index.js";
@@ -120,12 +125,17 @@ async function readSegment(
   const reading = analysis ? { ...analysis, portfolio } : null;
   const name = segmentContactName({ analysis: reading, text: segment.text });
   const matched = matchSegmentContact(name, contacts);
+  // An @ is a deliberate act; the match above is only a guess at who the line
+  // is about. Both are shown, and the advisor confirms which is which.
+  const mentions = resolveMentions(segment.text, contacts)
+    .flatMap((mention) => mention.contactId ? [{ contactId: mention.contactId, name: mention.contactName ?? mention.name }] : []);
   return {
     ...segment,
     kind,
     analysis: reading,
     matchedContactId: matched?.id ?? null,
     matchedContactName: matched?.name ?? null,
+    mentions,
     appliedAt: null,
   };
 }
@@ -673,7 +683,7 @@ export const undoInboxApplication = onCall(callableOptions, async (request): Pro
  * segment is stamped as it is applied so a second approval of the same page
  * cannot duplicate what it already produced.
  */
-export const applyNoteSegments = onCall(callableOptions, async (request): Promise<{ item: InboxItemRecord; createdCount: number }> => {
+export const applyNoteSegments = onCall(callableOptions, async (request): Promise<{ item: InboxItemRecord; createdCount: number; creditedCount: number }> => {
   const claims = requireSpherepathClaims(request);
   const envelope = readApiEnvelope<unknown>(request.data, { command: true });
   const parsed = applyNoteSegmentsSchema.safeParse(envelope.data);
@@ -712,6 +722,7 @@ export const applyNoteSegments = onCall(callableOptions, async (request): Promis
     }
 
     let createdCount = 0;
+    let creditedCount = 0;
     await db.runTransaction(async (transaction) => {
       const [itemSnapshot, receipt, ...contactSnapshots] = await Promise.all([
         transaction.get(itemRef),
@@ -723,6 +734,7 @@ export const applyNoteSegments = onCall(callableOptions, async (request): Promis
           throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
         }
         createdCount = (receipt.data()!.createdCount ?? 0) as number;
+        creditedCount = (receipt.data()!.creditedCount ?? 0) as number;
         return;
       }
       if (!itemSnapshot.exists || !canManage(itemSnapshot.data()!, claims)) throw new HttpsError("not-found", "Not bulunamadı.");
@@ -753,6 +765,45 @@ export const applyNoteSegments = onCall(callableOptions, async (request): Promis
       const appliedActions: DocumentData[] = [];
       const appliedSegmentIds = new Set<string>();
       let linkedContactId = (itemData.linkedContactId ?? null) as string | null;
+
+      /**
+       * Whoever brought this line, credited against what it produced. A ledger
+       * entry is a fact about the past, so it carries the record it belongs to
+       * and the line it came from, in the advisor's own words.
+       */
+      const creditFor = (
+        decision: { segmentId: string; credits: ReadonlyArray<{ contactId: string; kind: import("../../../packages/shared/src/index.js").ContributionKind }> },
+        subjectType: ContributionSubjectType,
+        subjectId: string | null,
+        text: string,
+      ) => {
+        for (const credit of decision.credits) {
+          const contribution = createContribution({
+            contactId: credit.contactId,
+            kind: credit.kind ?? suggestedContributionKind(subjectType),
+            subjectType,
+            subjectId,
+            note: text.slice(0, 500),
+            sourceInboxItemId: itemRef.id,
+            occurredAt: null,
+          }, tenant, now);
+          transaction.create(db.collection("contributions").doc(), {
+            ...contribution,
+            occurredAt: Timestamp.fromMillis(contribution.occurredAt),
+            deletedAt: null,
+            createdAt: nowStamp,
+            updatedAt: nowStamp,
+          });
+          creditedCount += 1;
+          appliedActions.push({
+            type: "contribution_recorded",
+            entityId: credit.contactId,
+            label: `${contributionKindLabels[credit.kind]} · ${text.slice(0, 40)}`,
+            appliedAt: nowStamp,
+            undoneAt: null,
+          });
+        }
+      };
 
       const resolveContactId = (ref: SegmentContactRef): string => {
         if (ref.kind === "existing") return ref.contactId;
@@ -810,6 +861,7 @@ export const applyNoteSegments = onCall(callableOptions, async (request): Promis
           linkedContactId = linkedContactId ?? allocation.entity.id;
           createdCount += 1;
           appliedActions.push({ type: "contact_created", entityId: allocation.entity.id, label: `${decision.contact.fullName} kişi olarak oluşturuldu`, appliedAt: nowStamp, undoneAt: null });
+          creditFor(decision, "contact", allocation.entity.id, segment.text);
           if (interaction) appliedActions.push({ type: "interaction_created", entityId: allocation.interaction!.id, label: `${decision.contact.fullName} · görüşme kaydedildi`, appliedAt: nowStamp, undoneAt: null });
           if (allocation.opportunity && decision.opportunityType) {
             const opportunity = createOpportunityEntity({
@@ -868,6 +920,7 @@ export const applyNoteSegments = onCall(callableOptions, async (request): Promis
           linkedContactId = linkedContactId ?? contactId;
           createdCount += 1;
           appliedActions.push({ type: "opportunity_created", entityId: allocation.entity.id, label: opportunityTypeLabels[decision.opportunityType], appliedAt: nowStamp, undoneAt: null });
+          creditFor(decision, "opportunity", allocation.entity.id, segment.text);
           continue;
         }
 
@@ -878,6 +931,7 @@ export const applyNoteSegments = onCall(callableOptions, async (request): Promis
           if (decision.contactRef) linkedContactId = linkedContactId ?? resolveContactId(decision.contactRef);
           createdCount += 1;
           appliedActions.push({ type: "portfolio_created", entityId: allocation.entity.id, label: `${portfolio.headline} havuza eklendi`, appliedAt: nowStamp, undoneAt: null });
+          creditFor(decision, "portfolio_item", allocation.entity.id, segment.text);
           continue;
         }
 
@@ -893,6 +947,7 @@ export const applyNoteSegments = onCall(callableOptions, async (request): Promis
         linkedContactId = linkedContactId ?? contactId;
         createdCount += 1;
         appliedActions.push({ type: "follow_up_scheduled", entityId: contactId, label: `${segment.text.slice(0, 60)} · takip planlandı`, appliedAt: nowStamp, undoneAt: null });
+        creditFor(decision, "note", null, segment.text);
       }
 
       const nextSegments = storedSegments.map((segment) => appliedSegmentIds.has(segment.id)
@@ -910,11 +965,11 @@ export const applyNoteSegments = onCall(callableOptions, async (request): Promis
       });
       transaction.create(commandRef, {
         ...tenant, type: "applyNoteSegments", inboxItemId: itemRef.id,
-        segmentIds: [...appliedSegmentIds], createdCount, createdAt: nowStamp,
+        segmentIds: [...appliedSegmentIds], createdCount, creditedCount, createdAt: nowStamp,
       });
     });
 
     const result = await itemRef.get();
-    return { item: toRecord(result.id, result.data()!), createdCount };
+    return { item: toRecord(result.id, result.data()!), createdCount, creditedCount };
   });
 });

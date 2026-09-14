@@ -5,6 +5,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
   apiQueryKeys,
+  contributionKindLabels,
+  contributionSummaryLine,
+  summariseContributions,
   firstSpecialCategoryRefusal,
   knownPropertyDraftSchema,
   knownPropertySummary,
@@ -24,6 +27,7 @@ import { SpInput, SpSelect, SpTextarea, handleFormKeyDown } from "@/shared/ui/Sp
 import { useSheetDismiss } from "@/shared/ui/useSheetDismiss";
 import {
   archiveKnownProperty,
+  listContributions,
   listKnownProperties,
   saveContactMemory,
   saveKnownProperty,
@@ -77,6 +81,10 @@ export function ContactKnowledgePanel({ contactId, memory }: { contactId: string
   const propertiesQuery = useQuery({
     queryKey: apiQueryKeys.knownProperties(contactId),
     queryFn: () => listKnownProperties(contactId),
+  });
+  const contributionsQuery = useQuery({
+    queryKey: apiQueryKeys.contributions(contactId),
+    queryFn: () => listContributions(contactId),
   });
 
   const [notesOpen, setNotesOpen] = useState(false);
@@ -146,8 +154,34 @@ export function ContactKnowledgePanel({ contactId, memory }: { contactId: string
   const properties = propertiesQuery.data ?? [];
   const noteRefusal = specialCategoryRefusal(propertyForm?.note ?? "");
 
+  const contributions = contributionsQuery.data ?? [];
+  const ledger = summariseContributions(contributions);
+  const ledgerLine = contributionSummaryLine(ledger);
+
   return (
     <>
+      {/* Who actually brings work is the question that decides who gets called
+          back, and the count for it lived in the database and nowhere else. */}
+      <SpCard className="contact-workspace-panel">
+        <div className="knowledge-heading">
+          <h2>Sana kazandırdıkları</h2>
+          {ledgerLine ? <strong className="contribution-total">{ledgerLine}</strong> : null}
+        </div>
+        {contributions.length ? (
+          <ul className="contribution-list">
+            {contributions.slice(0, 8).map((entry) => (
+              <li key={entry.id}>
+                <span className="contribution-kind">{contributionKindLabels[entry.kind]}</span>
+                <span>{entry.note}</span>
+                <time>{new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium" }).format(entry.occurredAt)}</time>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="privacy-copy">Günlük notta bu kişiyi @ ile etiketlediğinde, kazandırdığı portföy ve müşteriler burada birikir.</p>
+        )}
+      </SpCard>
+
       <SpCard className="contact-workspace-panel">
         <div className="knowledge-heading">
           <h2>Hatırlanacaklar</h2>

@@ -15,7 +15,7 @@ export { analyzeInboxItem, analyzeInboxNote, applyNoteSegments, createInboxItem,
 export { getFunnelOverview } from "./funnel/get-funnel-overview.js";
 export { advanceListing, createListing, importExistingListing, listListings, updateListingAuthorization, updateListingPrice, updateListingReadiness } from "./listings/listing-api.js";
 export { createPortfolioItemFromDraft, draftMatchMessage, extractPortfolioText, listMatchNotifications, listPortfolioItems, listPortfolioMatches, markMatchNotificationsRead, withdrawPortfolioItem } from "./matching/portfolio-api.js";
-export { createReferral, listReferrals } from "./referrals/referral-api.js";
+export { createReferral, listContributions, listReferrals } from "./referrals/referral-api.js";
 export { createDataSubjectRequest, getContactDataExport, listDataSubjectRequests, resolveDataSubjectRequest } from "./privacy/data-subject-api.js";
 export { processDeletionJob } from "./privacy/deletion-worker.js";
 export { runRetentionPurge } from "./privacy/retention.js";

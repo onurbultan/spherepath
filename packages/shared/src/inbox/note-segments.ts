@@ -4,6 +4,7 @@ import { nextActionTypes } from "../interactions/manual-interaction.js";
 import { opportunityTypes } from "../opportunities/opportunity-draft.js";
 import { portfolioItemDraftSchema } from "../matching/portfolio-match.js";
 import { voiceInsightsSchema } from "../voice/voice-note.js";
+import { contributionKinds } from "../contributions/contribution.js";
 import type { InboxItemAnalysis, InboxItemKind } from "./inbox-item.js";
 
 /**
@@ -134,6 +135,12 @@ export interface NoteSegmentReading extends NoteSegment {
   /** A contact already in the workspace this line appears to name. */
   matchedContactId: string | null;
   matchedContactName: string | null;
+  /**
+   * People the advisor tagged on this line with an @. Unlike the match above,
+   * which is a guess at who the line is about, these are named on purpose --
+   * usually the person who brought the work the line describes.
+   */
+  mentions?: Array<{ contactId: string; name: string }>;
   /** Set once this segment has produced a record, so it is never applied twice. */
   appliedAt: number | null;
 }
@@ -220,7 +227,20 @@ export const segmentContactRefSchema = z.union([
 ]);
 export type SegmentContactRef = z.infer<typeof segmentContactRefSchema>;
 
-const decisionBase = z.object({ segmentId: z.string().trim().min(1).max(60) });
+/**
+ * Who brought this, recorded with whatever the line becomes. "Portföy geldi,
+ * şu kişi referans oldu" is one thought and one approval, not a record now and
+ * a trip to another screen later.
+ */
+const creditSchema = z.object({
+  contactId: z.string().trim().min(1).max(160),
+  kind: z.enum(contributionKinds),
+}).strict();
+
+const decisionBase = z.object({
+  segmentId: z.string().trim().min(1).max(60),
+  credits: z.array(creditSchema).max(5).default([]),
+});
 
 export const noteSegmentDecisionSchema = z.discriminatedUnion("action", [
   decisionBase.extend({ action: z.literal("skip") }),

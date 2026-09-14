@@ -16,6 +16,8 @@ export * from "./domain/interaction-draft.js";
 export * from "./interactions/manual-interaction.js";
 export * from "./inbox/inbox-item.js";
 export * from "./inbox/note-segments.js";
+export * from "./inbox/note-mentions.js";
+export * from "./contributions/contribution.js";
 export * from "./funnel/build-funnel.js";
 export * from "./funnel/funnel-metrics.js";
 export * from "./listings/index.js";

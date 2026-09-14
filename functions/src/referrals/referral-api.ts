@@ -1,6 +1,6 @@
 import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { createReferral as createReferralEntity, referralDraftSchema, type Referral, type ReferralDraft } from "../../../packages/shared/src/index";
+import { createContribution, createReferral as createReferralEntity, referralDraftSchema, type ContributionRecord, type Referral, type ReferralDraft } from "../../../packages/shared/src/index";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 import { requireSpherepathClaims } from "../auth/claims.js";
 
@@ -37,9 +37,58 @@ export const createReferral = onCall(options, async (request): Promise<{ referra
       const now = Date.now(); const nowTimestamp = Timestamp.fromMillis(now); const entity = createReferralEntity(parsed.data, { officeId: source.officeId, ownerUid: source.ownerUid }, now); const sourceName = (source.fullName ?? source.label ?? "İsimsiz kişi") as string; const referredName = (referred?.fullName ?? referred?.label ?? parsed.data.referredLabel ?? "Tanımsız referans") as string;
       transaction.create(referralRef, { ...entity, firstNoticeCompletedAt: null, deletedAt: null, createdAt: nowTimestamp, updatedAt: nowTimestamp });
       transaction.update(sourceRef, { "relationship.referralCount": (source.relationship?.referralCount ?? 0) + 1, updatedAt: nowTimestamp });
+      // The ledger on the person's page is fed from both places a contribution
+      // happens: a line tagged in the day's page, and this flow.
+      const contribution = createContribution({
+        contactId: parsed.data.sourceContactId, kind: "referral", subjectType: "contact",
+        subjectId: parsed.data.referredContactId, note: `${referredName} referansı`,
+        sourceInboxItemId: null, occurredAt: null,
+      }, { officeId: source.officeId as string, ownerUid: source.ownerUid as string }, now);
+      transaction.create(firestore.collection("contributions").doc(), {
+        ...contribution, occurredAt: nowTimestamp, deletedAt: null, createdAt: nowTimestamp, updatedAt: nowTimestamp,
+      });
       transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "createReferral", referralId: referralRef.id, sourceName, referredName, createdAt: nowTimestamp });
       return { referralId: referralRef.id, sourceName, referredName };
     });
     const snapshot = await firestore.collection("referrals").doc(result.referralId).get(); return { referral: toRecord(snapshot.id, snapshot.data()!, result.sourceName, result.referredName) };
+  });
+});
+
+/**
+ * What somebody has brought the advisor. The referral count existed from the
+ * beginning but never left the database -- it appeared in a data export and
+ * nowhere a person could read it, so the one question that decides who to call
+ * back, "who actually brings me work", had no answer on the screen.
+ */
+export const listContributions = onCall(options, async (request): Promise<{ contributions: ContributionRecord[] }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<{ contactId?: unknown }>(request.data);
+  const contactId = envelope.data?.contactId;
+  if (typeof contactId !== "string" || !contactId || contactId.length > 160) throw new HttpsError("invalid-argument", "contactId is invalid.");
+  return observeApiRequest("listContributions", envelope.requestId, async () => {
+    const firestore = getFirestore();
+    const contact = await firestore.collection("contacts").doc(contactId).get();
+    const data = contact.data();
+    if (!contact.exists || !data || data.officeId !== claims.officeId || (data.ownerUid !== claims.uid && claims.role !== "broker") || data.deletedAt !== null) {
+      throw new HttpsError("not-found", "Contact was not found.");
+    }
+    const snapshot = await firestore.collection("contributions")
+      .where("officeId", "==", claims.officeId)
+      .where("contactId", "==", contactId)
+      .limit(200)
+      .get();
+    return {
+      contributions: snapshot.docs
+        .filter((item) => item.data().deletedAt === null && (item.data().ownerUid === claims.uid || claims.role === "broker"))
+        .map((item) => ({
+          ...(item.data() as ContributionRecord),
+          id: item.id,
+          occurredAt: millis(item.data().occurredAt) ?? 0,
+          deletedAt: millis(item.data().deletedAt),
+          createdAt: millis(item.data().createdAt) ?? 0,
+          updatedAt: millis(item.data().updatedAt) ?? 0,
+        }))
+        .sort((left, right) => right.occurredAt - left.occurredAt),
+    };
   });
 });

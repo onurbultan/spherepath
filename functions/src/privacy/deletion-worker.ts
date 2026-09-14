@@ -32,7 +32,7 @@ async function processDeletion(jobId: string) {
   if (!acquired) return;
 
   try {
-    const [interactions, voiceNotes, presentations, subjectOpportunities, sourceOpportunities, sourceReferrals, referredReferrals, buyerDeals, ownedProperties, inboxItems] = await Promise.all([
+    const [interactions, voiceNotes, presentations, subjectOpportunities, sourceOpportunities, sourceReferrals, referredReferrals, buyerDeals, ownedProperties, inboxItems, contributions] = await Promise.all([
       matching("interactions", "contactId", acquired.contactId, acquired.officeId),
       matching("voiceNotes", "contactId", acquired.contactId, acquired.officeId),
       matching("presentations", "contactId", acquired.contactId, acquired.officeId),
@@ -43,6 +43,8 @@ async function processDeletion(jobId: string) {
       matching("deals", "buyerContactId", acquired.contactId, acquired.officeId),
       matching("properties", "ownerContactId", acquired.contactId, acquired.officeId),
       matching("inboxItems", "linkedContactId", acquired.contactId, acquired.officeId),
+      // The ledger names the person it credits, so it goes with them.
+      matching("contributions", "contactId", acquired.contactId, acquired.officeId),
     ]);
     const opportunities = unique([...subjectOpportunities, ...sourceOpportunities]);
     const opportunityIds = opportunities.map((item) => item.id);
@@ -79,7 +81,7 @@ async function processDeletion(jobId: string) {
     }
     // Keep only hashed source links: a replay must not resurrect a deleted contact.
 
-    for (const document of unique([...interactions, ...voiceNotes, ...presentations, ...opportunities, ...sourceReferrals, ...referredReferrals, ...listings, ...stageEvents, ...inboxItems])) {
+    for (const document of unique([...interactions, ...voiceNotes, ...presentations, ...opportunities, ...sourceReferrals, ...referredReferrals, ...listings, ...stageEvents, ...inboxItems, ...contributions])) {
       writer.delete(document.ref);
     }
     for (const deal of unique([...buyerDeals, ...listingDeals])) {
@@ -110,6 +112,7 @@ async function processDeletion(jobId: string) {
           opportunities: opportunities.length,
           listings: listings.length,
           inboxItems: inboxItems.length,
+          contributions: contributions.length,
         },
         createdAt: now,
       }),

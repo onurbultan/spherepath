@@ -26,7 +26,7 @@ export type InboxItemKind = (typeof inboxItemKinds)[number];
 export type InboxItemStatus = (typeof inboxItemStatuses)[number];
 
 export interface InboxAppliedAction {
-  type: "classification" | "contact_created" | "contact_linked" | "location_added" | "interaction_created" | "opportunity_created" | "portfolio_created" | "listing_created" | "follow_up_scheduled";
+  type: "classification" | "contact_created" | "contact_linked" | "location_added" | "interaction_created" | "opportunity_created" | "portfolio_created" | "listing_created" | "follow_up_scheduled" | "contribution_recorded";
   entityId: string | null;
   label: string;
   appliedAt: Instant;

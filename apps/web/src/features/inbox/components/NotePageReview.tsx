@@ -10,8 +10,13 @@ import {
   nextActionTypeLabels,
   nextActionTypes,
   opportunityTypeLabels,
+  contributionKindLabels,
+  contributionKinds,
   segmentContactName,
+  suggestedContributionKind,
   type ApplyNoteSegmentsInput,
+  type ContributionKind,
+  type ContributionSubjectType,
   type ContactDraft,
   type InboxItemKind,
   type InboxItemRecord,
@@ -58,6 +63,9 @@ interface RowState {
   opportunityType: OpportunityType;
   nextActionType: NextActionType;
   nextActionAt: string;
+  /** People tagged on this line who brought the work it describes. */
+  creditedContactIds: string[];
+  creditKind: ContributionKind;
 }
 
 function tomorrowMorning(): string {
@@ -92,7 +100,19 @@ function initialRow(segment: NoteSegmentReading): RowState {
     opportunityType: analysis?.opportunityType ?? "buyer_requirement",
     nextActionType: analysis?.nextActionType ?? "call",
     nextActionAt: analysis?.nextActionAt ? localDateTime(analysis.nextActionAt) : tomorrowMorning(),
+    // Somebody tagged with an @ on this line was named on purpose, and almost
+    // always because they brought it. Pre-selected, and easy to take off.
+    creditedContactIds: (segment.mentions ?? []).map((mention) => mention.contactId),
+    creditKind: suggestedContributionKind(subjectTypeFor(defaultAction(segment))),
   };
+}
+
+/** What a decision produces, which decides the kind of credit it earns. */
+function subjectTypeFor(action: RowAction): ContributionSubjectType {
+  if (action === "person") return "contact";
+  if (action === "portfolio") return "portfolio_item";
+  if (action === "requirement") return "opportunity";
+  return "note";
 }
 
 export function NotePageReview({
@@ -141,8 +161,9 @@ export function NotePageReview({
     const decisions: NoteSegmentDecision[] = [];
     for (const segment of segments) {
       const row = rows[segment.id]!;
+      const credits = row.creditedContactIds.map((contactId) => ({ contactId, kind: row.creditKind }));
       if (row.action === "skip") {
-        decisions.push({ segmentId: segment.id, action: "skip" });
+        decisions.push({ segmentId: segment.id, action: "skip", credits: [] });
         continue;
       }
       const nextActionAt = new Date(row.nextActionAt).getTime();
@@ -150,6 +171,7 @@ export function NotePageReview({
         if (row.personName.trim().length < 2) return setFormError(`“${segment.text.slice(0, 40)}” için ad soyad gerekli.`);
         decisions.push({
           segmentId: segment.id,
+          credits,
           action: "person",
           contact: {
             fullName: row.personName.trim(),
@@ -172,7 +194,7 @@ export function NotePageReview({
       if (row.action === "portfolio") {
         const portfolio = segment.analysis?.portfolio;
         if (!portfolio) return setFormError(`“${segment.text.slice(0, 40)}” için mülk bilgisi okunamadı; bu satırı tek tek işleyebilirsin.`);
-        decisions.push({ segmentId: segment.id, action: "portfolio", contactRef, portfolio });
+        decisions.push({ segmentId: segment.id, credits, action: "portfolio", contactRef, portfolio });
         continue;
       }
       if (!contactRef) return setFormError(`“${segment.text.slice(0, 40)}” için kişi seç.`);
@@ -180,6 +202,7 @@ export function NotePageReview({
         if (!segment.analysis) return setFormError(`“${segment.text.slice(0, 40)}” için talep bilgisi okunamadı.`);
         decisions.push({
           segmentId: segment.id,
+          credits,
           action: "requirement",
           contactRef,
           opportunityType: row.opportunityType === "tenant_requirement" ? "tenant_requirement" : "buyer_requirement",
@@ -189,7 +212,7 @@ export function NotePageReview({
         });
         continue;
       }
-      decisions.push({ segmentId: segment.id, action: "follow_up", contactRef, nextActionType: row.nextActionType, nextActionAt });
+      decisions.push({ segmentId: segment.id, credits, action: "follow_up", contactRef, nextActionType: row.nextActionType, nextActionAt });
     }
     const parsed = applyNoteSegmentsSchema.safeParse({ inboxItemId: item.id, decisions });
     if (!parsed.success) return setFormError(parsed.error.issues[0]?.message ?? "Kararları kontrol et.");
@@ -290,6 +313,33 @@ export function NotePageReview({
                     <div className="note-page-fields">
                       <label>Sonraki adım<SpSelect value={row.nextActionType} onChange={(event) => update(segment.id, { nextActionType: event.target.value as NextActionType })}>{nextActionTypes.map((type) => <option key={type} value={type}>{nextActionTypeLabels[type]}</option>)}</SpSelect></label>
                       <QuickDateField label="Ne zaman" required value={row.nextActionAt} onChange={(value) => update(segment.id, { nextActionAt: value })} />
+                    </div>
+                  ) : null}
+
+                  {row.action !== "skip" && (segment.mentions ?? []).length ? (
+                    <div className="note-page-credit">
+                      <p className="eyebrow">BUNU KİM KAZANDIRDI?</p>
+                      <div className="chip-row">
+                        {(segment.mentions ?? []).map((mention) => (
+                          <button
+                            className={`choice-chip ${row.creditedContactIds.includes(mention.contactId) ? "selected" : ""}`}
+                            key={mention.contactId}
+                            onClick={() => update(segment.id, {
+                              creditedContactIds: row.creditedContactIds.includes(mention.contactId)
+                                ? row.creditedContactIds.filter((id) => id !== mention.contactId)
+                                : [...row.creditedContactIds, mention.contactId],
+                            })}
+                            type="button"
+                          >
+                            {mention.name}
+                          </button>
+                        ))}
+                      </div>
+                      {row.creditedContactIds.length ? (
+                        <label>Katkı türü<SpSelect value={row.creditKind} onChange={(event) => update(segment.id, { creditKind: event.target.value as ContributionKind })}>
+                          {contributionKinds.map((kind) => <option key={kind} value={kind}>{contributionKindLabels[kind]}</option>)}
+                        </SpSelect></label>
+                      ) : null}
                     </div>
                   ) : null}
 

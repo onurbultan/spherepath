@@ -5,6 +5,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Pencil, Plus, Trash2, X } from "lucide-react-native";
 import {
   apiQueryKeys,
+  contributionKindLabels,
+  contributionSummaryLine,
+  summariseContributions,
   firstSpecialCategoryRefusal,
   knownPropertyDraftSchema,
   knownPropertySummary,
@@ -26,6 +29,7 @@ import { useSpTheme } from "@/shared/ui/theme";
 import { space } from "@/shared/ui/tokens.generated";
 import {
   archiveKnownProperty,
+  listContributions,
   listKnownProperties,
   saveContactMemory,
   saveKnownProperty,
@@ -80,6 +84,11 @@ export function ContactKnowledgePanel({ contactId, memory }: { contactId: string
   const propertiesQuery = useQuery({
     queryKey: apiQueryKeys.knownProperties(contactId),
     queryFn: () => listKnownProperties(contactId),
+    enabled: Boolean(session),
+  });
+  const contributionsQuery = useQuery({
+    queryKey: apiQueryKeys.contributions(contactId),
+    queryFn: () => listContributions(contactId),
     enabled: Boolean(session),
   });
 
@@ -145,8 +154,31 @@ export function ContactKnowledgePanel({ contactId, memory }: { contactId: string
   const properties = propertiesQuery.data ?? [];
   const noteRefusal = specialCategoryRefusal(propertyForm?.note ?? "");
 
+  const contributions = contributionsQuery.data ?? [];
+  const ledgerLine = contributionSummaryLine(summariseContributions(contributions));
+
   return (
     <>
+      {/* Who actually brings work is the question that decides who gets called
+          back, and the count for it lived in the database and nowhere else. */}
+      <SpCard style={styles.card}>
+        <View style={styles.heading}>
+          <SpText variant="title">Sana kazandırdıkları</SpText>
+          {ledgerLine ? <SpText variant="bodySmall" color="deed">{ledgerLine}</SpText> : null}
+        </View>
+        {contributions.length ? contributions.slice(0, 8).map((entry) => (
+          <View key={entry.id} style={[styles.property, { borderTopColor: theme.line }]}>
+            <View style={styles.flex}>
+              <SpText variant="caption" color="deed">{contributionKindLabels[entry.kind]}</SpText>
+              <SpText variant="bodySmall">{entry.note}</SpText>
+            </View>
+            <SpText variant="caption" color="secondary">{new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium" }).format(entry.occurredAt)}</SpText>
+          </View>
+        )) : (
+          <SpText variant="bodySmall" color="secondary">Günlük notta bu kişiyi @ ile etiketlediğinde, kazandırdığı portföy ve müşteriler burada birikir.</SpText>
+        )}
+      </SpCard>
+
       <SpCard style={styles.card}>
         <View style={styles.heading}>
           <SpText variant="title">Hatırlanacaklar</SpText>

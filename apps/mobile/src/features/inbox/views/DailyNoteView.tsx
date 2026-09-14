@@ -7,6 +7,8 @@ import { CheckCheck, ListChecks, Mic, NotebookPen } from "lucide-react-native";
 import {
   apiQueryKeys,
   commercialQueryKeys,
+  activeMentionQuery,
+  completeMention,
   findDailyPage,
   istanbulDayKey,
   noteMaxLength,
@@ -64,6 +66,30 @@ export function DailyNoteView() {
   // the draft is theirs and a background refetch cannot take it back.
   const text = draft ?? page?.safeText ?? "";
 
+  // Tagging somebody mid-sentence, the way you tag them in a comment. The name
+  // goes in as plain text; the page resolves it to a contact when it is read.
+  const [mention, setMention] = useState<{ query: string; start: number; caret: number } | null>(null);
+  const mentionMatches = mention
+    ? (contacts.data ?? [])
+      .filter((contact) => {
+        const name = (contact.fullName ?? contact.label ?? "").toLocaleLowerCase("tr-TR");
+        return name.length > 1 && name.includes(mention.query.toLocaleLowerCase("tr-TR"));
+      })
+      .slice(0, 6)
+    : [];
+
+  function syncMention(value: string, caret: number) {
+    const active = activeMentionQuery(value, caret);
+    setMention(active ? { ...active, caret } : null);
+  }
+
+  function pickMention(name: string) {
+    if (!mention) return;
+    setDraft(completeMention(text, mention.start, mention.caret, name).text);
+    setMention(null);
+    setSavedAt(false);
+  }
+
   async function save() {
     if (!session || !text.trim()) return;
     setSaving(true); setError(null);
@@ -110,11 +136,22 @@ export function DailyNoteView() {
         <SpTextarea
           accessibilityLabel="Günün notu"
           maxLength={noteMaxLength}
-          onChangeText={(value) => { setDraft(value); setSavedAt(false); }}
+          onChangeText={(value) => { setDraft(value); setSavedAt(false); syncMention(value, value.length); }}
+          onSelectionChange={(event) => syncMention(text, event.nativeEvent.selection.start)}
           placeholder={"Ayşe ve Murat ile tanıştım, Zeytinler'de ikiz villaları var\nAkın'ın 4 dönüm tarlası için yetki aldım\n\nYapılacaklar\n\nGökhan'a tarlanın durumunu yaz"}
           style={styles.area}
           value={text}
         />
+
+        {mention && mentionMatches.length ? (
+          <View style={[styles.mentionPicker, { borderColor: theme.line }]} accessibilityLabel="Kişi etiketle">
+            {mentionMatches.map((contact) => (
+              <Pressable key={contact.id} onPress={() => pickMention(contact.fullName ?? contact.label ?? "")} style={styles.mentionOption}>
+                <SpText variant="bodySmall">{contact.fullName ?? contact.label}</SpText>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
 
         <View style={styles.footer}>
           <SpText variant="caption" color="secondary">{text.length.toLocaleString("tr-TR")} / {noteMaxLength.toLocaleString("tr-TR")}</SpText>
@@ -180,4 +217,6 @@ const styles = StyleSheet.create({
   saved: { flexDirection: "row", alignItems: "center", gap: space.xs },
   ready: { flexDirection: "row", alignItems: "center", gap: space.md, flexWrap: "wrap", borderWidth: 1, borderRadius: radius.lg, padding: space.md },
   empty: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  mentionPicker: { borderWidth: 1, borderRadius: radius.md, overflow: "hidden" },
+  mentionOption: { padding: space.md },
 });

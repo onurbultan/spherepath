@@ -156,6 +156,7 @@ export const apiQueryKeys = {
   contacts: ["contacts"] as const,
   contactInteractions: (contactId: string) => ["contacts", contactId, "interactions"] as const,
   knownProperties: (contactId: string) => ["contacts", contactId, "known-properties"] as const,
+  contributions: (contactId: string) => ["contacts", contactId, "contributions"] as const,
   contactCalls: (contactId: string) => ["contacts", contactId, "calls"] as const,
   callAnnouncements: ["callAnnouncements"] as const,
   callIntegration: ["call-integration"] as const,

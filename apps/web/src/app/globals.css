@@ -1254,6 +1254,11 @@ textarea.sp-control.is-compact { min-height: 80px; }
 
 /* A day's page is read down the column, so each line keeps its own block and
    the decision sits under the words it was made about. */
+.contribution-total { color: var(--deed); font-variant-numeric: tabular-nums; }
+.contribution-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-sm); }
+.contribution-list > li { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-sm); align-items: baseline; padding: var(--space-sm) 0; border-top: 1px solid var(--line); }
+.contribution-list time { font-size: var(--text-caption); color: var(--text-tertiary); white-space: nowrap; }
+.contribution-kind { font-size: var(--text-caption); color: var(--deed); white-space: nowrap; }
 .knowledge-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-md); }
 .known-property-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-sm); }
 .known-property-list > li { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-sm); align-items: start; padding: var(--space-sm) 0; border-top: 1px solid var(--line); }
@@ -1269,6 +1274,9 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .daily-note-sheet { display: grid; gap: var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); padding: var(--space-lg); }
 .daily-note-area { min-height: min(58vh, 520px); resize: vertical; border: 0; background: transparent; color: var(--text-primary); font: inherit; line-height: 1.7; outline: none; width: 100%; }
 .daily-note-area::placeholder { color: var(--text-tertiary); }
+.mention-picker { list-style: none; margin: 0; padding: var(--space-xs); display: grid; gap: 2px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
+.mention-picker button { width: 100%; text-align: start; padding: var(--space-sm); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-primary); font: inherit; cursor: pointer; }
+.mention-picker button:hover, .mention-picker button:focus-visible { background: var(--sunk); }
 .daily-note-footer { display: flex; align-items: center; gap: var(--space-md); border-top: 1px solid var(--line); padding-top: var(--space-md); }
 .daily-note-count { font-size: var(--text-caption); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .daily-note-saved { display: inline-flex; align-items: center; gap: var(--space-xs); font-size: var(--text-caption); color: var(--good); }
@@ -1293,6 +1301,7 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .note-page-hint { margin: 0; font-size: var(--text-caption); color: var(--text-secondary); }
 .note-page-hint.is-warning { color: var(--ask); }
 .note-page-detail { justify-self: start; }
+.note-page-credit { display: grid; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); border-radius: var(--radius-md); background: var(--sunk); }
 .note-extraction-review { display: grid; gap: var(--space-md); padding: var(--space-lg); border: 1px solid var(--good); border-radius: var(--radius-lg); background: var(--good-bg); }
 .note-extraction-review > strong { color: var(--good); }
 .note-process-action { width: 100%; }

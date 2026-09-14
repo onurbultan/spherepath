@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCheck, ListChecks, Mic, NotebookPen, RefreshCw } from "lucide-react";
 import {
   apiQueryKeys,
   commercialQueryKeys,
+  activeMentionQuery,
+  completeMention,
   findDailyPage,
   istanbulDayKey,
   noteMaxLength,
@@ -59,6 +61,36 @@ export function DailyNoteView() {
   // the draft is theirs and a background refetch cannot take it back.
   const text = draft ?? page?.safeText ?? "";
 
+  // Tagging somebody mid-sentence, the way you tag them in a comment. The name
+  // goes in as plain text; the page resolves it to a contact when it is read.
+  const areaRef = useRef<HTMLTextAreaElement>(null);
+  const [mention, setMention] = useState<{ query: string; start: number; caret: number } | null>(null);
+  const mentionMatches = mention
+    ? (contacts.data ?? [])
+      .filter((contact) => {
+        const name = (contact.fullName ?? contact.label ?? "").toLocaleLowerCase("tr-TR");
+        return name.length > 1 && name.includes(mention.query.toLocaleLowerCase("tr-TR"));
+      })
+      .slice(0, 6)
+    : [];
+
+  function syncMention(value: string, caret: number) {
+    const active = activeMentionQuery(value, caret);
+    setMention(active ? { ...active, caret } : null);
+  }
+
+  function pickMention(name: string) {
+    if (!mention) return;
+    const completed = completeMention(text, mention.start, mention.caret, name);
+    setDraft(completed.text);
+    setMention(null);
+    setSavedAt(false);
+    requestAnimationFrame(() => {
+      areaRef.current?.focus();
+      areaRef.current?.setSelectionRange(completed.caret, completed.caret);
+    });
+  }
+
   async function save() {
     if (!session || !text.trim()) return;
     setSaving(true); setError(null);
@@ -105,10 +137,25 @@ export function DailyNoteView() {
           aria-label="Günün notu"
           className="daily-note-area"
           maxLength={noteMaxLength}
-          onChange={(event) => { setDraft(event.target.value); setSavedAt(false); }}
+          onBlur={() => setMention(null)}
+          onChange={(event) => { setDraft(event.target.value); setSavedAt(false); syncMention(event.target.value, event.target.selectionStart); }}
+          onKeyUp={(event) => syncMention(event.currentTarget.value, event.currentTarget.selectionStart)}
+          ref={areaRef}
           placeholder={"Ayşe ve Murat ile tanıştım, Zeytinler'de ikiz villaları var\nAkın'ın 4 dönüm tarlası için yetki aldım\n\nYapılacaklar\n\nGökhan'a tarlanın durumunu yaz\nHüseyin Çeşme altında villalık arsa arıyor"}
           value={text}
         />
+        {mention && mentionMatches.length ? (
+          <ul className="mention-picker" aria-label="Kişi etiketle">
+            {mentionMatches.map((contact) => (
+              <li key={contact.id}>
+                <button onMouseDown={(event) => { event.preventDefault(); pickMention(contact.fullName ?? contact.label ?? ""); }} type="button">
+                  {contact.fullName ?? contact.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
         <div className="daily-note-footer">
           <span className="daily-note-count">{text.length.toLocaleString("tr-TR")} / {noteMaxLength.toLocaleString("tr-TR")}</span>
           {savedAt && !dirty ? <span className="daily-note-saved"><CheckCheck size={15} aria-hidden /> Kaydedildi</span> : null}

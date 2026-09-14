@@ -138,7 +138,7 @@ describe("finding the person a line is about", () => {
 describe("approving a page of decisions at once", () => {
   const soon = Date.now() + 86_400_000;
   const person = (segmentId: string, fullName: string) => ({
-    segmentId, action: "person" as const, opportunityType: null, recordInteraction: true,
+    segmentId, action: "person" as const, opportunityType: null, recordInteraction: true, credits: [],
     contact: { fullName, phone: "", metAtPlace: "", source: "in_person" as const, role: "unknown" as const },
   });
 
@@ -181,8 +181,8 @@ describe("approving a page of decisions at once", () => {
 
   it("creates people before anything that names them", () => {
     const decisions = [
-      { segmentId: "segment-9", action: "follow_up" as const, contactRef: { kind: "segment" as const, segmentId: "segment-3" }, nextActionType: "call" as const, nextActionAt: soon },
-      { segmentId: "segment-1", action: "skip" as const },
+      { segmentId: "segment-9", action: "follow_up" as const, credits: [], contactRef: { kind: "segment" as const, segmentId: "segment-3" }, nextActionType: "call" as const, nextActionAt: soon },
+      { segmentId: "segment-1", action: "skip" as const, credits: [] },
       person("segment-3", "Akın Kaya"),
     ];
     expect(orderedSegmentDecisions(decisions).map((decision) => decision.action)).toEqual(["person", "follow_up", "skip"]);
