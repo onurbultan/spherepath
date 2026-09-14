@@ -93,7 +93,9 @@ export function NoteProcessingSheet({ item, contacts, initialKind, onClose, onCh
   const [createPersonOpportunity, setCreatePersonOpportunity] = useState(Boolean(item.analysis?.insights.propertySituations.length || item.analysis?.insights.propertyPreferences.transactionType));
   const [actionType, setActionType] = useState<NextActionType>(item.analysis?.nextActionType ?? "call");
   const [actionAt, setActionAt] = useState(() => item.analysis?.nextActionAt ? localDateTime(item.analysis.nextActionAt) : tomorrowMorning());
-  const [portfolio, setPortfolio] = useState<PortfolioItemDraft | null>(null);
+  // The trigger reads the property alongside the person, so a property note
+  // opens on its draft instead of asking for a model round trip first.
+  const [portfolio, setPortfolio] = useState<PortfolioItemDraft | null>(item.analysis?.portfolio ?? null);
   const [analysis, setAnalysis] = useState<InboxItemAnalysis | null>(item.analysis);
   const [pending, setPending] = useState<"save" | "analyze" | "process" | "listing" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -116,10 +118,16 @@ export function NoteProcessingSheet({ item, contacts, initialKind, onClose, onCh
     if (result.insights.contactPhone?.trim()) setPersonPhone((current) => current || result.insights.contactPhone!.trim());
     if (result.nextActionType) setActionType(result.nextActionType);
     if (result.nextActionAt) setActionAt(localDateTime(result.nextActionAt));
+    if (result.portfolio) setPortfolio((current) => current ?? result.portfolio!);
   }, [analysis, item.analysis]);
 
+  // Every action used to write the note back first, which put an extra round
+  // trip in front of the reading and the record alike. An untouched note has
+  // nothing to save.
+  const noteChanged = () => text !== item.safeText || kind !== item.kind || (contactId || null) !== item.linkedContactId;
+
   async function saveEdits(): Promise<InboxItemRecord | null> {
-    if (!session) return null;
+    if (!session || !noteChanged()) return null;
     const updatedItem = await changeInboxItem(session, { inboxItemId: item.id, text, kind, linkedContactId: contactId || null });
     await onChanged(updatedItem);
     return updatedItem;
@@ -133,7 +141,10 @@ export function NoteProcessingSheet({ item, contacts, initialKind, onClose, onCh
   async function analyzeProperty() {
     if (text.trim().length < 10) return setError("Mülkü çözümlemek için biraz daha bilgi yaz.");
     setPending("analyze"); setError(null);
-    try { await saveEdits(); setPortfolio(await analyzePortfolioText(text.trim(), "manual")); }
+    try {
+      const edited = await saveEdits();
+      setPortfolio(!edited && item.analysis?.portfolio ? item.analysis.portfolio : await analyzePortfolioText(text.trim(), "manual"));
+    }
     catch (next) { setError(messageFrom(next)); }
     finally { setPending(null); }
   }
@@ -142,8 +153,10 @@ export function NoteProcessingSheet({ item, contacts, initialKind, onClose, onCh
     if (text.trim().length < 10) return setError("Talebi çözümlemek için biraz daha bilgi yaz.");
     setPending("analyze"); setError(null);
     try {
-      await saveEdits();
-      const result = await analyzeInboxItem({ inboxItemId: item.id });
+      const edited = await saveEdits();
+      // A note the trigger already read, and that the advisor has not changed,
+      // needs no second reading -- that wait bought nothing.
+      const result = !edited && item.analysis ? item.analysis : await analyzeInboxItem({ inboxItemId: item.id });
       setAnalysis(result);
       const inferredType = inboxOpportunityType(result.insights);
       setOpportunityType(inferredType);

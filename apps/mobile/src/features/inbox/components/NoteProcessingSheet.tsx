@@ -81,7 +81,9 @@ export function NoteProcessingSheet({ item, contacts, initialKind, onClose, onCh
   const [opportunityType, setOpportunityType] = useState<OpportunityType>(inferredOpportunity);
   const [createPersonOpportunity, setCreatePersonOpportunity] = useState(Boolean(item.analysis?.insights.propertySituations.length || item.analysis?.insights.propertyPreferences.transactionType));
   const [actionType, setActionType] = useState<NextActionType>(item.analysis?.nextActionType ?? "call"); const [actionAt, setActionAt] = useState(() => item.analysis?.nextActionAt ? localDateTime(item.analysis.nextActionAt) : defaultFollowUp());
-  const [portfolio, setPortfolio] = useState<PortfolioItemDraft | null>(null); const [pending, setPending] = useState<"save" | "analyze" | "process" | null>(null); const [error, setError] = useState<string | null>(null);
+  // The trigger reads the property alongside the person, so a property note
+  // opens on its draft instead of asking for a model round trip first.
+  const [portfolio, setPortfolio] = useState<PortfolioItemDraft | null>(item.analysis?.portfolio ?? null); const [pending, setPending] = useState<"save" | "analyze" | "process" | null>(null); const [error, setError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<InboxItemAnalysis | null>(item.analysis);
   const activeItem = item;
   const expectedAction = kind === "person" ? "contact_created" : kind === "property" ? "portfolio_created" : kind === "requirement" ? "opportunity_created" : kind === "follow_up" ? "follow_up_scheduled" : null;
@@ -101,11 +103,16 @@ export function NoteProcessingSheet({ item, contacts, initialKind, onClose, onCh
     if (result.insights.contactPhone?.trim()) setPersonPhone((current) => current || result.insights.contactPhone!.trim());
     if (result.nextActionType) setActionType(result.nextActionType);
     if (result.nextActionAt) setActionAt(localDateTime(result.nextActionAt));
+    if (result.portfolio) setPortfolio((current) => current ?? result.portfolio!);
   }, [analysis, item.analysis]);
-  async function saveEdits() { if (!session) return null; const updatedItem = await changeInboxItem(session, { inboxItemId: activeItem.id, text, kind, linkedContactId: contactId || null }); await onChanged(updatedItem); return updatedItem; }
+  // Every action used to write the note back first, which put an extra round
+  // trip in front of the reading and the record alike. An untouched note has
+  // nothing to save.
+  const noteChanged = () => text !== activeItem.safeText || kind !== activeItem.kind || (contactId || null) !== activeItem.linkedContactId;
+  async function saveEdits() { if (!session || !noteChanged()) return null; const updatedItem = await changeInboxItem(session, { inboxItemId: activeItem.id, text, kind, linkedContactId: contactId || null }); await onChanged(updatedItem); return updatedItem; }
   async function save() { setPending("save"); setError(null); try { await saveEdits(); onClose(); } catch (next) { setError(messageFrom(next)); } finally { setPending(null); } }
-  async function analyze() { if (text.trim().length < 10) return setError("Mülkü çözümlemek için biraz daha bilgi yaz."); setPending("analyze"); setError(null); try { await saveEdits(); setPortfolio(await analyzePortfolioText(text.trim())); } catch (next) { setError(messageFrom(next)); } finally { setPending(null); } }
-  async function analyzeRequirement() { if (text.trim().length < 10) return setError("Notu çözümlemek için biraz daha bilgi yaz."); setPending("analyze"); setError(null); try { await saveEdits(); const result = await analyzeInboxItem({ inboxItemId: activeItem.id }); const inferredType = inboxOpportunityType(result.insights); setAnalysis(result); setOpportunityType(inferredType); setPersonRole(roleForOpportunity(inferredType)); setCreatePersonOpportunity(Boolean(result.insights.propertySituations.length || result.insights.propertyPreferences.transactionType)); if (result.insights.contactName?.trim()) setPersonName((current) => current || result.insights.contactName!.trim()); if (result.insights.contactPhone?.trim()) setPersonPhone((current) => current || result.insights.contactPhone!.trim()); if (result.nextActionType) setActionType(result.nextActionType); if (result.nextActionAt) setActionAt(localDateTime(result.nextActionAt)); } catch (next) { setError(messageFrom(next)); } finally { setPending(null); } }
+  async function analyze() { if (text.trim().length < 10) return setError("Mülkü çözümlemek için biraz daha bilgi yaz."); setPending("analyze"); setError(null); try { const edited = await saveEdits(); setPortfolio(!edited && item.analysis?.portfolio ? item.analysis.portfolio : await analyzePortfolioText(text.trim())); } catch (next) { setError(messageFrom(next)); } finally { setPending(null); } }
+  async function analyzeRequirement() { if (text.trim().length < 10) return setError("Notu çözümlemek için biraz daha bilgi yaz."); setPending("analyze"); setError(null); try { const edited = await saveEdits(); const result = !edited && item.analysis ? item.analysis : await analyzeInboxItem({ inboxItemId: activeItem.id }); const inferredType = inboxOpportunityType(result.insights); setAnalysis(result); setOpportunityType(inferredType); setPersonRole(roleForOpportunity(inferredType)); setCreatePersonOpportunity(Boolean(result.insights.propertySituations.length || result.insights.propertyPreferences.transactionType)); if (result.insights.contactName?.trim()) setPersonName((current) => current || result.insights.contactName!.trim()); if (result.insights.contactPhone?.trim()) setPersonPhone((current) => current || result.insights.contactPhone!.trim()); if (result.nextActionType) setActionType(result.nextActionType); if (result.nextActionAt) setActionAt(localDateTime(result.nextActionAt)); } catch (next) { setError(messageFrom(next)); } finally { setPending(null); } }
   async function process() {
     if (!session) return; setPending("process"); setError(null);
     try {

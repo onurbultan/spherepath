@@ -2,11 +2,14 @@ import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/fires
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
   appendDealOffer, type Deal,
+  applyInteractionEditToRelationship,
   applyInteractionToRelationship,
   createInteraction,
+  interactionEditSchema,
   interactionOccurredAtError,
   manualInteractionSchema,
   type Contact,
+  type Interaction,
 } from "../../../packages/shared/src/index";
 import { requireSpherepathClaims } from "../auth/claims.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
@@ -122,6 +125,113 @@ export const recordInteraction = onCall(
         type: "recordInteraction",
         interactionId: interactionRef.id,
         createdAt: nowTimestamp,
+      });
+      return { interactionId: interactionRef.id };
+    }));
+  },
+);
+
+/**
+ * Correcting the account of a conversation the advisor had themselves. The
+ * contact it belongs to, the work it is linked to and the next action stay
+ * fixed: moving an interaction between people would rewrite two relationship
+ * histories at once, and the next action already has complete-or-reschedule.
+ * An offer recorded from this conversation keeps its own date and amount --
+ * the negotiation history is a separate record and is not rewritten here.
+ */
+export const updateInteraction = onCall(
+  {
+    region: "europe-west8",
+    cors: true,
+    maxInstances: 10,
+    memory: "256MiB",
+    timeoutSeconds: 60,
+  },
+  async (request): Promise<{ interactionId: string }> => {
+    const claims = requireSpherepathClaims(request);
+    const envelope = readApiEnvelope<unknown>(request.data, { command: true });
+    const commandId = envelope.commandId!;
+    const parsed = interactionEditSchema.safeParse(envelope.data);
+    if (!parsed.success) {
+      throw new HttpsError("invalid-argument", "Interaction edit is invalid.", parsed.error.flatten());
+    }
+    const occurredAtError = interactionOccurredAtError(parsed.data.occurredAt, Date.now());
+    if (occurredAtError) throw new HttpsError("invalid-argument", occurredAtError);
+
+    const firestore = getFirestore();
+    const commandRef = firestore.collection("commands").doc(commandId);
+    const interactionRef = firestore.collection("interactions").doc(parsed.data.interactionId);
+
+    return observeApiRequest("updateInteraction", envelope.requestId, () => firestore.runTransaction(async (transaction) => {
+      const [commandSnapshot, interactionSnapshot] = await Promise.all([
+        transaction.get(commandRef),
+        transaction.get(interactionRef),
+      ]);
+      if (commandSnapshot.exists) {
+        const receipt = commandSnapshot.data()!;
+        if (receipt.officeId !== claims.officeId || receipt.ownerUid !== claims.uid || receipt.type !== "updateInteraction") {
+          throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+        }
+        return { interactionId: receipt.interactionId as string };
+      }
+      if (!interactionSnapshot.exists) throw new HttpsError("not-found", "Interaction was not found.");
+
+      const stored = interactionSnapshot.data()!;
+      const canManageInteraction = stored.officeId === claims.officeId &&
+        (stored.ownerUid === claims.uid || claims.role === "broker");
+      if (!canManageInteraction) throw new HttpsError("permission-denied", "Interaction is outside your workspace.");
+
+      const contactRef = firestore.collection("contacts").doc(stored.contactId as string);
+      const contactSnapshot = await transaction.get(contactRef);
+      const contact = contactSnapshot.data();
+      if (!contact || contact.officeId !== claims.officeId || (contact.ownerUid !== claims.uid && claims.role !== "broker") || contact.deletedAt !== null) {
+        throw new HttpsError("permission-denied", "Contact is outside your workspace.");
+      }
+
+      const storedRelationship = contact.relationship as DocumentData;
+      const relationship = applyInteractionEditToRelationship(
+        {
+          ...(storedRelationship as Contact["relationship"]),
+          lastTouchAt: storedRelationship.lastTouchAt instanceof Timestamp ? storedRelationship.lastTouchAt.toMillis() : null,
+          nextActionAt: storedRelationship.nextActionAt instanceof Timestamp ? storedRelationship.nextActionAt.toMillis() : null,
+        },
+        {
+          direction: stored.direction as Interaction["direction"],
+          occurredAt: stored.occurredAt instanceof Timestamp ? stored.occurredAt.toMillis() : 0,
+        },
+        {
+          direction: parsed.data.direction,
+          objective: parsed.data.objective,
+          askOutcome: parsed.data.askOutcome,
+          occurredAt: parsed.data.occurredAt,
+        },
+      );
+
+      const now = Timestamp.now();
+      transaction.update(interactionRef, {
+        channel: parsed.data.channel,
+        objective: parsed.data.objective,
+        direction: parsed.data.direction,
+        outcome: parsed.data.outcome,
+        askOutcome: parsed.data.askOutcome,
+        noteSummary: parsed.data.noteSummary || null,
+        occurredAt: Timestamp.fromMillis(parsed.data.occurredAt),
+        editedAt: now,
+      });
+      transaction.update(contactRef, {
+        relationship: {
+          ...relationship,
+          lastTouchAt: timestamp(relationship.lastTouchAt),
+          nextActionAt: timestamp(relationship.nextActionAt),
+        },
+        updatedAt: now,
+      });
+      transaction.create(commandRef, {
+        officeId: claims.officeId,
+        ownerUid: claims.uid,
+        type: "updateInteraction",
+        interactionId: interactionRef.id,
+        createdAt: now,
       });
       return { interactionId: interactionRef.id };
     }));

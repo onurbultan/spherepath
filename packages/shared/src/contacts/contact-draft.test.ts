@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contactDraftSchema, createContact } from "./contact-draft.js";
+import { contactDraftSchema, createContact, mergeContactRoles } from "./contact-draft.js";
 
 describe("contact draft", () => {
   it("normalizes optional text and applies privacy-safe defaults", () => {
@@ -45,5 +45,27 @@ describe("contact draft", () => {
 
   it("does not accept a first action without its time", () => {
     expect(contactDraftSchema.safeParse({ fullName: "Ayşe Kaya", phone: "", metAtPlace: "", source: "referral", role: "buyer", nextActionType: "call", nextActionAt: null }).success).toBe(false);
+  });
+});
+
+describe("merging a role into a contact", () => {
+  it("keeps the roles work has already established", () => {
+    expect(mergeContactRoles(["seller", "landlord"], "buyer")).toEqual(["buyer", "seller", "landlord"]);
+  });
+
+  it("leads with the chosen role so the form shows what was just picked", () => {
+    expect(mergeContactRoles(["buyer", "seller"], "seller")).toEqual(["seller", "buyer"]);
+  });
+
+  it("drops the placeholder once a real role is known", () => {
+    expect(mergeContactRoles(["unknown"], "investor")).toEqual(["investor"]);
+  });
+
+  it("keeps real roles when the form still reads unknown", () => {
+    expect(mergeContactRoles(["buyer"], "unknown")).toEqual(["buyer"]);
+  });
+
+  it("falls back to the placeholder when nothing else is known", () => {
+    expect(mergeContactRoles([], "unknown")).toEqual(["unknown"]);
   });
 });

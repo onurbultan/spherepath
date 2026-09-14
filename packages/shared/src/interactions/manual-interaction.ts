@@ -104,6 +104,28 @@ export const manualInteractionSchema = z
 
 export type ManualInteractionDraft = z.infer<typeof manualInteractionSchema>;
 
+/**
+ * What a recorded conversation can be corrected to. The contact, the linked
+ * work and the next action stay out: moving an interaction to another person
+ * would rewrite two relationship histories at once, and the next action already
+ * has its own complete-or-reschedule flow. This is for the account of the
+ * conversation itself -- what was said, through which channel, and when.
+ */
+export const interactionEditSchema = z
+  .object({
+    interactionId: z.string().trim().min(1).max(160),
+    channel: z.enum(interactionChannels),
+    objective: z.enum(interactionObjectives),
+    direction: z.enum(["outbound", "inbound", "mutual"]),
+    outcome: z.string().trim().min(2, "Sonuç en az 2 karakter olmalı.").max(500),
+    askOutcome: z.enum(askOutcomes),
+    noteSummary: z.string().trim().max(1_000),
+    occurredAt: z.number().int().positive(),
+  })
+  .strict();
+
+export type InteractionEdit = z.infer<typeof interactionEditSchema>;
+
 /** An advisor entering the day's conversations in the evening may backdate, but only so far. */
 export const maxInteractionBackdateMs = 30 * 86_400_000;
 const clockSkewGraceMs = 60_000;
@@ -147,19 +169,29 @@ export interface RelationshipActivity {
   nextActionType: NextActionType | null;
 }
 
+/**
+ * One definition of the ladder, so recording a conversation and correcting one
+ * cannot disagree about where the relationship stands. A referral source has
+ * earned a standing that touch counts do not take back.
+ */
+export function relationshipStageFor(
+  current: Contact["relationship"]["stage"],
+  meaningfulTouchCount: number,
+  reciprocalTouchCount: number,
+): Contact["relationship"]["stage"] {
+  if (current === "referral_source") return current;
+  if (meaningfulTouchCount >= 5 && reciprocalTouchCount >= 2) return "active";
+  if (meaningfulTouchCount >= 2) return "engaged";
+  return "getting_to_know";
+}
+
 export function applyInteractionToRelationship(
   current: Contact["relationship"],
   activity: RelationshipActivity,
 ): Contact["relationship"] {
   const meaningfulTouchCount = current.meaningfulTouchCount + 1;
   const reciprocalTouchCount = current.reciprocalTouchCount + (activity.direction === "outbound" ? 0 : 1);
-  const stage = current.stage === "referral_source"
-    ? current.stage
-    : meaningfulTouchCount >= 5 && reciprocalTouchCount >= 2
-      ? "active"
-      : meaningfulTouchCount >= 2
-        ? "engaged"
-        : "getting_to_know";
+  const stage = relationshipStageFor(current.stage, meaningfulTouchCount, reciprocalTouchCount);
 
   return {
     ...current,
@@ -171,5 +203,40 @@ export function applyInteractionToRelationship(
     nextActionType: activity.nextActionType,
     lastObjective: activity.objective,
     lastAskOutcome: activity.askOutcome,
+  };
+}
+
+/**
+ * A correction has to move the derived relationship with it, or the summary on
+ * the contact keeps describing a conversation that no longer reads that way.
+ * The number of conversations does not change, so the meaningful touch count is
+ * left alone; only what the correction actually restates is recomputed.
+ *
+ * `lastTouchAt` only moves forward. Pulling it back would need the dates of
+ * every other interaction, which this rule does not have -- so a conversation
+ * corrected to an earlier date leaves the last-touch date where it was rather
+ * than inventing a new one.
+ */
+export function applyInteractionEditToRelationship(
+  current: Contact["relationship"],
+  before: Pick<RelationshipActivity, "direction" | "occurredAt">,
+  after: Pick<RelationshipActivity, "direction" | "objective" | "askOutcome" | "occurredAt">,
+): Contact["relationship"] {
+  const reciprocalDelta = (after.direction === "outbound" ? 0 : 1) - (before.direction === "outbound" ? 0 : 1);
+  const reciprocalTouchCount = Math.max(0, current.reciprocalTouchCount + reciprocalDelta);
+  // The corrected conversation speaks for the relationship only while it is the
+  // most recent one; otherwise a fix to an old note would overwrite what the
+  // latest conversation established.
+  const wasLatest = current.lastTouchAt === null || before.occurredAt >= current.lastTouchAt;
+  const becomesLatest = current.lastTouchAt === null || after.occurredAt >= current.lastTouchAt;
+  const speaksForRelationship = wasLatest || becomesLatest;
+
+  return {
+    ...current,
+    stage: relationshipStageFor(current.stage, current.meaningfulTouchCount, reciprocalTouchCount),
+    reciprocalTouchCount,
+    lastTouchAt: Math.max(current.lastTouchAt ?? 0, after.occurredAt),
+    lastObjective: speaksForRelationship ? after.objective : current.lastObjective,
+    lastAskOutcome: speaksForRelationship ? after.askOutcome : current.lastAskOutcome,
   };
 }

@@ -4,7 +4,7 @@ import { contactDraftSchema } from "../contacts/contact-draft.js";
 import { nextActionTypeLabels, nextActionTypes } from "../interactions/manual-interaction.js";
 import { opportunityCriteriaSummary, opportunityTransactionType } from "../opportunities/opportunity-situation.js";
 import { opportunityTypes } from "../opportunities/opportunity-draft.js";
-import { portfolioItemDraftSchema } from "../matching/portfolio-match.js";
+import { portfolioItemDraftSchema, type PortfolioItemDraft } from "../matching/portfolio-match.js";
 import { voiceInsightsSchema, type VoiceInsights } from "../voice/voice-note.js";
 
 export const inboxItemSources = ["typed", "voice", "whatsapp"] as const;
@@ -143,6 +143,14 @@ export interface InboxItemAnalysis {
   nextActionAt: number | null;
   opportunityType: OpportunityType;
   engine: "rules" | "vertex_ai";
+  /**
+   * A property note used to wait for its reading until the advisor opened the
+   * sheet and asked for it, which put a model round trip in front of the one
+   * action they came to take. The trigger now reads the property at the same
+   * time as the person, so the sheet opens on a draft. Null when the note is
+   * not about a property, or when that reading failed.
+   */
+  portfolio?: PortfolioItemDraft | null;
 }
 
 /**

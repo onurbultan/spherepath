@@ -71,6 +71,24 @@ export interface PortfolioItemRecord extends PortfolioItem {
   sourcePropertyId?: string;
 }
 
+/**
+ * A pool row can be pure hearsay: someone mentioned a 1+1 going for four
+ * million in some neighbourhood, and nobody has spoken to an owner. That is
+ * useful inside the office -- it is a lead to chase -- but its price is a
+ * rumour, and a rumour must not leave the building as a figure quoted to a
+ * customer under the advisor's name. Rows produced from one of the office's
+ * own listings already carry a mandate and passed the readiness gates.
+ */
+export function portfolioItemCarriesMandate(
+  item: Pick<PortfolioItemRecord, "authorizationType"> & { sourceListingId?: string },
+): boolean {
+  if (item.sourceListingId) return true;
+  return item.authorizationType !== "none" && item.authorizationType !== "unknown";
+}
+
+export const unverifiedPortfolioOutreachMessage =
+  "Bu portföyün yetkisi doğrulanmadı. Müşteriye mesaj hazırlamadan önce mülk sahibine ulaşıp yetki durumunu kaydet.";
+
 export type MatchReasonStatus = "match" | "mismatch" | "unknown";
 export type MatchReasonKey = "transaction" | "property_type" | "location" | "budget" | "rooms" | "area" | "must_have" | "deal_breaker";
 

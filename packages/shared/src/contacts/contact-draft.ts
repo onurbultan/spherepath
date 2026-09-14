@@ -68,6 +68,19 @@ export const contactDraftSchema = z.object({
 
 export type ContactDraft = z.infer<typeof contactDraftSchema>;
 
+/**
+ * A contact collects roles as work is opened for them -- the seller whose flat
+ * you sold is looking for the next one, so they are a seller and a buyer. The
+ * edit form offers a single role, and writing that choice over the stored set
+ * silently dropped every role the work had established. The chosen role leads,
+ * because that is what the form will show next time; the rest are kept.
+ */
+export function mergeContactRoles(storedRoles: readonly ContactRole[], role: ContactRole): ContactRole[] {
+  const kept = storedRoles.filter((item) => item !== "unknown" && item !== role);
+  if (role === "unknown") return kept.length ? kept : ["unknown"];
+  return [role, ...kept];
+}
+
 /** Free-form internal suffixes must never leak into customer-facing copy. */
 export function customerFacingContactName(value: string | null | undefined): string | null {
   const name = value?.split("·", 1)[0]?.trim() ?? "";

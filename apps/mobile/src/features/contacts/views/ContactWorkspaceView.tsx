@@ -21,6 +21,7 @@ import {
   opportunityTypeLabels,
   type CallRecordView,
   type DailyTaskOutcome,
+  type InteractionEdit,
   type TodayTask,
 } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
@@ -37,8 +38,10 @@ import {
   listContactCalls,
   listContactInteractions,
   listContacts,
+  updateContactInteraction,
   type ContactInteractionRecord,
 } from "../resources/contacts";
+import { InteractionEditSheet } from "../components/InteractionEditSheet";
 
 type Tab = "timeline" | "memory" | "opportunities" | "privacy";
 
@@ -86,6 +89,9 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
   const [taskOpen, setTaskOpen] = useState(false);
   const [taskPending, setTaskPending] = useState(false);
   const [taskError, setTaskError] = useState<string | null>(null);
+  const [editingInteraction, setEditingInteraction] = useState<ContactInteractionRecord | null>(null);
+  const [editPending, setEditPending] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const contactsQuery = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts, enabled: Boolean(session) });
   const callsQuery = useQuery({ queryKey: apiQueryKeys.contactCalls(contactId), queryFn: () => listContactCalls(contactId), enabled: Boolean(session) });
   const interactionsQuery = useQuery({ queryKey: apiQueryKeys.contactInteractions(contactId), queryFn: () => listContactInteractions(contactId), enabled: Boolean(session) });
@@ -153,6 +159,22 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
     finally { setTaskPending(false); }
   }
 
+  async function saveInteractionEdit(edit: InteractionEdit) {
+    if (!session) return;
+    setEditPending(true); setEditError(null);
+    try {
+      await updateContactInteraction(session, edit);
+      // The correction moves the relationship summary with it, so the contact
+      // itself has to be reread, not just this list.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.contactInteractions(contactId) }),
+        queryClient.invalidateQueries({ queryKey: apiQueryKeys.contacts }),
+      ]);
+      setEditingInteraction(null);
+    } catch (error) { setEditError(error instanceof Error ? error.message : "Görüşme güncellenemedi."); }
+    finally { setEditPending(false); }
+  }
+
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={[styles.safe, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -202,6 +224,11 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
           ))}
         </View>
 
+        {/* What the advisor already wrote about this person is the first thing
+            they came to read. Keeping it a tab away meant a contact carrying
+            pages of imported notes opened on an empty timeline. */}
+        {tab === "timeline" ? <ImportedContactNotes contactId={contact.id} /> : null}
+
         {tab === "timeline" ? (
           entries.length ? entries.map((entry) => {
             if (entry.kind === "call") {
@@ -236,8 +263,16 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
                   <View style={[styles.icon, { backgroundColor: theme.sunk }]}><MessageSquareText color={theme.textSecondary} size={17} /></View>
                   <View style={styles.flex}>
                     <SpText variant="title">{interactionObjectiveLabels[interaction.objective]}</SpText>
-                    <SpText variant="caption" color="secondary">{dateTime(entry.at)}</SpText>
+                    <SpText variant="caption" color="secondary">{dateTime(entry.at)}{interaction.editedAt ? " · düzenlendi" : ""}</SpText>
                   </View>
+                  <Pressable
+                    accessibilityLabel={`${interactionObjectiveLabels[interaction.objective]} görüşmesini düzenle`}
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={() => { setEditError(null); setEditingInteraction(interaction); }}
+                  >
+                    <Pencil color={theme.textSecondary} size={16} />
+                  </Pressable>
                 </View>
                 <SpText variant="bodySmall" color="secondary">{interaction.outcome ?? "Temas kaydedildi."}</SpText>
                 {interaction.noteSummary ? <SpText variant="caption" color="secondary">{interaction.noteSummary}</SpText> : null}
@@ -252,7 +287,7 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
 
         {tab === "memory" ? (
           <SpCard style={styles.entry}>
-            <SpText variant="title">İletişim bilgileri</SpText><SpText>{[contact.phone, ...(contact.additionalPhones ?? []), ...(contact.emails ?? [])].filter(Boolean).join(" · ")}</SpText><ImportedContactNotes contactId={contact.id} /><SpText variant="title">Hatırlanacaklar</SpText>
+            <SpText variant="title">İletişim bilgileri</SpText><SpText>{[contact.phone, ...(contact.additionalPhones ?? []), ...(contact.emails ?? [])].filter(Boolean).join(" · ")}</SpText><SpText variant="title">Hatırlanacaklar</SpText>
             {contact.memory.keyThingsToRemember.length
               ? contact.memory.keyThingsToRemember.map((item) => <SpText key={item} variant="bodySmall" color="secondary">· {item}</SpText>)
               : <SpText variant="bodySmall" color="secondary">Henüz hatırlanacak bilgi yok.</SpText>}
@@ -307,6 +342,15 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
         ) : null}
       </ScrollView>
       <TaskResolutionSheet task={taskOpen ? task : null} pending={taskPending} error={taskError} onClose={() => setTaskOpen(false)} onResolve={(outcome) => void resolveTask(outcome)} />
+      {editingInteraction ? (
+        <InteractionEditSheet
+          error={editError}
+          interaction={editingInteraction}
+          onClose={() => setEditingInteraction(null)}
+          onSave={(edit) => void saveInteractionEdit(edit)}
+          pending={editPending}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

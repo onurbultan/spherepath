@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PropertyPreferences } from "../domain/entities.js";
-import { locationsOverlap, portfolioItemDraftSchema, scorePortfolioItem, type PortfolioItemDraft } from "./portfolio-match.js";
+import { locationsOverlap, portfolioItemCarriesMandate, portfolioItemDraftSchema, scorePortfolioItem, type PortfolioItemDraft } from "./portfolio-match.js";
 
 const demand: PropertyPreferences = {
   transactionType: "buy",
@@ -174,5 +174,24 @@ describe("advisor audit geography regressions", () => {
     expect(locationsOverlap("Urla civarı", "Kadıovacık, Urla")).toBe(true);
     expect(locationsOverlap("Cesme Alacati", "Çeşme Alaçatı")).toBe(true);
     expect(locationsOverlap("Karşıyaka", "Bostanlı, İzmir")).toBe(true);
+  });
+});
+
+describe("letting a portfolio row speak to a customer", () => {
+  const hearsay = { authorizationType: "none" as const };
+
+  it("holds back a pool row nobody has an authorization for", () => {
+    expect(portfolioItemCarriesMandate(hearsay)).toBe(false);
+    expect(portfolioItemCarriesMandate({ authorizationType: "unknown" })).toBe(false);
+  });
+
+  it("lets a row with a real authorization through", () => {
+    expect(portfolioItemCarriesMandate({ authorizationType: "exclusive" })).toBe(true);
+    expect(portfolioItemCarriesMandate({ authorizationType: "open" })).toBe(true);
+    expect(portfolioItemCarriesMandate({ authorizationType: "verbal" })).toBe(true);
+  });
+
+  it("trusts a row that came from one of the office's own listings", () => {
+    expect(portfolioItemCarriesMandate({ ...hearsay, sourceListingId: "listing-1" })).toBe(true);
   });
 });

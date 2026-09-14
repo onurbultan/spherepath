@@ -78,6 +78,56 @@ describe("callable API vertical slice", () => {
     const interactionReplay = (await recordInteraction({ ...interactionRequest, requestId: "request-interaction-2" })).data as { interactionId: string };
     expect(interactionReplay.interactionId).toBe(interaction.interactionId);
 
+    // Correcting the account of a conversation, which is the advisor's own note
+    // about their own call -- unlike a stage event, which stays as written.
+    const updateInteraction = httpsCallable(functions, "updateInteraction");
+    const correctedAt = Date.now() - 2 * 86_400_000;
+    const editRequest = envelope({
+      interactionId: interaction.interactionId,
+      channel: "phone",
+      objective: "presentation",
+      direction: "outbound",
+      outcome: "Sunum yapıldı, fiyat konuşuldu",
+      askOutcome: "unclear",
+      noteSummary: "Perşembe tekrar arayacak.",
+      occurredAt: correctedAt,
+    }, "request-interaction-edit-1", "command-update-interaction");
+    const edited = (await updateInteraction(editRequest)).data as { interactionId: string };
+    expect(edited.interactionId).toBe(interaction.interactionId);
+    const editReplay = (await updateInteraction({ ...editRequest, requestId: "request-interaction-edit-2" })).data as { interactionId: string };
+    expect(editReplay.interactionId).toBe(interaction.interactionId);
+
+    const readContactHistory = httpsCallable(functions, "listContactInteractions");
+    const history = (await readContactHistory(envelope({ contactId: created.contact.id }, "request-interaction-history"))).data as {
+      interactions: Array<{ id: string; objective: string; direction: string; outcome: string; occurredAt: number; editedAt: number | null }>;
+    };
+    const corrected = history.interactions.find((item) => item.id === interaction.interactionId)!;
+    expect(corrected.objective).toBe("presentation");
+    expect(corrected.direction).toBe("outbound");
+    expect(corrected.outcome).toBe("Sunum yapıldı, fiyat konuşuldu");
+    expect(corrected.occurredAt).toBe(correctedAt);
+    expect(corrected.editedAt).toBeTruthy();
+
+    // The conversation turned out to be outbound, so the reciprocal touch it
+    // was counted for is taken back -- the count of conversations is unchanged.
+    const afterEdit = (await listContacts(envelope(undefined, "request-list-after-edit"))).data as {
+      contacts: Array<{ id: string; relationship: { meaningfulTouchCount: number; reciprocalTouchCount: number } }>;
+    };
+    const editedContact = afterEdit.contacts.find((item) => item.id === created.contact.id)!;
+    expect(editedContact.relationship.meaningfulTouchCount).toBe(1);
+    expect(editedContact.relationship.reciprocalTouchCount).toBe(0);
+
+    // The edit form offers one role; the roles work has established stay.
+    const editContact = httpsCallable(functions, "updateContact");
+    await editContact(envelope({
+      contactId: created.contact.id,
+      draft: { fullName: "Integration Contact", phone: "+905551112233", metAtPlace: "Integration", source: "in_person", role: "buyer" },
+    }, "request-contact-role-merge", "command-contact-role-merge"));
+    const afterRoleEdit = (await listContacts(envelope(undefined, "request-list-after-role-edit"))).data as {
+      contacts: Array<{ id: string; roles: string[] }>;
+    };
+    expect(afterRoleEdit.contacts.find((item) => item.id === created.contact.id)!.roles).toEqual(["buyer", "seller"]);
+
     const createOpportunity = httpsCallable(functions, "createOpportunity");
     const opportunityRequest = envelope({
       subjectContactId: created.contact.id,

@@ -5,6 +5,7 @@ import {
   contactMemorySchema,
   contactPrivacyDraftSchema,
   createContact as createContactEntity,
+  mergeContactRoles,
   type Contact,
   type ContactDraft,
   type ContactPrivacyDraft,
@@ -263,7 +264,10 @@ export const updateContact = onCall(callableOptions(), async (request): Promise<
       ...contactPhoneFields(draft.phone),
       metAtPlace: draft.metAtPlace || null,
       source: draft.source,
-      roles: [draft.role],
+      // The form offers one role; the contact may already hold several, each put
+      // there by work that was opened for them. Writing the single choice over
+      // the set used to delete the rest without saying so.
+      roles: mergeContactRoles((data.roles ?? []) as Contact["roles"], draft.role),
       updatedAt: now,
     });
     transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "updateContact", contactId, createdAt: now });

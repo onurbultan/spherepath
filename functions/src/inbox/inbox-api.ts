@@ -28,15 +28,20 @@ import {
   type InboxItem,
   type InboxItemRecord,
   type InboxItemAnalysis,
+  type PortfolioItemDraft,
 } from "../../../packages/shared/src/index.js";
 import { requireSpherepathClaims, type SpherepathClaims } from "../auth/claims.js";
+import { warmInstances } from "../runtime/global-options.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 import { normalizeVoiceExtraction } from "../voice/normalization.js";
 import { extractVoiceDraft, sanitizeVoiceExtraction } from "../voice/privacy.js";
 import { normalizeVoiceActionTiming } from "../voice/temporal.js";
 import { extractVoiceDraftWithVertex } from "../voice/vertex-extraction.js";
+import { extractPortfolioDraftWithVertex } from "../matching/vertex-portfolio-extraction.js";
 
-const callableOptions = { region: "europe-west8" as const, cors: true, maxInstances: 10, memory: "256MiB" as const, timeoutSeconds: 60 };
+// The advisor waits in front of every one of these, so they are the ones worth
+// keeping warm when a deployment chooses to pay for it.
+const callableOptions = { region: "europe-west8" as const, cors: true, maxInstances: 10, minInstances: warmInstances, memory: "256MiB" as const, timeoutSeconds: 60 };
 const millis = (value: unknown): number | null => value instanceof Timestamp ? value.toMillis() : null;
 const timestamp = (value: number | null): Timestamp | null => value === null ? null : Timestamp.fromMillis(value);
 
@@ -66,6 +71,22 @@ async function analyzeText(text: string, knownContactName: string | null = null)
     opportunityType: inboxOpportunityType(extraction.insights),
     engine: extraction.provenance.engine,
   };
+}
+
+/**
+ * The property reading is a second model call, so it runs beside the first
+ * rather than after it: a note that turns out to describe a property then has
+ * its draft waiting when the sheet opens. A failure here costs nothing -- the
+ * sheet still offers to read the property on demand.
+ */
+async function analyzePropertyText(text: string, source: InboxItem["source"]): Promise<PortfolioItemDraft | null> {
+  if (process.env.FUNCTIONS_EMULATOR === "true") return null;
+  try {
+    return await extractPortfolioDraftWithVertex(text, source === "whatsapp" ? "whatsapp_group" : "manual");
+  } catch (error) {
+    logger.warn("Inbox property reading failed", { error: error instanceof Error ? error.message : String(error) });
+    return null;
+  }
 }
 
 function canManage(data: DocumentData, claims: SpherepathClaims): boolean {
@@ -281,7 +302,13 @@ export const analyzeInboxNote = onDocumentCreated(
       const knownContactName = linkedContact?.exists
         ? String(linkedContact.data()?.fullName ?? linkedContact.data()?.label ?? "").trim() || null
         : null;
-      const analysis = await analyzeText(data.safeText as string, knownContactName);
+      const text = data.safeText as string;
+      const source = data.source as InboxItem["source"];
+      const looksLikeProperty = data.kind === "property" || classifyInboxText(text).kind === "property";
+      const [analysis, portfolio] = await Promise.all([
+        analyzeText(text, knownContactName),
+        looksLikeProperty ? analyzePropertyText(text, source) : Promise.resolve(null),
+      ]);
       // Analysis prepares a review. Only the advisor-approved command writes contact memory.
       const db = getFirestore();
       await db.runTransaction(async (transaction) => {
@@ -294,7 +321,7 @@ export const analyzeInboxNote = onDocumentCreated(
         const analyzedKind = hasNotBeenEdited
           ? inboxKindAfterAnalysis(current.kind as InboxItem["kind"], current.source as InboxItem["source"], (current.linkedContactId ?? null) as string | null, analysis)
           : current.kind as InboxItem["kind"];
-        transaction.update(reference, { analysis, analysisStatus: "ready", kind: analyzedKind, updatedAt: Timestamp.now() });
+        transaction.update(reference, { analysis: { ...analysis, portfolio }, analysisStatus: "ready", kind: analyzedKind, updatedAt: Timestamp.now() });
 
       });
     } catch (error) {
@@ -319,7 +346,15 @@ export const analyzeInboxItem = onCall(callableOptions, async (request): Promise
     const knownContactName = contactSnapshot?.exists
       ? String(contactSnapshot.data()?.fullName ?? contactSnapshot.data()?.label ?? "").trim() || null
       : null;
-    return { analysis: await analyzeText(snapshot.data()!.safeText as string, knownContactName) };
+    const data = snapshot.data()!;
+    const text = data.safeText as string;
+    // The on-demand path reads the property alongside the person for the same
+    // reason the trigger does: one wait instead of two.
+    const [analysis, portfolio] = await Promise.all([
+      analyzeText(text, knownContactName),
+      data.kind === "property" ? analyzePropertyText(text, data.source as InboxItem["source"]) : Promise.resolve(null),
+    ]);
+    return { analysis: { ...analysis, portfolio } };
   });
 });
 

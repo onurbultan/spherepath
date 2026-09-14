@@ -204,6 +204,13 @@ export interface Interaction extends TenantOwned {
   noteSummary: string | null;
   voiceNoteId: string | null;
   createdAt: Instant;
+  /**
+   * A conversation note is the advisor's own account of their own conversation,
+   * so correcting it is ordinary work -- unlike a stage event, which records
+   * that something happened and stays as written. Optional for records made
+   * before editing existed; absent means never edited.
+   */
+  editedAt?: Instant | null;
 }
 
 

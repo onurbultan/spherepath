@@ -12,8 +12,10 @@ import {
   matchMessageRequestSchema,
   matchNotificationCommandSchema,
   portfolioItemDraftSchema,
+  portfolioItemCarriesMandate,
   portfolioItemCommandSchema,
   portfolioTextInputSchema,
+  unverifiedPortfolioOutreachMessage,
   scorePortfolioItem,
   type PortfolioItem,
   type PortfolioItemDraft,
@@ -317,6 +319,13 @@ export const draftMatchMessage = onCall(callableOptions, async (request): Promis
     }
     if (!item || item.officeId !== claims.officeId) {
       throw new HttpsError("permission-denied", "Portfolio item is outside your workspace.");
+    }
+
+    // A hearsay row is a lead to chase, not a property to quote. Its price came
+    // from whoever mentioned it, and nobody has spoken to an owner -- so it must
+    // not leave the office inside a message written under the advisor's name.
+    if (!portfolioItemCarriesMandate(item)) {
+      throw new HttpsError("failed-precondition", unverifiedPortfolioOutreachMessage);
     }
 
     const portfolioItem = item;
