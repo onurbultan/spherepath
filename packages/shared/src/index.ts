@@ -27,6 +27,7 @@ export * from "./opportunities/opportunity-list-summary.js";
 export * from "./opportunities/index.js";
 export * from "./referrals/index.js";
 export * from "./privacy/index.js";
+export * from "./privacy/sensitive-terms.js";
 export * from "./settings/index.js";
 export * from "./today/build-overview.js";
 export * from "./today/reconcile-open-work.js";
@@ -37,6 +38,7 @@ export * from "./auth/onboarding.js";
 export * from "./contacts/contact-import.js";
 
 export * from "./contacts/next-step.js";
+export * from "./contacts/contact-memory.js";
 export * from "./matching/listing-candidate.js";
 export * from "./closing/advisor-copy.js";
 export * from "./closing/test-workspace-copy.js";

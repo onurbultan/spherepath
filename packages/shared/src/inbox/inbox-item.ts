@@ -7,6 +7,7 @@ import { opportunityTypes } from "../opportunities/opportunity-draft.js";
 import { portfolioItemDraftSchema, type PortfolioItemDraft } from "../matching/portfolio-match.js";
 import type { NoteSegmentReading } from "./note-segments.js";
 import { voiceInsightsSchema, type VoiceInsights } from "../voice/voice-note.js";
+import { sensitiveTermExpression } from "../privacy/sensitive-terms.js";
 
 /**
  * A note used to be one thought, so 4,000 characters was generous. A day's
@@ -249,7 +250,7 @@ export interface InboxClassification {
   explicitContact: { fullName: string; phone: string } | null;
 }
 
-const sensitiveSentence = /\b(hastalık|hasta|kanser|tansiyon|diyabet|depresyon|psikiyatr|engelli|hamile|ilaç|ameliyat|sağlık|müslüman|hristiyan|yahudi|alevi|sünni|ateist|mezhep|etnik|ırk|kürt|rum|ermeni|siyasi|politik|parti|sendika)\w*/iu;
+const sensitiveSentence = sensitiveTermExpression;
 const locationWords = /\b(urla|çeşme|alaçatı|güzelbahçe|seferihisar|karaburun|izmir|ankara|istanbul|mahallesi|sokak|cadde|mevki|bölge)\b/iu;
 const propertyWords = /\b(ev|daire|villa|arsa|dükkan|mülk|portföy|konut|bahçeli|deniz manzaralı|oda)\b/iu;
 const requirementWords = /\b(arıyor|istiyor|talep|bütçe|satın almak|kiralamak)\b/iu;

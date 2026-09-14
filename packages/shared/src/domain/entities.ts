@@ -265,6 +265,12 @@ export interface StageEvent extends TenantOwned {
 
 export interface Property extends TenantOwned, Audited {
   ownerContactId: string | null;
+  /**
+   * Why this property is worth knowing about, in the advisor's words -- "annesine
+   * almış", "kiraya veriyor". Optional for properties created by a listing, where
+   * the mandate already says what the property is for.
+   */
+  note?: string | null;
   address: string;
   regionSlug: string;
   geo: { lat: number; lng: number } | null;

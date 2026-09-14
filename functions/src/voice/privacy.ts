@@ -3,28 +3,17 @@ import {
   inboxContactName,
   inboxContactPhone,
   voiceExtractionSchema,
+  sensitiveMask,
+  sensitiveTermPatterns,
   type SensitiveDataCategory,
   type VoiceExtraction,
 } from "../../../packages/shared/src/index.js";
 
-interface SensitivePattern {
-  category: SensitiveDataCategory;
-  pattern: RegExp;
-}
+// One definition, shared with the classifier that runs on the client, so the
+// two can no longer disagree about what counts as special-category data.
+const sensitivePatterns = sensitiveTermPatterns;
 
-// Turkish is agglutinative, so these roots must still match their inflected forms
-// ("hastalığı", "dinine", "Lazlar"). The negative lookaheads carve out everyday words
-// that merely share a prefix with a sensitive root -- "lazım", "Türkiye", "Rumeli",
-// "hastane", "dinlenme" -- which would otherwise be masked as special-category data.
-const sensitivePatterns: SensitivePattern[] = [
-  { category: "health", pattern: /\b(hastalık|hasta(?!ne)|kanser|tansiyon|diyabet|depresyon|psikiyatr|engelli|hamile|ilaç|ameliyat|sağlık)\w*/iu },
-  { category: "religion", pattern: /\b(müslüman|hristiyan|yahudi|alevi|sünni|ateist|din(?!le|len|am|az|gil)(?:i|e|den)?|mezhep|inanç)\w*/iu },
-  { category: "ethnicity", pattern: /\b(etnik|ırk|kürt|türk(?!iye|çe|iyat)|rum(?!eli|uz)|ermeni|laz(?!ım|er)|çerkes)\w*/iu },
-  { category: "political_opinion", pattern: /\b(siyasi|politik|parti(?:li|ye|den)?|muhafazakâr|muhafazakar|milliyetçi|sosyalist|liberal)\w*/iu },
-  { category: "union_membership", pattern: /\b(sendika|sendikalı|sendika üyesi)\w*/iu },
-];
-
-export const sensitiveMask = "[HASSAS İÇERİK MASKELENDİ]";
+export { sensitiveMask };
 
 export interface MaskedTranscript {
   text: string;

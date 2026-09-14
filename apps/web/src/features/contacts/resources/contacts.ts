@@ -1,4 +1,4 @@
-import { createCommandId, type Contact, type ContactDraft, type ContactPrivacyDraft, type Interaction, type InteractionEdit } from "@spherepath/shared";
+import { createCommandId, type Contact, type ContactDraft, type ContactPrivacyDraft, type ContactMemoryNotesInput, type KnownPropertyDraft, type KnownPropertyRecord, type Interaction, type InteractionEdit } from "@spherepath/shared";
 import { apiClient } from "@/shared/api/client";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
 
@@ -66,5 +66,29 @@ export async function saveContactPrivacy(session: WorkspaceSession, draft: Conta
 export async function updateContactInteraction(session: WorkspaceSession, edit: InteractionEdit): Promise<void> {
   await apiClient.command<InteractionEdit, { interactionId: string }>(
     "updateInteraction", edit, createCommandId(session.uid),
+  );
+}
+
+export async function saveContactMemory(session: WorkspaceSession, input: ContactMemoryNotesInput): Promise<ContactRecord> {
+  return (await apiClient.command<ContactMemoryNotesInput, { contact: ContactRecord }>(
+    "updateContactMemory", input, createCommandId(session.uid),
+  )).contact;
+}
+
+export async function listKnownProperties(contactId: string): Promise<KnownPropertyRecord[]> {
+  return (await apiClient.query<{ contactId: string }, { properties: KnownPropertyRecord[] }>(
+    "listKnownProperties", { contactId },
+  )).properties;
+}
+
+export async function saveKnownProperty(session: WorkspaceSession, draft: KnownPropertyDraft): Promise<KnownPropertyRecord> {
+  return (await apiClient.command<KnownPropertyDraft, { property: KnownPropertyRecord }>(
+    "saveKnownProperty", draft, createCommandId(session.uid),
+  )).property;
+}
+
+export async function archiveKnownProperty(session: WorkspaceSession, propertyId: string): Promise<void> {
+  await apiClient.command<{ propertyId: string }, { propertyId: string }>(
+    "archiveKnownProperty", { propertyId }, createCommandId(session.uid),
   );
 }

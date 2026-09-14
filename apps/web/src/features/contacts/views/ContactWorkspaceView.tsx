@@ -21,6 +21,7 @@ import { useSession } from "@/features/auth/resources/session";
 import { ContactCallButton } from "../components/ContactCallButton";
 import { ContactCallHistory } from "../components/ContactCallHistory";
 import { ContactInteractionTimeline } from "../components/ContactInteractionTimeline";
+import { ContactKnowledgePanel } from "../components/ContactKnowledgePanel";
 import { ContactMemoryHighlights } from "../components/ContactMemoryHighlights";
 import { listContacts } from "../resources/contacts";
 
@@ -79,7 +80,7 @@ export function ContactWorkspaceView({ contactId }: { contactId: string }) {
           came to read. Keeping it a tab away meant a contact carrying pages of
           imported notes opened on an empty timeline and looked like a stranger. */}
       {tab === "timeline" ? <><ImportedContactNotes contactId={contact.id} /><ContactCallHistory contactId={contact.id} /><SpCard><ContactInteractionTimeline contactId={contact.id} /></SpCard></> : null}
-      {tab === "memory" ? <SpCard className="contact-workspace-panel"><h2>İletişim bilgileri</h2><p>{[contact.phone, ...(contact.additionalPhones ?? []), ...(contact.emails ?? [])].filter(Boolean).join(" · ")}</p><h2>Hatırlanacaklar</h2>{contact.memory.keyThingsToRemember.length ? <ul>{contact.memory.keyThingsToRemember.map((item) => <li key={item}>{item}</li>)}</ul> : <p>Henüz hatırlanacak bilgi yok.</p>}<h3>Gayrimenkul tercihleri</h3><ContactMemoryHighlights memory={contact.memory} /></SpCard> : null}
+      {tab === "memory" ? <><SpCard className="contact-workspace-panel"><h2>İletişim bilgileri</h2><p>{[contact.phone, ...(contact.additionalPhones ?? []), ...(contact.emails ?? [])].filter(Boolean).join(" · ") || "Henüz iletişim bilgisi yok."}</p><h3>Gayrimenkul tercihleri</h3><ContactMemoryHighlights memory={contact.memory} /></SpCard><ContactKnowledgePanel contactId={contact.id} memory={contact.memory} /></> : null}
       {tab === "opportunities" ? <SpCard className="contact-workspace-panel"><h2>Fırsatlar</h2>{opportunities.length ? opportunities.map((item) => <Link className="contact-opportunity-row" key={item.id} href={`/opportunities?opportunityId=${encodeURIComponent(item.id)}`}><BriefcaseBusiness size={17} /><span><strong>{opportunityTypeLabels[item.type]}</strong><small>{opportunityStageLabel(item.stage, item.type)}</small></span></Link>) : <p>Bu kişi için fırsat yok.</p>}</SpCard> : null}
       {tab === "privacy" ? <SpCard className="contact-workspace-panel"><ShieldCheck size={22} /><h2>Aydınlatma ve iletişim izinleri</h2><p>{contact.privacy.noticeStatus === "completed" ? "Aydınlatma tamamlandı." : "Aydınlatma bekliyor."} {contact.privacy.marketingConsent === "granted" ? "Pazarlama izni var." : contact.privacy.marketingConsent === "withdrawn" ? "Kişi iletişim istemedi; pazarlama izni geri çekildi." : "Pazarlama izni bilinmiyor."}</p><Link className="secondary-action inline-link" href={`/contacts?contactId=${encodeURIComponent(contact.id)}&action=privacy`}>İzinleri düzenle</Link></SpCard> : null}
     </section>{taskOpen && task ? <TaskResolutionSheet task={task} pending={resolvingTask} error={taskError} onClose={() => setTaskOpen(false)} onResolve={(outcome) => void resolveTask(outcome)} /> : null}

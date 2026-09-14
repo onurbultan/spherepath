@@ -4,151 +4,369 @@
       "collectionGroup": "contactImportJobs",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "officeId", "order": "ASCENDING" },
-        { "fieldPath": "ownerUid", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ownerUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "contactImportLinks",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "officeId", "order": "ASCENDING" },
-        { "fieldPath": "ownerUid", "order": "ASCENDING" }
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ownerUid",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "contacts",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "officeId", "order": "ASCENDING" },
-        { "fieldPath": "ownerUid", "order": "ASCENDING" },
-        { "fieldPath": "deletedAt", "order": "ASCENDING" },
-        { "fieldPath": "relationship.nextActionAt", "order": "ASCENDING" }
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ownerUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "deletedAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "relationship.nextActionAt",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "contacts",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "officeId", "order": "ASCENDING" },
-        { "fieldPath": "phoneHash", "order": "ASCENDING" },
-        { "fieldPath": "deletedAt", "order": "ASCENDING" }
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "phoneHash",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "deletedAt",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "calls",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "officeId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "calls",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "officeId", "order": "ASCENDING" },
-        { "fieldPath": "ownerUid", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ownerUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "calls",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "officeId", "order": "ASCENDING" },
-        { "fieldPath": "contactId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "contactId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "calls",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "officeId", "order": "ASCENDING" },
-        { "fieldPath": "ownerUid", "order": "ASCENDING" },
-        { "fieldPath": "contactId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ownerUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "contactId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "interactions",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "officeId", "order": "ASCENDING" },
-        { "fieldPath": "ownerUid", "order": "ASCENDING" },
-        { "fieldPath": "contactId", "order": "ASCENDING" },
-        { "fieldPath": "occurredAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ownerUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "contactId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "occurredAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "opportunities",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "officeId", "order": "ASCENDING" },
-        { "fieldPath": "ownerUid", "order": "ASCENDING" },
-        { "fieldPath": "stage", "order": "ASCENDING" },
-        { "fieldPath": "nextActionAt", "order": "ASCENDING" }
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ownerUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "stage",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nextActionAt",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "dailyTasks",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "officeId", "order": "ASCENDING" },
-        { "fieldPath": "ownerUid", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "dueAt", "order": "ASCENDING" }
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ownerUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dueAt",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "voiceNotes",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "ownerUid", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "ownerUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "voiceNotes",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "officeId", "order": "ASCENDING" },
-        { "fieldPath": "ownerUid", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ownerUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "inboxItems",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "officeId", "order": "ASCENDING" },
-        { "fieldPath": "ownerUid", "order": "ASCENDING" }
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ownerUid",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "stageEvents",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "officeId", "order": "ASCENDING" },
-        { "fieldPath": "ownerUid", "order": "ASCENDING" }
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ownerUid",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "properties",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ownerContactId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "deletedAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "listings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "officeId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "propertyId",
+          "order": "ASCENDING"
+        }
       ]
     }
   ],
   "fieldOverrides": [
-    {"collectionGroup": "contactImportRows", "fieldPath": "person", "indexes": []},
-    {"collectionGroup": "contactImportNotes", "fieldPath": "text", "indexes": []},
-    {"collectionGroup": "contactImportOAuthStates", "fieldPath": "verifier", "indexes": []},
-    {"collectionGroup": "contactImportJobs", "fieldPath": "oauthState", "indexes": []},
-    {"collectionGroup": "contactImportJobs", "fieldPath": "selectedRows", "indexes": []},
-    {"collectionGroup": "contactImportJobs", "fieldPath": "eligibleRowIds", "indexes": []},
-    { "collectionGroup": "interactions", "fieldPath": "noteSummary", "indexes": [] },
-    { "collectionGroup": "portfolioItems", "fieldPath": "summary", "indexes": [] },
-    { "collectionGroup": "portfolioItems", "fieldPath": "attributes", "indexes": [] },
-    { "collectionGroup": "voiceNotes", "fieldPath": "transcript", "indexes": [] }
-    ,{ "collectionGroup": "inboxItems", "fieldPath": "safeText", "indexes": [] }
-    ,{ "collectionGroup": "inboxItems", "fieldPath": "summary", "indexes": [] }
+    {
+      "collectionGroup": "contactImportRows",
+      "fieldPath": "person",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "contactImportNotes",
+      "fieldPath": "text",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "contactImportOAuthStates",
+      "fieldPath": "verifier",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "contactImportJobs",
+      "fieldPath": "oauthState",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "contactImportJobs",
+      "fieldPath": "selectedRows",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "contactImportJobs",
+      "fieldPath": "eligibleRowIds",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "interactions",
+      "fieldPath": "noteSummary",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "portfolioItems",
+      "fieldPath": "summary",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "portfolioItems",
+      "fieldPath": "attributes",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "voiceNotes",
+      "fieldPath": "transcript",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "inboxItems",
+      "fieldPath": "safeText",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "inboxItems",
+      "fieldPath": "summary",
+      "indexes": []
+    }
   ]
 }

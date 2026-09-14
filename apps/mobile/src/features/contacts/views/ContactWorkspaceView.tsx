@@ -32,6 +32,7 @@ import { SpChoice } from "@/shared/ui/SpField";
 import { useSpTheme } from "@/shared/ui/theme";
 import { radius, space } from "@/shared/ui/tokens.generated";
 import { ContactCallAction } from "../components/ContactCallAction";
+import { ContactKnowledgePanel } from "../components/ContactKnowledgePanel";
 import { finishDailyTask } from "@/features/today/resources/today";
 import { TaskResolutionSheet } from "@/features/today/components/TaskResolutionSheet";
 import {
@@ -285,12 +286,11 @@ export default function ContactWorkspaceView({ contactId }: { contactId: string 
           }) : <SpCard><SpText color="secondary">Bu kişiyle henüz kayıtlı bir görüşme yok.</SpText></SpCard>
         ) : null}
 
+        {tab === "memory" ? <ContactKnowledgePanel contactId={contact.id} memory={contact.memory} /> : null}
+
         {tab === "memory" ? (
           <SpCard style={styles.entry}>
-            <SpText variant="title">İletişim bilgileri</SpText><SpText>{[contact.phone, ...(contact.additionalPhones ?? []), ...(contact.emails ?? [])].filter(Boolean).join(" · ")}</SpText><SpText variant="title">Hatırlanacaklar</SpText>
-            {contact.memory.keyThingsToRemember.length
-              ? contact.memory.keyThingsToRemember.map((item) => <SpText key={item} variant="bodySmall" color="secondary">· {item}</SpText>)
-              : <SpText variant="bodySmall" color="secondary">Henüz hatırlanacak bilgi yok.</SpText>}
+            <SpText variant="title">İletişim bilgileri</SpText><SpText>{[contact.phone, ...(contact.additionalPhones ?? []), ...(contact.emails ?? [])].filter(Boolean).join(" · ") || "Henüz iletişim bilgisi yok."}</SpText>
             <SpText variant="title">Gayrimenkul tercihleri</SpText>
             {memoryHighlights.length ? (
               <View style={styles.chips}>

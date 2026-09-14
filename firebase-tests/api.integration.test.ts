@@ -588,6 +588,63 @@ describe("callable API vertical slice", () => {
     const afterReplay = await readPage();
     expect(afterReplay.segments).toHaveLength(4);
 
+    // What the advisor simply knows, written by the advisor. Until now the only
+    // way into contact memory was an approved reading of a note.
+    const updateContactMemory = httpsCallable(functions, "updateContactMemory");
+    const remembered = ["Mühendis, üç boyutlu printer'ı var", "Yat eğitmenliği yapmış, tekne konusunda sor dedi"];
+    await updateContactMemory(envelope({ contactId: created.contact.id, keyThingsToRemember: remembered }, "request-memory-notes", "command-memory-notes"));
+    const contactsWithMemory = (await listContacts(envelope(undefined, "request-list-memory"))).data as {
+      contacts: Array<{ id: string; memory: { keyThingsToRemember: string[] } }>;
+    };
+    expect(contactsWithMemory.contacts.find((entry) => entry.id === created.contact.id)!.memory.keyThingsToRemember).toEqual(remembered);
+
+    // Special-category data is refused outright rather than silently stripped.
+    await expect(updateContactMemory(envelope(
+      { contactId: created.contact.id, keyThingsToRemember: ["Sağlık sorunu var"] },
+      "request-memory-sensitive", "command-memory-sensitive",
+    ))).rejects.toThrow();
+
+    // A property the advisor knows about, with no mandate invented to carry it.
+    const saveKnownProperty = httpsCallable(functions, "saveKnownProperty");
+    const listKnownProperties = httpsCallable(functions, "listKnownProperties");
+    const knownPropertyCommand = envelope({
+      contactId: created.contact.id, propertyId: null,
+      address: "Kadıovacık mevkii, 4 dönüm tarla", regionSlug: "Çeşme Altı",
+      propertyType: "land", roomCount: null, areaM2: 4_000, features: [],
+      note: "Annesine almış, şu an boş duruyor",
+    }, "request-known-property", "command-known-property");
+    const knownProperty = (await saveKnownProperty(knownPropertyCommand)).data as { property: { id: string; regionSlug: string; roomCount: number | null } };
+    expect(knownProperty.property.regionSlug).toBe("çeşme-altı");
+    expect(knownProperty.property.roomCount).toBeNull();
+    const knownReplay = (await saveKnownProperty({ ...knownPropertyCommand, requestId: `request-known-property-replay-${runId}` })).data as { property: { id: string } };
+    expect(knownReplay.property.id).toBe(knownProperty.property.id);
+
+    // The contact owns two: the one behind the listing taken on earlier in this
+    // run, and the one just written down. Both belong on the person's page, and
+    // only the one carrying a mandate says so.
+    const knownListed = (await listKnownProperties(envelope({ contactId: created.contact.id }, "request-known-list"))).data as {
+      properties: Array<{ id: string; note: string | null; hasListing: boolean }>;
+    };
+    expect(knownListed.properties).toHaveLength(2);
+    expect(knownListed.properties.find((entry) => entry.id === knownProperty.property.id)).toMatchObject({
+      note: "Annesine almış, şu an boş duruyor", hasListing: false,
+    });
+    const mandated = knownListed.properties.find((entry) => entry.id !== knownProperty.property.id)!;
+    expect(mandated.hasListing).toBe(true);
+
+    const archiveKnownProperty = httpsCallable(functions, "archiveKnownProperty");
+    // Removing a property that a listing points at would leave the mandate
+    // pointing at nothing, so it is refused here and belongs on the portfolio.
+    await expect(archiveKnownProperty(envelope(
+      { propertyId: mandated.id }, "request-known-archive-blocked", "command-known-archive-blocked",
+    ))).rejects.toThrow();
+
+    await archiveKnownProperty(envelope({ propertyId: knownProperty.property.id }, "request-known-archive", "command-known-archive"));
+    const afterArchive = (await listKnownProperties(envelope({ contactId: created.contact.id }, "request-known-list-2"))).data as {
+      properties: Array<{ id: string }>;
+    };
+    expect(afterArchive.properties.map((entry) => entry.id)).toEqual([mandated.id]);
+
     const contactsAfterPage = (await listContacts(envelope(undefined, "request-list-after-page"))).data as { contacts: Array<{ fullName: string | null }> };
     const namesAfterPage = contactsAfterPage.contacts.map((contact) => contact.fullName);
     expect(namesAfterPage).toContain("Ayşe Yılmaz");

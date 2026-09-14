@@ -4,12 +4,17 @@ import {
   contactDraftSchema,
   contactMemorySchema,
   contactPrivacyDraftSchema,
+  contactMemoryNotesSchema,
   createContact as createContactEntity,
+  createKnownProperty,
+  firstSpecialCategoryRefusal,
+  knownPropertyDraftSchema,
   mergeContactRoles,
   type Contact,
   type ContactDraft,
   type ContactPrivacyDraft,
   type Interaction,
+  type KnownPropertyRecord,
 } from "../../../packages/shared/src/index";
 import { requireSpherepathClaims, type SpherepathClaims } from "../auth/claims.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
@@ -119,8 +124,12 @@ function parseDraft(value: unknown): ContactDraft {
 }
 
 function parseContactId(value: unknown): string {
+  return parseDocumentId(value, "contactId");
+}
+
+function parseDocumentId(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length < 1 || value.length > 160) {
-    throw new HttpsError("invalid-argument", "contactId is invalid.");
+    throw new HttpsError("invalid-argument", `${field} is invalid.`);
   }
   return value;
 }
@@ -354,5 +363,195 @@ export const updateContactPrivacy = onCall(callableOptions(), async (request): P
     });
     const snapshot = await reference.get();
     return { contact: toContactRecord(snapshot.id, snapshot.data()!) };
+  });
+});
+
+/**
+ * What the advisor knows about a person, written by the advisor. Contact memory
+ * could only ever be filled by an approved reading of a note, so everything an
+ * advisor simply knew -- what somebody does for a living, what they care about,
+ * what they asked to be consulted on -- had nowhere to go.
+ *
+ * Property preferences are deliberately untouched here: those are matched
+ * against inventory and are built from confirmed readings, not free text.
+ */
+export const updateContactMemory = onCall(callableOptions(), async (request): Promise<{ contact: ContactRecord }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<unknown>(request.data, { command: true });
+  const parsed = contactMemoryNotesSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Hafıza notları geçersiz.", parsed.error.flatten());
+  const refusal = firstSpecialCategoryRefusal(parsed.data.keyThingsToRemember);
+  if (refusal) throw new HttpsError("invalid-argument", refusal);
+
+  const firestore = getFirestore();
+  const reference = firestore.collection("contacts").doc(parsed.data.contactId);
+  const commandRef = firestore.collection("commands").doc(envelope.commandId!);
+
+  return observeApiRequest("updateContactMemory", envelope.requestId, async () => {
+    await firestore.runTransaction(async (transaction) => {
+      const [receipt, snapshot] = await Promise.all([transaction.get(commandRef), transaction.get(reference)]);
+      if (receipt.exists) {
+        const receiptContactId = validateCommandReceipt(receipt.data()!, claims, "updateContactMemory");
+        if (receiptContactId !== parsed.data.contactId) throw new HttpsError("permission-denied", "Command receipt target does not match.");
+        return;
+      }
+      if (!snapshot.exists) throw new HttpsError("not-found", "Contact was not found.");
+      const data = snapshot.data()!;
+      if (!canManage(data, claims) || data.deletedAt !== null) throw new HttpsError("permission-denied", "Contact is outside your workspace.");
+      const now = Timestamp.now();
+      transaction.update(reference, {
+        "memory.keyThingsToRemember": parsed.data.keyThingsToRemember,
+        "memory.updatedAt": now,
+        updatedAt: now,
+      });
+      transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "updateContactMemory", contactId: parsed.data.contactId, createdAt: now });
+    });
+    const updated = await reference.get();
+    return { contact: toContactRecord(updated.id, updated.data()!) };
+  });
+});
+
+function toKnownPropertyRecord(id: string, data: DocumentData, hasListing: boolean): KnownPropertyRecord {
+  return {
+    ...(data as KnownPropertyRecord),
+    id,
+    hasListing,
+    note: (data.note ?? null) as string | null,
+    createdAt: millis(data.createdAt) ?? 0,
+    updatedAt: millis(data.updatedAt) ?? 0,
+    deletedAt: millis(data.deletedAt),
+  };
+}
+
+export const listKnownProperties = onCall(callableOptions(), async (request): Promise<{ properties: KnownPropertyRecord[] }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<{ contactId?: unknown }>(request.data);
+  const contactId = parseContactId(envelope.data?.contactId);
+  return observeApiRequest("listKnownProperties", envelope.requestId, async () => {
+    const firestore = getFirestore();
+    const contactSnapshot = await firestore.collection("contacts").doc(contactId).get();
+    if (!contactSnapshot.exists || !canManage(contactSnapshot.data()!, claims) || contactSnapshot.data()!.deletedAt !== null) {
+      throw new HttpsError("not-found", "Contact was not found.");
+    }
+    const snapshot = await firestore.collection("properties")
+      .where("officeId", "==", claims.officeId)
+      .where("ownerContactId", "==", contactId)
+      .limit(100)
+      .get();
+    const owned = snapshot.docs.filter((item) => canManage(item.data(), claims) && item.data().deletedAt === null);
+    if (!owned.length) return { properties: [] };
+    // A property with a mandate belongs on the portfolio screen; the card says
+    // so rather than offering to record what is already recorded there.
+    const listings = await firestore.collection("listings").where("officeId", "==", claims.officeId).limit(500).get();
+    const listed = new Set(listings.docs.filter((item) => item.data().deletedAt === null).map((item) => item.data().propertyId as string));
+    return {
+      properties: owned
+        .map((item) => toKnownPropertyRecord(item.id, item.data(), listed.has(item.id)))
+        .sort((left, right) => right.createdAt - left.createdAt),
+    };
+  });
+});
+
+/**
+ * Records a property the advisor knows this person owns. No mandate is implied
+ * and none is written: knowing that somebody has a field in Bodrum is not the
+ * same as having the right to sell it, and the only way to write the first down
+ * used to be to invent the second by opening a listing for it.
+ */
+export const saveKnownProperty = onCall(callableOptions(), async (request): Promise<{ property: KnownPropertyRecord }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<unknown>(request.data, { command: true });
+  const parsed = knownPropertyDraftSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Mülk bilgisi geçersiz.", parsed.error.flatten());
+
+  const firestore = getFirestore();
+  const contactRef = firestore.collection("contacts").doc(parsed.data.contactId);
+  const propertyRef = parsed.data.propertyId
+    ? firestore.collection("properties").doc(parsed.data.propertyId)
+    : firestore.collection("properties").doc();
+  const commandRef = firestore.collection("commands").doc(envelope.commandId!);
+
+  return observeApiRequest("saveKnownProperty", envelope.requestId, async () => {
+    // A replay must come back with the property the first call created, not with
+    // the fresh reference this call happened to allocate for a document that was
+    // never written.
+    let savedPropertyId = propertyRef.id;
+    await firestore.runTransaction(async (transaction) => {
+      const [receipt, contactSnapshot, propertySnapshot] = await Promise.all([
+        transaction.get(commandRef),
+        transaction.get(contactRef),
+        parsed.data.propertyId ? transaction.get(propertyRef) : Promise.resolve(null),
+      ]);
+      if (receipt.exists) {
+        if (receipt.data()!.officeId !== claims.officeId || receipt.data()!.ownerUid !== claims.uid || receipt.data()!.type !== "saveKnownProperty") {
+          throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+        }
+        savedPropertyId = receipt.data()!.propertyId as string;
+        return;
+      }
+      const contact = contactSnapshot.data();
+      if (!contactSnapshot.exists || !contact || !canManage(contact, claims) || contact.deletedAt !== null) {
+        throw new HttpsError("not-found", "Contact was not found.");
+      }
+      const now = Date.now();
+      const nowStamp = Timestamp.fromMillis(now);
+      const property = createKnownProperty(parsed.data, { officeId: claims.officeId, ownerUid: claims.uid }, now);
+      if (propertySnapshot) {
+        const existing = propertySnapshot.data();
+        if (!propertySnapshot.exists || !existing || !canManage(existing, claims) || existing.deletedAt !== null) {
+          throw new HttpsError("not-found", "Mülk bulunamadı.");
+        }
+        // A correction keeps the record's own history; only what was typed moves.
+        transaction.update(propertyRef, {
+          address: property.address, regionSlug: property.regionSlug, type: property.type,
+          roomCount: property.roomCount, areaM2: property.areaM2, features: property.features,
+          note: property.note, updatedAt: nowStamp,
+        });
+      } else {
+        transaction.create(propertyRef, { ...property, createdAt: nowStamp, updatedAt: nowStamp, deletedAt: null });
+      }
+      transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "saveKnownProperty", contactId: parsed.data.contactId, propertyId: propertyRef.id, createdAt: nowStamp });
+    });
+    const saved = await firestore.collection("properties").doc(savedPropertyId).get();
+    const data = saved.data();
+    if (!saved.exists || !data) throw new HttpsError("not-found", "Mülk bulunamadı.");
+    // Whether a mandate exists is read rather than assumed, so a correction to a
+    // property already in the portfolio does not come back claiming otherwise.
+    const listings = await firestore.collection("listings")
+      .where("officeId", "==", claims.officeId)
+      .where("propertyId", "==", savedPropertyId)
+      .limit(1)
+      .get();
+    const hasListing = listings.docs.some((item) => item.data().deletedAt === null);
+    return { property: toKnownPropertyRecord(saved.id, data, hasListing) };
+  });
+});
+
+export const archiveKnownProperty = onCall(callableOptions(), async (request): Promise<{ propertyId: string }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<{ propertyId?: unknown }>(request.data, { command: true });
+  const propertyId = parseDocumentId(envelope.data?.propertyId, "propertyId");
+  const firestore = getFirestore();
+  const reference = firestore.collection("properties").doc(propertyId);
+  const commandRef = firestore.collection("commands").doc(envelope.commandId!);
+
+  return observeApiRequest("archiveKnownProperty", envelope.requestId, async () => {
+    await firestore.runTransaction(async (transaction) => {
+      const [receipt, snapshot] = await Promise.all([transaction.get(commandRef), transaction.get(reference)]);
+      if (receipt.exists) return;
+      const data = snapshot.data();
+      if (!snapshot.exists || !data || !canManage(data, claims) || data.deletedAt !== null) throw new HttpsError("not-found", "Mülk bulunamadı.");
+      // A property carrying a mandate is inventory, and removing it here would
+      // leave the listing pointing at nothing. That removal belongs on the
+      // portfolio screen, where the mandate itself can be closed.
+      const listings = await transaction.get(firestore.collection("listings").where("officeId", "==", claims.officeId).where("propertyId", "==", propertyId).limit(1));
+      if (listings.docs.some((item) => item.data().deletedAt === null)) {
+        throw new HttpsError("failed-precondition", "Bu mülkün yetkili portföyü var. Önce portföy ekranından kaldır.");
+      }
+      const now = Timestamp.now();
+      transaction.update(reference, { deletedAt: now, updatedAt: now });
+      transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "archiveKnownProperty", propertyId, createdAt: now });
+    });
+    return { propertyId };
   });
 });
