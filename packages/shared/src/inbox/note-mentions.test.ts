@@ -111,3 +111,29 @@ describe("completing a tag without eating what follows it", () => {
     expect(completed.text).toBe("Yetki aldık, @Deniz Aktaş ");
   });
 });
+
+describe("Turkish case suffixes on a tagged name", () => {
+  const contacts = [
+    { id: "c1", name: "Burcu Şahin" },
+    { id: "c2", name: "Deniz Aktaş" },
+    { id: "c3", name: "Mehmet Korkmaz" },
+  ];
+
+  it("ends the name at the apostrophe and drops the suffix", () => {
+    expect(extractMentions("@Burcu Şahin'e Alaçatı'da daire çıktı")[0]?.name).toBe("Burcu Şahin");
+    expect(extractMentions("@Deniz Aktaş'ın dairesi için")[0]?.name).toBe("Deniz Aktaş");
+    expect(extractMentions("@Mehmet Korkmaz'dan haber bekliyorum")[0]?.name).toBe("Mehmet Korkmaz");
+  });
+
+  it("matches the contact despite the suffix", () => {
+    expect(resolveMentions("@Burcu Şahin'e Alaçatı'da daire çıktı", contacts)[0]?.contactId).toBe("c1");
+  });
+
+  it("does not let the suffix swallow the place name after it", () => {
+    expect(extractMentions("@Burcu Şahin'e Alaçatı'da daire çıktı")).toHaveLength(1);
+  });
+
+  it("still refuses an address, where the @ follows a letter", () => {
+    expect(extractMentions("onur@Example.com yazdı")).toEqual([]);
+  });
+});

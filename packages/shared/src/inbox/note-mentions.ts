@@ -12,8 +12,15 @@ import { matchSegmentContact, type ContactNameCandidate } from "./note-segments.
  * end of the line.
  */
 
-/** Up to three capitalised words after an @, which is a Turkish full name plus a title. */
-const mentionPattern = /@(\p{Lu}[\p{L}'’-]*(?:\s+\p{Lu}[\p{L}'’-]*){0,2})/gu;
+/**
+ * Up to three capitalised words after an @, which is a Turkish full name plus a
+ * title. A Turkish case suffix attaches to a proper noun with an apostrophe --
+ * "@Burcu Şahin'e" is "to Burcu Şahin" -- so the suffix ends the name and is
+ * dropped from it. Without that the apostrophe kept the name running and
+ * swallowed the next capitalised word too: "@Burcu Şahin'e Alaçatı'da" tagged
+ * nobody, because nobody is called that.
+ */
+const mentionPattern = /(?<![\p{L}\p{N}])@(\p{Lu}[\p{L}-]*(?:\s+\p{Lu}[\p{L}-]*){0,2})(?:['’]\p{Ll}+)?/gu;
 
 export interface NoteMention {
   /** What the advisor typed after the @, without the @. */
