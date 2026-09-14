@@ -687,7 +687,18 @@ export const applyNoteSegments = onCall(callableOptions, async (request): Promis
   const claims = requireSpherepathClaims(request);
   const envelope = readApiEnvelope<unknown>(request.data, { command: true });
   const parsed = applyNoteSegmentsSchema.safeParse(envelope.data);
-  if (!parsed.success) throw new HttpsError("invalid-argument", "Not kararları geçersiz.", parsed.error.flatten());
+  if (!parsed.success) {
+    // "Not kararları geçersiz" tells the advisor that nine lines are wrong
+    // somewhere. The line and the field are what they need to fix it, so the
+    // first issue is named in the message rather than buried in details.
+    const issue = parsed.error.issues[0];
+    const index = typeof issue?.path[1] === "number" ? issue.path[1] : null;
+    const field = issue?.path.slice(2).join(".");
+    const raw = (envelope.data ?? {}) as { decisions?: Array<{ segmentId?: unknown }> };
+    const segmentId = index === null ? null : raw.decisions?.[index]?.segmentId;
+    const where = segmentId ? ` (${String(segmentId)}${field ? ` · ${field}` : ""})` : field ? ` (${field})` : "";
+    throw new HttpsError("invalid-argument", `Not kararları geçersiz${where}: ${issue?.message ?? "bilinmeyen alan"}`, parsed.error.flatten());
+  }
 
   return observeApiRequest("applyNoteSegments", envelope.requestId, async () => {
     const db = getFirestore();
