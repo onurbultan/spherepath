@@ -171,3 +171,40 @@ it("extracts only an explicit named caller without inventing a person", () => {
   expect(inboxContactName("Ayşe Kara bugün aradı. Urla’da villa arıyor.")).toBe("Ayşe Kara");
   expect(inboxContactName("Urla İskele güzel bir bölge. Ev arıyor.")).toBe("");
 });
+
+describe("reading a line the way an advisor actually writes it", () => {
+  it("recognises a property through its Turkish suffix", () => {
+    expect(classifyInboxText("Sahilde 3+1 dairesi var, satmayı düşünüyor").kind).toBe("property");
+    expect(classifyInboxText("Balıklıova'da 2 dönüm tarlası var, yetkisini aldım").kind).toBe("property");
+    expect(classifyInboxText("Arsası için fiyat bekliyor").kind).toBe("property");
+    expect(classifyInboxText("Portföyü hem kiralıyor hem satıyoruz").kind).toBe("property");
+  });
+
+  it("recognises a requirement through its Turkish suffix", () => {
+    expect(classifyInboxText("Alaçatı'da yazlık daire arıyor, bütçesi 8 milyon").kind).toBe("requirement");
+    expect(classifyInboxText("Çeşme altında villalık arsa arıyor").kind).toBe("requirement");
+  });
+
+  it("does not read a house into a note that only says yes", () => {
+    expect(classifyInboxText("Evet, yarın dönüş yapacağım").kind).not.toBe("property");
+    expect(classifyInboxText("Evli ve iki çocuğu var").kind).not.toBe("property");
+  });
+
+  it("still reads the plain forms it always did", () => {
+    expect(classifyInboxText("Bahçeli ev arıyor").kind).toBe("requirement");
+    expect(classifyInboxText("Urla'da villa var").kind).toBe("property");
+  });
+});
+
+describe("short property roots that everyday Turkish words start with", () => {
+  it("keeps the noun forms", () => {
+    expect(classifyInboxText("Evi satmak istiyor").kind).not.toBe("note");
+    expect(classifyInboxText("3 odalı, ara katta").kind).toBe("property");
+  });
+
+  it("does not read a property into the words that merely start the same", () => {
+    for (const line of ["Evet, yarın dönüş yapacağım", "Evli ve iki çocuğu var", "Toplantıya katıldı", "Buna bağlı olarak bekliyoruz"]) {
+      expect(classifyInboxText(line).kind).not.toBe("property");
+    }
+  });
+});

@@ -260,18 +260,43 @@ export interface InboxClassification {
 }
 
 const sensitiveSentence = sensitiveTermExpression;
-const locationWords = /\b(urla|çeşme|alaçatı|güzelbahçe|seferihisar|karaburun|izmir|ankara|istanbul|mahallesi|sokak|cadde|mevki|bölge)\b/iu;
-const propertyWords = /\b(ev|daire|villa|arsa|dükkan|mülk|portföy|konut|bahçeli|deniz manzaralı|oda)\b/iu;
-const requirementWords = /\b(arıyor|istiyor|talep|bütçe|satın almak|kiralamak)\b/iu;
-const followUpWords = /\b(ara|arayacağım|mesaj|randevu|hatırlat|takip|yarın|salı|çarşamba|perşembe|cuma|cumartesi|pazar|haftaya)\b/iu;
-
 /**
- * Masking used to flatten every newline into a space, which was harmless while
- * a note was one thought. A day's notebook is not: the advisor's own line
- * breaks and blank lines are what separate one person from the next, and one
- * heading from the list under it. Sentences are still masked one at a time --
- * the shape of the page is simply not collateral damage any more.
+ * Turkish is agglutinative and these lists were not: a trailing word boundary
+ * meant "dairesi", "arsası", "portföyü" and "bütçesi" -- how an advisor
+ * actually writes -- matched nothing, so a line describing a flat and a line
+ * describing lunch classified the same. That was survivable while a note was
+ * one thought and the model read it anyway. It is not survivable now that the
+ * classification decides what a line on the day's page is offered as.
+ *
+ * `\b` cannot be used to fix it either, because it is ASCII-only: ı, ğ, ş, ö,
+ * ü and ç are not word characters to it, so it fires in the middle of a Turkish
+ * word and refuses to fire at its edge. "katıldı" matched "katı" and "odalı"
+ * matched nothing at all. These boundaries are spelled out over letters and
+ * digits instead, which is what the rule always meant.
  */
+const wordStart = String.raw`(?<![\p{L}\p{N}_])`;
+const wordEnd = String.raw`(?![\p{L}\p{N}_])`;
+/** Any Turkish suffix the root can take. */
+const anySuffix = String.raw`\p{L}*`;
+
+const turkishWords = (roots: string): RegExp => new RegExp(`${wordStart}(?:${roots})${anySuffix}${wordEnd}`, "iu");
+
+const locationWords = turkishWords("urla|çeşme|alaçatı|güzelbahçe|seferihisar|karaburun|izmir|ankara|istanbul|bodrum|mahalle|sokak|cadde|mevki|bölge|sahil|köy|site");
+/**
+ * Long roots take any suffix. The short ones spell theirs out, and only the
+ * suffixes that actually make the noun: "ev" with an open suffix also matches
+ * "evet" and "evli", "kat" matches "katıldı", "bağ" matches "bağlı", and none
+ * of those is a note about a property.
+ */
+const propertyWords = new RegExp(
+  `${wordStart}(?:daire|villa|arsa|arazi|parsel|tarla|dükkan|dükkân|mülk|portföy|konut|müstakil|rezidans|stüdyo|yazlık|işyeri|ofis|depo|bahçeli|dönüm)${anySuffix}${wordEnd}`
+  + `|${wordStart}(?:ev(?:i|in|im|imiz|iniz|e|de|den|ler|leri|lerin)?|oda(?:sı|ları|lı|lar)?|kat(?:ı|ın|lı|lar|ları)?|bağ(?:ı|ın|lar|ları)?)${wordEnd}`
+  + `|deniz manzaralı`,
+  "iu",
+);
+const requirementWords = turkishWords("arıyor|arayan|istiyor|isteyen|talep|bütçe|bakıyor|kiralamak|satın al");
+const followUpWords = turkishWords("ara|arayacağım|aranacak|mesaj|randevu|hatırlat|takip|dönüş|yarın|salı|çarşamba|perşembe|cuma|cumartesi|pazar|haftaya|gönder|yaz");
+
 export function maskSensitiveInboxText(rawText: string): { text: string; masked: boolean } {
   let masked = false;
   const maskLine = (line: string): string => {
