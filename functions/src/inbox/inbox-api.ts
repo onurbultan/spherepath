@@ -140,6 +140,24 @@ async function readSegment(
   };
 }
 
+/**
+ * A page of one line is that line, so the reading already computed for the whole
+ * note is its reading. Asking the model the same question a second time would
+ * cost a round trip to learn what is already known.
+ */
+function singleSegmentReading(
+  segment: NoteSegment,
+  analysis: InboxItemAnalysis,
+  contacts: readonly ContactNameCandidate[],
+): NoteSegmentReading {
+  const kind = segmentKindFor(classifyInboxText(segment.text).kind, segment.sectionIntent);
+  const name = segmentContactName({ analysis, text: segment.text });
+  const matched = matchSegmentContact(name, contacts);
+  const mentions = resolveMentions(segment.text, contacts)
+    .flatMap((mention) => mention.contactId ? [{ contactId: mention.contactId, name: mention.contactName ?? mention.name }] : []);
+  return { ...segment, kind, analysis, matchedContactId: matched?.id ?? null, matchedContactName: matched?.name ?? null, mentions, appliedAt: null };
+}
+
 /** The advisor's own contacts, as the only names a segment may be matched against. */
 async function contactNamesFor(claims: SpherepathClaims): Promise<ContactNameCandidate[]> {
   const db = getFirestore();
@@ -381,19 +399,23 @@ export const analyzeInboxNote = onDocumentWritten(
       const source = data.source as InboxItem["source"];
       const claims = { officeId: data.officeId as string, uid: data.ownerUid as string, role: "agent" as const };
       // A page is cut before it is read, so every item on it gets a reading of
-      // its own. One thought still comes back as one segment, which keeps the
-      // single-subject review exactly as it was.
+      // its own -- including a page that holds one line. Leaving a one-line page
+      // unsegmented left the day's note with nothing to act on and a footer
+      // claiming every line was already decided.
       const pageSegments = splitNoteIntoSegments(text);
-      const multiItem = pageSegments.length > 1;
-      const contacts = multiItem ? await contactNamesFor(claims) : [];
+      const contacts = pageSegments.length ? await contactNamesFor(claims) : [];
       const looksLikeProperty = data.kind === "property" || classifyInboxText(text).kind === "property";
-      const [analysis, portfolio, segments] = await Promise.all([
+      const [analysis, portfolio] = await Promise.all([
         analyzeText(text, knownContactName),
-        looksLikeProperty && !multiItem ? analyzePropertyText(text, source) : Promise.resolve(null),
-        multiItem
-          ? Promise.all(pageSegments.map((segment) => readSegment(segment, source, contacts)))
-          : Promise.resolve(null),
+        looksLikeProperty ? analyzePropertyText(text, source) : Promise.resolve(null),
       ]);
+      // A single segment is the whole note, so it reuses the reading already
+      // paid for rather than asking the model the same question twice.
+      const segments = pageSegments.length === 1
+        ? [singleSegmentReading(pageSegments[0]!, { ...analysis, portfolio }, contacts)]
+        : pageSegments.length
+          ? await Promise.all(pageSegments.map((segment) => readSegment(segment, source, contacts)))
+          : null;
       // Analysis prepares a review. Only the advisor-approved command writes contact memory.
       const db = getFirestore();
       await db.runTransaction(async (transaction) => {

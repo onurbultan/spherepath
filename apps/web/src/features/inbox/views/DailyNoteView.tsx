@@ -80,8 +80,14 @@ export function DailyNoteView() {
   }
 
   function pickMention(name: string) {
-    if (!mention) return;
-    const completed = completeMention(text, mention.start, mention.caret, name);
+    const area = areaRef.current;
+    if (!area) return;
+    // Read the caret from the editor now. A caret remembered from an earlier
+    // keystroke is stale the moment another letter is typed, and the name then
+    // gets kept as well as replaced.
+    const active = activeMentionQuery(area.value, area.selectionStart);
+    if (!active) return setMention(null);
+    const completed = completeMention(area.value, active.start, area.selectionStart, name);
     setDraft(completed.text);
     setMention(null);
     setSavedAt(false);

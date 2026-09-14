@@ -74,11 +74,20 @@ export function activeMentionQuery(text: string, caret: number): { query: string
   return { query, start: at };
 }
 
-/** Replaces the mention being typed with the chosen name, ready to keep writing. */
+/**
+ * Replaces the mention being typed with the chosen name, ready to keep writing.
+ *
+ * The caret is read from the editor at the moment of choosing rather than
+ * remembered from an earlier keystroke: a remembered one goes stale the instant
+ * the advisor types another letter, and the text after it then gets kept as
+ * well as replaced -- "@Deniz Aktaş Aktaş".
+ */
 export function completeMention(text: string, start: number, caret: number, name: string): { text: string; caret: number } {
-  const completed = `@${name} `;
+  const rest = text.slice(caret);
+  // The completion already ends in a space; a second one would sit in the note.
+  const completed = `@${name}${/^\s/u.test(rest) ? "" : " "}`;
   return {
-    text: `${text.slice(0, start)}${completed}${text.slice(caret)}`,
+    text: `${text.slice(0, start)}${completed}${rest}`,
     caret: start + completed.length,
   };
 }

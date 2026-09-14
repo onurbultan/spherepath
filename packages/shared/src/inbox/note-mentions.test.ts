@@ -85,9 +85,29 @@ describe("offering the picker while a tag is being typed", () => {
     expect(completed.caret).toBe(completed.text.length);
   });
 
-  it("keeps whatever was written after the caret", () => {
+  it("keeps whatever was written after the caret, without doubling the space", () => {
     const text = "@Ak referans oldu";
     const completed = completeMention(text, 0, 3, "Akın Demir");
-    expect(completed.text).toBe("@Akın Demir  referans oldu");
+    expect(completed.text).toBe("@Akın Demir referans oldu");
+  });
+});
+
+describe("completing a tag without eating what follows it", () => {
+  it("does not keep the name it just replaced", () => {
+    const text = "Yetki aldık, @Deniz Aktaş referans oldu.";
+    const active = activeMentionQuery(text, "Yetki aldık, @Deniz Aktaş".length)!;
+    const completed = completeMention(text, active.start, "Yetki aldık, @Deniz Aktaş".length, "Deniz Aktaş");
+    expect(completed.text).toBe("Yetki aldık, @Deniz Aktaş referans oldu.");
+  });
+
+  it("does not leave a double space behind the name", () => {
+    const text = "Yetki aldık, @Deniz referans oldu.";
+    const completed = completeMention(text, 13, "Yetki aldık, @Deniz".length, "Deniz Aktaş");
+    expect(completed.text).toBe("Yetki aldık, @Deniz Aktaş referans oldu.");
+  });
+
+  it("still adds the space when the tag ends the line", () => {
+    const completed = completeMention("Yetki aldık, @Den", 13, 17, "Deniz Aktaş");
+    expect(completed.text).toBe("Yetki aldık, @Deniz Aktaş ");
   });
 });

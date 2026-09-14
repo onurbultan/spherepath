@@ -624,9 +624,10 @@ describe("callable API vertical slice", () => {
     // own. It has to produce both; before this the advisor had to pick a half.
     const ownerPage = (await createInboxItem(envelope({
       source: "typed",
-      // Two lines, because a single thought keeps the older single-subject
-      // review rather than becoming a page.
-      text: "Deniz Aktaş ile Urla İskele'de tanıştım, sahilde 3+1 dairesi var, satmayı düşünüyor\nPazartesi tekrar arayacağım",
+      // One line. A page of one is still a page: leaving it unsegmented left the
+      // day's note with nothing to act on and a footer claiming every line was
+      // already decided.
+      text: "Deniz Aktaş ile Urla İskele'de tanıştım, sahilde 3+1 dairesi var, satmayı düşünüyor",
       linkedContactId: null, requestedKind: null, dayKey: null,
     }, "request-owner-page", "command-owner-page"))).data as { item: { id: string } };
     const readOwnerPage = async () => {
@@ -640,7 +641,7 @@ describe("callable API vertical slice", () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
       owner = await readOwnerPage();
     }
-    expect(owner.segments).toHaveLength(2);
+    expect(owner.segments).toHaveLength(1);
 
     await applyNoteSegments(envelope({
       inboxItemId: ownerPage.item.id,

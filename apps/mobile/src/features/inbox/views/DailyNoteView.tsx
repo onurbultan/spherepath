@@ -85,7 +85,11 @@ export function DailyNoteView() {
 
   function pickMention(name: string) {
     if (!mention) return;
-    setDraft(completeMention(text, mention.start, mention.caret, name).text);
+    // Recomputed against the text as it stands, because a caret remembered from
+    // an earlier keystroke is stale the moment another letter is typed, and the
+    // name then gets kept as well as replaced -- "@Deniz Aktaş Aktaş".
+    const active = activeMentionQuery(text, mention.caret) ?? mention;
+    setDraft(completeMention(text, active.start, mention.caret, name).text);
     setMention(null);
     setSavedAt(false);
   }
