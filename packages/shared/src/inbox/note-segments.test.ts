@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyInboxText, maskSensitiveInboxText } from "./inbox-item.js";
+import { classifyInboxText, maskSensitiveInboxText, processInboxItemSchema } from "./inbox-item.js";
 import { applyNoteSegmentsSchema, matchSegmentContact, orderedSegmentDecisions, segmentContactName, segmentKindFor, segmentNeedsReading, splitNoteIntoSegments, unappliedSegmentCount } from "./note-segments.js";
 
 /** A real day from an advisor's notebook, kept verbatim because it is the case. */
@@ -203,5 +203,30 @@ describe("approving a page of decisions at once", () => {
       { ...base, id: "segment-2", index: 1, appliedAt: null },
       { ...base, id: "segment-3", index: 2, appliedAt: null },
     ])).toBe(2);
+  });
+});
+
+describe("what the wire does to an absent value", () => {
+  const soon = Date.now() + 86_400_000;
+  const contact = { fullName: "Deniz Aktaş", phone: "", metAtPlace: "Günlük not", source: "in_person" as const, role: "unknown" as const, nextActionType: "call" as const, nextActionAt: soon };
+
+  it("accepts a line that had nothing for a model to read", () => {
+    // The callable transport turns an absent value into null on the way over,
+    // so a line the rules classified on their own arrives as approvedInsights:
+    // null. Rejecting that rejected most of a day's page.
+    for (const approvedInsights of [null, undefined]) {
+      const result = applyNoteSegmentsSchema.safeParse({
+        inboxItemId: "note-1",
+        decisions: [{ segmentId: "segment-1", credits: [], action: "person", opportunityType: null, recordInteraction: true, contact, approvedInsights }],
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("accepts the same absence through the single-note command", () => {
+    const result = processInboxItemSchema.safeParse({
+      inboxItemId: "note-1", action: "person", contact, recordInteraction: true, opportunityType: null, approvedInsights: null,
+    });
+    expect(result.success).toBe(true);
   });
 });

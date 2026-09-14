@@ -190,7 +190,7 @@ export function NoteProcessingSheet({ item, contacts, initialKind, onClose, onCh
           inboxItemId: item.id,
           action: "person",
           contact,
-          approvedInsights: analysis ? reviewedInboxInsights(analysis.insights, opportunityType) : item.analysis?.insights,
+          ...(analysis || item.analysis ? { approvedInsights: analysis ? reviewedInboxInsights(analysis.insights, opportunityType) : item.analysis!.insights } : {}),
           recordInteraction: true,
           opportunityType: kind === "requirement" || createPersonOpportunity ? opportunityType : null,
         })).item;

@@ -202,7 +202,7 @@ export function NotePageReview({
             nextActionType: row.nextActionType,
             nextActionAt,
           },
-          approvedInsights: segment.analysis?.insights,
+          ...(segment.analysis ? { approvedInsights: segment.analysis.insights } : {}),
           opportunityType: null,
           // A line under "portföy alma ihtimali olanlar" is somebody to go and
           // see. The server refuses to manufacture that conversation too.

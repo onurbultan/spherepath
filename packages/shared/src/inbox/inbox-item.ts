@@ -120,8 +120,13 @@ export const processInboxItemSchema = z.discriminatedUnion("action", [
   processBaseSchema.extend({
     action: z.literal("person"),
     contact: contactDraftSchema,
-    /** The advisor-approved reading is applied atomically with the new contact. */
-    approvedInsights: voiceInsightsSchema.optional(),
+        /**
+     * Absent when the line was plain enough to classify without a model. The
+     * callable transport turns an absent value into null on the way over, so
+     * this has to accept both -- optional alone rejected every note that had
+     * nothing for a model to read, which is most of a day's page.
+     */
+    approvedInsights: voiceInsightsSchema.nullish(),
     /** A conversation note is a real interaction unless the advisor explicitly says otherwise. */
     recordInteraction: z.boolean().default(true),
     /** One note can create the person and the qualified work it describes. */

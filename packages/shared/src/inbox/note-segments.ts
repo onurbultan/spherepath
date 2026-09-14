@@ -255,7 +255,13 @@ export const noteSegmentDecisionSchema = z.discriminatedUnion("action", [
   decisionBase.extend({
     action: z.literal("person"),
     contact: contactDraftSchema,
-    approvedInsights: voiceInsightsSchema.optional(),
+    /**
+     * Absent when the line was plain enough to classify without a model. The
+     * callable transport turns an absent value into null on the way over, so
+     * this has to accept both -- optional alone rejected every note that had
+     * nothing for a model to read, which is most of a day's page.
+     */
+    approvedInsights: voiceInsightsSchema.nullish(),
     opportunityType: z.enum(opportunityTypes).nullable().default(null),
     /**
      * A line about somebody you spoke to is a conversation; a line about

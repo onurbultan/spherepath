@@ -199,7 +199,7 @@ export function NotePageReview({
             nextActionType: row.nextActionType,
             nextActionAt,
           },
-          approvedInsights: segment.analysis?.insights,
+          ...(segment.analysis ? { approvedInsights: segment.analysis.insights } : {}),
           opportunityType: null,
           recordInteraction: segment.sectionIntent !== "leads",
         });
