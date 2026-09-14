@@ -533,6 +533,66 @@ describe("callable API vertical slice", () => {
     expect(followUp.entityId).toBe(created.contact.id);
     expect(followUp.item.appliedActions).toContainEqual(expect.objectContaining({ type: "follow_up_scheduled" }));
 
+    // A day's notebook page: several people, a portfolio line and a list of
+    // things to do, all written down once. Before segmentation the note could
+    // produce exactly one record and the rest of the page was text nobody acted
+    // on. The emulator skips the model, so the readings here are the rules.
+    const notebookPage = [
+      "Ayşe Yılmaz ile tanıştım, Zeytinler'de ikiz villaları var",
+      "Perihan Demir komşusu, mühendis, kite sörf malzemesi satıyor",
+      "",
+      "Yapılacaklar",
+      "",
+      "Düğün salonu grubuna yaz",
+      "Integration Contact aranacak",
+    ].join("\n");
+    const pageNote = (await createInboxItem(envelope({ source: "typed", text: notebookPage, linkedContactId: null, requestedKind: null }, "request-page-create", "command-page-create"))).data as { item: { id: string } };
+
+    const readPage = async () => {
+      const listed = (await listWhatsAppInbox(envelope({}, `request-page-read-${Date.now()}`))).data as {
+        items: Array<{ id: string; analysisStatus: string; segments: Array<{ id: string; text: string; heading: string | null; appliedAt: number | null }> | null }>;
+      };
+      return listed.items.find((entry) => entry.id === pageNote.item.id)!;
+    };
+    let page = await readPage();
+    for (let attempt = 0; attempt < 40 && page.analysisStatus === "pending"; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      page = await readPage();
+    }
+    expect(page.analysisStatus).toBe("ready");
+    expect(page.segments).toHaveLength(4);
+    expect(page.segments!.map((segment) => segment.text)).not.toContain("Yapılacaklar");
+    expect(page.segments!.at(-1)!.heading).toBe("Yapılacaklar");
+
+    const applyNoteSegments = httpsCallable(functions, "applyNoteSegments");
+    const soon = Date.now() + 2 * 86_400_000;
+    const pageCommand = envelope({
+      inboxItemId: pageNote.item.id,
+      decisions: [
+        { segmentId: page.segments![0]!.id, action: "person", recordInteraction: true, opportunityType: null, contact: { fullName: "Ayşe Yılmaz", phone: "", metAtPlace: "Günlük not", source: "in_person", role: "unknown", nextActionType: "call", nextActionAt: soon } },
+        { segmentId: page.segments![1]!.id, action: "person", recordInteraction: true, opportunityType: null, contact: { fullName: "Perihan Demir", phone: "", metAtPlace: "Günlük not", source: "in_person", role: "unknown", nextActionType: "call", nextActionAt: soon } },
+        { segmentId: page.segments![2]!.id, action: "skip" },
+        { segmentId: page.segments![3]!.id, action: "follow_up", contactRef: { kind: "existing", contactId: created.contact.id }, nextActionType: "call", nextActionAt: soon },
+      ],
+    }, "request-page-apply", "command-page-apply");
+    const applied = (await applyNoteSegments(pageCommand)).data as { item: { status: string; appliedActions: Array<{ type: string; label: string }>; segments: Array<{ appliedAt: number | null }> }; createdCount: number };
+
+    // Two people from one note, which a single-subject note could never do.
+    expect(applied.item.appliedActions.filter((action) => action.type === "contact_created")).toHaveLength(2);
+    expect(applied.item.appliedActions.some((action) => action.type === "follow_up_scheduled")).toBe(true);
+    expect(applied.item.segments.every((segment) => segment.appliedAt !== null)).toBe(true);
+    expect(applied.item.status).toBe("applied");
+
+    const pageReplay = (await applyNoteSegments({ ...pageCommand, requestId: `request-page-apply-replay-${runId}` })).data as { createdCount: number };
+    expect(pageReplay.createdCount).toBe(applied.createdCount);
+    const afterReplay = await readPage();
+    expect(afterReplay.segments).toHaveLength(4);
+
+    const contactsAfterPage = (await listContacts(envelope(undefined, "request-list-after-page"))).data as { contacts: Array<{ fullName: string | null }> };
+    const namesAfterPage = contactsAfterPage.contacts.map((contact) => contact.fullName);
+    expect(namesAfterPage).toContain("Ayşe Yılmaz");
+    expect(namesAfterPage).toContain("Perihan Demir");
+
     const requirementNote = (await createInboxItem(envelope({ source: "typed", text: "Integration Contact kiralık daire arıyor", linkedContactId: created.contact.id, requestedKind: "requirement" }, "request-inbox-requirement-create", "command-inbox-requirement-create"))).data as { item: { id: string } };
     const requirementCommand = envelope({ inboxItemId: requirementNote.item.id, action: "requirement", contactId: created.contact.id, opportunityType: "tenant_requirement", nextActionType: "message", nextActionAt: Date.now() + 4 * 86_400_000, approvedInsights: requirementInsights }, "request-inbox-requirement", "command-inbox-requirement");
     const requirementResult = (await processInboxItem(requirementCommand)).data as { entityId: string };

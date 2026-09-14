@@ -1251,6 +1251,22 @@ textarea.sp-control.is-compact { min-height: 80px; }
 
 .location-prompt { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-md); border-radius: var(--radius-md); background: var(--ask-bg); color: var(--ask); font-size: 12px; }
 .note-processing-sheet { width: min(620px, 100%); }
+
+/* A day's page is read down the column, so each line keeps its own block and
+   the decision sits under the words it was made about. */
+.note-page-review { width: min(720px, 100%); }
+.note-page-rows { display: grid; gap: var(--space-md); max-height: 60vh; overflow-y: auto; padding-right: var(--space-xs); }
+.note-page-section { margin: var(--space-md) 0 var(--space-xs); }
+.note-page-row { display: grid; gap: var(--space-sm); padding: var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.note-page-row.is-skipped { opacity: .62; }
+.note-page-line { margin: 0; font-size: var(--text-body-sm); line-height: 1.5; overflow-wrap: anywhere; }
+.note-page-action { display: flex; align-items: center; gap: var(--space-sm); }
+.note-page-action .sp-control { flex: 1; }
+.note-page-action-icon { display: inline-flex; color: var(--text-secondary); }
+.note-page-fields { display: grid; gap: var(--space-sm); grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: end; }
+.note-page-contact { display: grid; gap: var(--space-sm); }
+.note-page-hint { margin: 0; font-size: var(--text-caption); color: var(--text-secondary); }
+.note-page-hint.is-warning { color: var(--ask); }
 .note-extraction-review { display: grid; gap: var(--space-md); padding: var(--space-lg); border: 1px solid var(--good); border-radius: var(--radius-lg); background: var(--good-bg); }
 .note-extraction-review > strong { color: var(--good); }
 .note-process-action { width: 100%; }

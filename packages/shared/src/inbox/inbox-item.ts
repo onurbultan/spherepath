@@ -5,7 +5,16 @@ import { nextActionTypeLabels, nextActionTypes } from "../interactions/manual-in
 import { opportunityCriteriaSummary, opportunityTransactionType } from "../opportunities/opportunity-situation.js";
 import { opportunityTypes } from "../opportunities/opportunity-draft.js";
 import { portfolioItemDraftSchema, type PortfolioItemDraft } from "../matching/portfolio-match.js";
+import type { NoteSegmentReading } from "./note-segments.js";
 import { voiceInsightsSchema, type VoiceInsights } from "../voice/voice-note.js";
+
+/**
+ * A note used to be one thought, so 4,000 characters was generous. A day's
+ * notebook page is a different object -- people, portfolios, things to do and
+ * doors to knock on, all on one page -- and the import pipeline already
+ * accepts notes this long from a phone.
+ */
+export const noteMaxLength = 20_000;
 
 export const inboxItemSources = ["typed", "voice", "whatsapp"] as const;
 export const inboxItemKinds = ["note", "person", "property", "requirement", "follow_up"] as const;
@@ -58,6 +67,13 @@ export interface InboxItem extends TenantOwned, Audited {
    * arrives a few seconds later so the save itself stays instant.
    */
   analysis: InboxItemAnalysis | null;
+  /**
+   * The page cut into the items it actually holds, each with its own reading.
+   * Null for a note read before segmentation existed, and for one the reading
+   * failed on. A note carrying a single thought still gets one segment, so the
+   * review has one shape rather than two.
+   */
+  segments?: NoteSegmentReading[] | null;
   analysisStatus: "pending" | "ready" | "failed";
   errorCode: string | null;
   archivedAt: Instant | null;
@@ -67,7 +83,7 @@ export interface InboxItemRecord extends InboxItem { id: string }
 
 export const createInboxItemSchema = z.object({
   source: z.enum(inboxItemSources).default("typed"),
-  text: z.string().trim().min(1, "Not boş bırakılamaz.").max(4_000, "Not en fazla 4.000 karakter olabilir."),
+  text: z.string().trim().min(1, "Not boş bırakılamaz.").max(noteMaxLength, "Not en fazla 20.000 karakter olabilir."),
   linkedContactId: z.string().trim().min(1).max(160).nullable().default(null),
   requestedKind: z.enum(inboxItemKinds).nullable().default(null),
 }).strict();
@@ -75,7 +91,7 @@ export type CreateInboxItemInput = z.infer<typeof createInboxItemSchema>;
 
 export const updateInboxItemSchema = z.object({
   inboxItemId: z.string().trim().min(1).max(160),
-  text: z.string().trim().min(1, "Not boş bırakılamaz.").max(4_000, "Not en fazla 4.000 karakter olabilir.").optional(),
+  text: z.string().trim().min(1, "Not boş bırakılamaz.").max(noteMaxLength, "Not en fazla 20.000 karakter olabilir.").optional(),
   kind: z.enum(inboxItemKinds).optional(),
   linkedContactId: z.string().trim().min(1).max(160).nullable().optional(),
   pinned: z.boolean().optional(),
@@ -239,15 +255,35 @@ const propertyWords = /\b(ev|daire|villa|arsa|dükkan|mülk|portföy|konut|bahç
 const requirementWords = /\b(arıyor|istiyor|talep|bütçe|satın almak|kiralamak)\b/iu;
 const followUpWords = /\b(ara|arayacağım|mesaj|randevu|hatırlat|takip|yarın|salı|çarşamba|perşembe|cuma|cumartesi|pazar|haftaya)\b/iu;
 
+/**
+ * Masking used to flatten every newline into a space, which was harmless while
+ * a note was one thought. A day's notebook is not: the advisor's own line
+ * breaks and blank lines are what separate one person from the next, and one
+ * heading from the list under it. Sentences are still masked one at a time --
+ * the shape of the page is simply not collateral damage any more.
+ */
 export function maskSensitiveInboxText(rawText: string): { text: string; masked: boolean } {
   let masked = false;
-  const text = (rawText.replace(/\s+/gu, " ").trim().match(/[^.!?]+[.!?]?/gu) ?? [])
-    .map((sentence) => {
-      if (!sensitiveSentence.test(sentence)) return sentence.trim();
-      masked = true;
-      return "[HASSAS İÇERİK MASKELENDİ]";
-    })
-    .join(" ")
+  const maskLine = (line: string): string => {
+    const collapsed = line.replace(/[^\S\n]+/gu, " ").trim();
+    if (!collapsed) return "";
+    return (collapsed.match(/[^.!?]+[.!?]?/gu) ?? [])
+      .map((sentence) => {
+        if (!sensitiveSentence.test(sentence)) return sentence.trim();
+        masked = true;
+        return "[HASSAS İÇERİK MASKELENDİ]";
+      })
+      .join(" ")
+      .trim();
+  };
+  const text = rawText
+    .replace(/\r\n?/gu, "\n")
+    .split("\n")
+    .map(maskLine)
+    // Any run of blank lines is one separator; more than that is just the gap
+    // someone left while typing.
+    .join("\n")
+    .replace(/\n{3,}/gu, "\n\n")
     .trim();
   return { text, masked };
 }
@@ -261,7 +297,7 @@ function explicitContactFrom(text: string): InboxClassification["explicitContact
 
 export function classifyInboxText(rawText: string, requestedKind: InboxItemKind | null = null): InboxClassification {
   const masked = maskSensitiveInboxText(rawText);
-  const text = masked.text.slice(0, 4_000);
+  const text = masked.text.slice(0, noteMaxLength);
   const explicitContact = explicitContactFrom(text);
   const hasProperty = propertyWords.test(text);
   const hasRequirement = requirementWords.test(text);

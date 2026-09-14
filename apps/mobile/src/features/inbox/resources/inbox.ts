@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
-import { ApiError, classifyInboxText, createCommandId, type AnalyzeInboxItemInput, type CreateInboxItemInput, type InboxItemAnalysis, type InboxItemRecord, type ProcessInboxItemInput, type UpdateInboxItemInput } from "@spherepath/shared";
+import { ApiError, classifyInboxText, createCommandId, type AnalyzeInboxItemInput, type ApplyNoteSegmentsInput, type CreateInboxItemInput, type InboxItemAnalysis, type InboxItemRecord, type ProcessInboxItemInput, type UpdateInboxItemInput } from "@spherepath/shared";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
 import { apiClient } from "@/shared/api/client";
 
@@ -62,4 +62,10 @@ export async function undoInboxItem(session: WorkspaceSession, inboxItemId: stri
 }
 export async function retryInboxItem(session: WorkspaceSession, inboxItemId: string): Promise<InboxItemRecord> {
   return (await apiClient.command<{ inboxItemId: string }, { item: InboxItemRecord }>("retryInboxItem", { inboxItemId }, createCommandId(session.uid))).item;
+}
+
+export async function applyNotePage(session: WorkspaceSession, input: ApplyNoteSegmentsInput): Promise<{ item: InboxItemRecord; createdCount: number }> {
+  return apiClient.command<ApplyNoteSegmentsInput, { item: InboxItemRecord; createdCount: number }>(
+    "applyNoteSegments", input, createCommandId(session.uid),
+  );
 }

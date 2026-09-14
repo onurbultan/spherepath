@@ -27,7 +27,18 @@ import {
   type InboxAppliedAction,
   type InboxItem,
   type InboxItemRecord,
+  applyNoteSegmentsSchema,
+  matchSegmentContact,
+  orderedSegmentDecisions,
+  segmentContactName,
+  segmentKindFor,
+  segmentNeedsReading,
+  splitNoteIntoSegments,
+  type ContactNameCandidate,
   type InboxItemAnalysis,
+  type NoteSegment,
+  type NoteSegmentReading,
+  type SegmentContactRef,
   type PortfolioItemDraft,
 } from "../../../packages/shared/src/index.js";
 import { requireSpherepathClaims, type SpherepathClaims } from "../auth/claims.js";
@@ -89,6 +100,47 @@ async function analyzePropertyText(text: string, source: InboxItem["source"]): P
   }
 }
 
+/**
+ * Reads one item off the page. A line that carries a person, a property or a
+ * requirement gets the full reading; a line that is a name and an instruction
+ * gets the deterministic classification, because there is nothing else in it
+ * and a round trip per line is how a page takes a minute to process.
+ */
+async function readSegment(
+  segment: NoteSegment,
+  source: InboxItem["source"],
+  contacts: readonly ContactNameCandidate[],
+): Promise<NoteSegmentReading> {
+  const kind = segmentKindFor(classifyInboxText(segment.text).kind, segment.sectionIntent);
+  const needsReading = segmentNeedsReading(kind, segment.text);
+  const [analysis, portfolio] = await Promise.all([
+    needsReading ? analyzeText(segment.text) : Promise.resolve(null),
+    needsReading && kind === "property" ? analyzePropertyText(segment.text, source) : Promise.resolve(null),
+  ]);
+  const reading = analysis ? { ...analysis, portfolio } : null;
+  const name = segmentContactName({ analysis: reading, text: segment.text });
+  const matched = matchSegmentContact(name, contacts);
+  return {
+    ...segment,
+    kind,
+    analysis: reading,
+    matchedContactId: matched?.id ?? null,
+    matchedContactName: matched?.name ?? null,
+    appliedAt: null,
+  };
+}
+
+/** The advisor's own contacts, as the only names a segment may be matched against. */
+async function contactNamesFor(claims: SpherepathClaims): Promise<ContactNameCandidate[]> {
+  const db = getFirestore();
+  let query: FirebaseFirestore.Query = db.collection("contacts").where("officeId", "==", claims.officeId);
+  if (claims.role !== "broker") query = query.where("ownerUid", "==", claims.uid);
+  const snapshot = await query.limit(2_000).get();
+  return snapshot.docs
+    .filter((document) => document.data().deletedAt === null)
+    .map((document) => ({ id: document.id, name: (document.data().fullName ?? document.data().label ?? null) as string | null }));
+}
+
 function canManage(data: DocumentData, claims: SpherepathClaims): boolean {
   return data.officeId === claims.officeId && (data.ownerUid === claims.uid || claims.role === "broker" || data.source === "whatsapp");
 }
@@ -97,6 +149,9 @@ function toRecord(id: string, data: DocumentData): InboxItemRecord {
   return {
     ...(data as InboxItem), id,
     analysis: (data.analysis ?? null) as InboxItem["analysis"],
+    segments: data.segments
+      ? ((data.segments as DocumentData[]).map((segment) => ({ ...segment, appliedAt: millis(segment.appliedAt) })) as NoteSegmentReading[])
+      : null,
     analysisStatus: (data.analysisStatus ?? "ready") as InboxItem["analysisStatus"],
     createdAt: millis(data.createdAt) ?? 0,
     updatedAt: millis(data.updatedAt) ?? 0,
@@ -304,10 +359,20 @@ export const analyzeInboxNote = onDocumentCreated(
         : null;
       const text = data.safeText as string;
       const source = data.source as InboxItem["source"];
+      const claims = { officeId: data.officeId as string, uid: data.ownerUid as string, role: "agent" as const };
+      // A page is cut before it is read, so every item on it gets a reading of
+      // its own. One thought still comes back as one segment, which keeps the
+      // single-subject review exactly as it was.
+      const pageSegments = splitNoteIntoSegments(text);
+      const multiItem = pageSegments.length > 1;
+      const contacts = multiItem ? await contactNamesFor(claims) : [];
       const looksLikeProperty = data.kind === "property" || classifyInboxText(text).kind === "property";
-      const [analysis, portfolio] = await Promise.all([
+      const [analysis, portfolio, segments] = await Promise.all([
         analyzeText(text, knownContactName),
-        looksLikeProperty ? analyzePropertyText(text, source) : Promise.resolve(null),
+        looksLikeProperty && !multiItem ? analyzePropertyText(text, source) : Promise.resolve(null),
+        multiItem
+          ? Promise.all(pageSegments.map((segment) => readSegment(segment, source, contacts)))
+          : Promise.resolve(null),
       ]);
       // Analysis prepares a review. Only the advisor-approved command writes contact memory.
       const db = getFirestore();
@@ -321,7 +386,7 @@ export const analyzeInboxNote = onDocumentCreated(
         const analyzedKind = hasNotBeenEdited
           ? inboxKindAfterAnalysis(current.kind as InboxItem["kind"], current.source as InboxItem["source"], (current.linkedContactId ?? null) as string | null, analysis)
           : current.kind as InboxItem["kind"];
-        transaction.update(reference, { analysis: { ...analysis, portfolio }, analysisStatus: "ready", kind: analyzedKind, updatedAt: Timestamp.now() });
+        transaction.update(reference, { analysis: { ...analysis, portfolio }, segments, analysisStatus: "ready", kind: analyzedKind, updatedAt: Timestamp.now() });
 
       });
     } catch (error) {
@@ -576,5 +641,262 @@ export const undoInboxApplication = onCall(callableOptions, async (request): Pro
       transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "undoInboxApplication", inboxItemId: ref.id, createdAt: now });
     });
     const result = await ref.get(); return { item: toRecord(result.id, result.data()!) };
+  });
+});
+
+/**
+ * Turns a page of decisions into records in one approval. A day's notebook
+ * holds several people, the portfolios two of them just gave you, three things
+ * to write and three doors to knock on; until now the note could produce
+ * exactly one record and the rest of the page was text nobody acted on.
+ *
+ * Everything lands together or nothing does. People are created first so a
+ * portfolio line can name somebody introduced two lines above it, and each
+ * segment is stamped as it is applied so a second approval of the same page
+ * cannot duplicate what it already produced.
+ */
+export const applyNoteSegments = onCall(callableOptions, async (request): Promise<{ item: InboxItemRecord; createdCount: number }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<unknown>(request.data, { command: true });
+  const parsed = applyNoteSegmentsSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Not kararları geçersiz.", parsed.error.flatten());
+
+  return observeApiRequest("applyNoteSegments", envelope.requestId, async () => {
+    const db = getFirestore();
+    const itemRef = db.collection("inboxItems").doc(parsed.data.inboxItemId);
+    const commandRef = db.collection("commands").doc(envelope.commandId!);
+    const decisions = orderedSegmentDecisions(parsed.data.decisions);
+
+    // Every document this approval may write is named before the transaction
+    // opens, so the whole page can be read first and then written at once.
+    const existingContactIds = [...new Set(decisions.flatMap((decision) =>
+      "contactRef" in decision && decision.contactRef?.kind === "existing" ? [decision.contactRef.contactId] : []))];
+    const refs = new Map<string, {
+      entity: FirebaseFirestore.DocumentReference;
+      interaction?: FirebaseFirestore.DocumentReference;
+      opportunity?: FirebaseFirestore.DocumentReference;
+      stageEvent?: FirebaseFirestore.DocumentReference;
+    }>();
+    for (const decision of decisions) {
+      if (decision.action === "skip") continue;
+      if (decision.action === "person") {
+        refs.set(decision.segmentId, {
+          entity: db.collection("contacts").doc(),
+          interaction: db.collection("interactions").doc(),
+          opportunity: decision.opportunityType ? db.collection("opportunities").doc() : undefined,
+          stageEvent: decision.opportunityType ? db.collection("stageEvents").doc() : undefined,
+        });
+      } else if (decision.action === "requirement") {
+        refs.set(decision.segmentId, { entity: db.collection("opportunities").doc(), stageEvent: db.collection("stageEvents").doc() });
+      } else if (decision.action === "portfolio") {
+        refs.set(decision.segmentId, { entity: db.collection("portfolioItems").doc() });
+      }
+    }
+
+    let createdCount = 0;
+    await db.runTransaction(async (transaction) => {
+      const [itemSnapshot, receipt, ...contactSnapshots] = await Promise.all([
+        transaction.get(itemRef),
+        transaction.get(commandRef),
+        ...existingContactIds.map((id) => transaction.get(db.collection("contacts").doc(id))),
+      ]);
+      if (receipt.exists) {
+        if (!canManage(receipt.data()!, claims) || receipt.data()!.type !== "applyNoteSegments") {
+          throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+        }
+        createdCount = (receipt.data()!.createdCount ?? 0) as number;
+        return;
+      }
+      if (!itemSnapshot.exists || !canManage(itemSnapshot.data()!, claims)) throw new HttpsError("not-found", "Not bulunamadı.");
+      const itemData = itemSnapshot.data()!;
+      if (itemData.status === "archived") throw new HttpsError("failed-precondition", "Arşivlenmiş notu önce geri getir.");
+
+      const storedSegments = ((itemData.segments ?? []) as DocumentData[]) as NoteSegmentReading[];
+      if (!storedSegments.length) throw new HttpsError("failed-precondition", "Bu notun satırları henüz okunmadı.");
+      const segmentById = new Map(storedSegments.map((segment) => [segment.id, segment]));
+      for (const decision of decisions) {
+        const segment = segmentById.get(decision.segmentId);
+        if (!segment) throw new HttpsError("not-found", `Not satırı bulunamadı: ${decision.segmentId}`);
+        if (segment.appliedAt !== null) throw new HttpsError("already-exists", "Bu satır daha önce işlendi.");
+      }
+
+      const contactsById = new Map(existingContactIds.map((id, position) => [id, contactSnapshots[position]!]));
+      for (const [id, snapshot] of contactsById) {
+        if (!snapshot.exists || !canManage(snapshot.data()!, claims) || snapshot.data()!.deletedAt !== null) {
+          throw new HttpsError("not-found", `Kişi bulunamadı: ${id}`);
+        }
+      }
+
+      const now = Date.now();
+      const nowStamp = Timestamp.fromMillis(now);
+      const tenant = { officeId: claims.officeId, ownerUid: claims.uid };
+      /** Contacts created inside this approval, so later lines can name them. */
+      const createdContacts = new Map<string, string>();
+      const appliedActions: DocumentData[] = [];
+      const appliedSegmentIds = new Set<string>();
+      let linkedContactId = (itemData.linkedContactId ?? null) as string | null;
+
+      const resolveContactId = (ref: SegmentContactRef): string => {
+        if (ref.kind === "existing") return ref.contactId;
+        const created = createdContacts.get(ref.segmentId);
+        if (!created) throw new HttpsError("failed-precondition", "Bağlanmak istenen kişi bu onayda oluşturulmadı.");
+        return created;
+      };
+
+      for (const decision of decisions) {
+        appliedSegmentIds.add(decision.segmentId);
+        if (decision.action === "skip") continue;
+        const segment = segmentById.get(decision.segmentId)!;
+        const allocated = refs.get(decision.segmentId);
+
+        if (decision.action === "person") {
+          const allocation = allocated!;
+          const contact = createContactEntity(decision.contact, tenant, now);
+          const approved = decision.approvedInsights ?? segment.analysis?.insights;
+          const memory = approved
+            ? mergeVoiceInsightsIntoContactMemory(contact.memory, voiceInsightsSchema.parse(approved), now)
+            : contact.memory;
+          // The line the advisor read is the conversation they had -- creating the
+          // name and dropping the line leaves a contact with nothing in it. But a
+          // line under "portföy alma ihtimali olanlar" is somebody to go and see,
+          // not somebody you spoke to, and inventing that conversation would put a
+          // touch on the relationship and a date in the history that nothing backs.
+          const recordsConversation = decision.recordInteraction && segment.sectionIntent !== "leads";
+          const interaction = recordsConversation ? createInteraction({
+            contactId: allocation.entity.id,
+            channel: decision.contact.source === "inbound_call" ? "phone" : "other",
+            objective: decision.opportunityType === "seller_listing" || decision.opportunityType === "landlord_listing"
+              ? "request_listing"
+              : "get_acquainted",
+            direction: "mutual",
+            outcome: segment.text.slice(0, 500),
+            askOutcome: "not_applicable",
+            nextActionType: decision.contact.nextActionType ?? null,
+            nextActionAt: decision.contact.nextActionAt ?? null,
+            noteSummary: segment.text.slice(0, 1_000),
+            occurredAt: now,
+          }, tenant, now) : null;
+          const relationship = interaction
+            ? applyInteractionToRelationship(contact.relationship, interaction)
+            : { ...contact.relationship, nextActionType: decision.contact.nextActionType ?? null, nextActionAt: decision.contact.nextActionAt ?? null };
+          if (interaction) {
+            transaction.create(allocation.interaction!, {
+              ...interaction,
+              occurredAt: Timestamp.fromMillis(interaction.occurredAt),
+              nextActionAt: timestamp(interaction.nextActionAt),
+              createdAt: nowStamp,
+            });
+          }
+          transaction.create(allocation.entity, storedContact({ ...contact, memory, relationship }));
+          createdContacts.set(decision.segmentId, allocation.entity.id);
+          linkedContactId = linkedContactId ?? allocation.entity.id;
+          createdCount += 1;
+          appliedActions.push({ type: "contact_created", entityId: allocation.entity.id, label: `${decision.contact.fullName} kişi olarak oluşturuldu`, appliedAt: nowStamp, undoneAt: null });
+          if (interaction) appliedActions.push({ type: "interaction_created", entityId: allocation.interaction!.id, label: `${decision.contact.fullName} · görüşme kaydedildi`, appliedAt: nowStamp, undoneAt: null });
+          if (allocation.opportunity && decision.opportunityType) {
+            const opportunity = createOpportunityEntity({
+              subjectContactId: allocation.entity.id,
+              type: decision.opportunityType,
+              criteria: approvedOpportunityCriteria(decision.approvedInsights ?? emptyVoiceInsights, decision.opportunityType),
+              nextActionType: decision.contact.nextActionType!,
+              nextActionAt: decision.contact.nextActionAt!,
+            }, tenant, now);
+            transaction.create(allocation.opportunity, {
+              ...opportunity, qualifiedAt: nowStamp, stageEnteredAt: nowStamp,
+              nextActionAt: Timestamp.fromMillis(decision.contact.nextActionAt!),
+              closedAt: null, deletedAt: null, createdAt: nowStamp, updatedAt: nowStamp,
+            });
+            transaction.create(allocation.stageEvent!, {
+              ...tenant, entityType: "opportunity", entityId: allocation.opportunity.id,
+              fromStage: null, toStage: "new_lead", reason: "Günlük nottan oluşturuldu",
+              commandId: envelope.commandId, occurredAt: nowStamp, createdAt: nowStamp,
+            });
+            createdCount += 1;
+            appliedActions.push({ type: "opportunity_created", entityId: allocation.opportunity.id, label: `${decision.contact.fullName} · ${opportunityTypeLabels[decision.opportunityType]}`, appliedAt: nowStamp, undoneAt: null });
+          }
+          continue;
+        }
+
+        if (decision.action === "requirement") {
+          const contactId = resolveContactId(decision.contactRef);
+          const allocation = allocated!;
+          const opportunity = createOpportunityEntity({
+            subjectContactId: contactId,
+            type: decision.opportunityType,
+            criteria: approvedOpportunityCriteria(decision.approvedInsights, decision.opportunityType),
+            nextActionType: decision.nextActionType,
+            nextActionAt: decision.nextActionAt,
+          }, tenant, now);
+          transaction.create(allocation.entity, {
+            ...opportunity, qualifiedAt: nowStamp, stageEnteredAt: nowStamp,
+            nextActionAt: Timestamp.fromMillis(decision.nextActionAt),
+            closedAt: null, deletedAt: null, createdAt: nowStamp, updatedAt: nowStamp,
+          });
+          transaction.create(allocation.stageEvent!, {
+            ...tenant, entityType: "opportunity", entityId: allocation.entity.id,
+            fromStage: null, toStage: "new_lead", reason: "Günlük nottan oluşturuldu",
+            commandId: envelope.commandId, occurredAt: nowStamp, createdAt: nowStamp,
+          });
+          // Memory is only merged for a contact read before the writes began.
+          const existing = contactsById.get(contactId);
+          if (existing) {
+            const currentMemory = contactMemorySchema.parse({
+              ...(existing.data()!.memory ?? {}),
+              updatedAt: millis(existing.data()!.memory?.updatedAt),
+            });
+            const nextMemory = mergeVoiceInsightsIntoContactMemory(currentMemory, decision.approvedInsights, now);
+            transaction.update(existing.ref, { memory: { ...nextMemory, updatedAt: timestamp(nextMemory.updatedAt) }, updatedAt: nowStamp });
+          }
+          linkedContactId = linkedContactId ?? contactId;
+          createdCount += 1;
+          appliedActions.push({ type: "opportunity_created", entityId: allocation.entity.id, label: opportunityTypeLabels[decision.opportunityType], appliedAt: nowStamp, undoneAt: null });
+          continue;
+        }
+
+        if (decision.action === "portfolio") {
+          const allocation = allocated!;
+          const portfolio = createPortfolioItem(decision.portfolio, tenant, now);
+          transaction.create(allocation.entity, { ...portfolio, createdAt: nowStamp, updatedAt: nowStamp });
+          if (decision.contactRef) linkedContactId = linkedContactId ?? resolveContactId(decision.contactRef);
+          createdCount += 1;
+          appliedActions.push({ type: "portfolio_created", entityId: allocation.entity.id, label: `${portfolio.headline} havuza eklendi`, appliedAt: nowStamp, undoneAt: null });
+          continue;
+        }
+
+        const contactId = resolveContactId(decision.contactRef);
+        const existing = contactsById.get(contactId);
+        const contactRef = existing?.ref ?? db.collection("contacts").doc(contactId);
+        // Merge rather than update: the contact may have been created moments
+        // ago in this same commit, where update still demands it already exist.
+        transaction.set(contactRef, {
+          relationship: { nextActionType: decision.nextActionType, nextActionAt: Timestamp.fromMillis(decision.nextActionAt) },
+          updatedAt: nowStamp,
+        }, { merge: true });
+        linkedContactId = linkedContactId ?? contactId;
+        createdCount += 1;
+        appliedActions.push({ type: "follow_up_scheduled", entityId: contactId, label: `${segment.text.slice(0, 60)} · takip planlandı`, appliedAt: nowStamp, undoneAt: null });
+      }
+
+      const nextSegments = storedSegments.map((segment) => appliedSegmentIds.has(segment.id)
+        ? { ...segment, appliedAt: nowStamp }
+        : segment);
+      const stillWaiting = nextSegments.filter((segment) => segment.appliedAt === null).length;
+      transaction.update(itemRef, {
+        linkedContactId,
+        segments: nextSegments,
+        // A page with lines nobody has decided about is not finished work,
+        // however many records it has already produced.
+        status: stillWaiting === 0 ? "applied" : "needs_review",
+        appliedActions: [...((itemData.appliedActions ?? []) as DocumentData[]), ...appliedActions],
+        updatedAt: nowStamp,
+      });
+      transaction.create(commandRef, {
+        ...tenant, type: "applyNoteSegments", inboxItemId: itemRef.id,
+        segmentIds: [...appliedSegmentIds], createdCount, createdAt: nowStamp,
+      });
+    });
+
+    const result = await itemRef.get();
+    return { item: toRecord(result.id, result.data()!), createdCount };
   });
 });

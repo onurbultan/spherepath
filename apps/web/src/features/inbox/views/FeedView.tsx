@@ -3,18 +3,19 @@
 import { onboardingCopy, dailyTaskQueryKeys } from "@spherepath/shared";
 
 import { useState } from "react";
-import { Archive, ArchiveRestore, ArrowRight, Check, ChevronDown, ChevronUp, MapPin, Mic, Pencil, PhoneOff, Pin, RefreshCw, RotateCcw, Send, Shuffle, Target } from "lucide-react";
+import { ListChecks, Archive, ArchiveRestore, ArrowRight, Check, ChevronDown, ChevronUp, MapPin, Mic, Pencil, PhoneOff, Pin, RefreshCw, RotateCcw, Send, Shuffle, Target } from "lucide-react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiQueryKeys, dailyTaskResolutionLabels, inboxAnalysisHighlights, todayTaskBucket, inboxItemKinds, inboxItemTrace, inboxKindAfterAnalysis, isInboxItemResolved, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
+import { apiQueryKeys, commercialQueryKeys, dailyTaskResolutionLabels, inboxAnalysisHighlights, todayTaskBucket, inboxItemKinds, inboxItemTrace, inboxKindAfterAnalysis, isInboxItemResolved, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
 import { finishDailyTask, loadTodayOverview, replaceDailyTask } from "@/features/today/resources/today";
 import { TaskResolutionSheet, taskActionLabel, taskContextLine, taskDueChip, taskRecordHref } from "@/features/today/components/TaskResolutionSheet";
-import { changeInboxItem, createInboxNote, listInboxItems, retryInboxItem, undoInboxItem } from "../resources/inbox";
+import { applyNotePage, changeInboxItem, createInboxNote, listInboxItems, retryInboxItem, undoInboxItem } from "../resources/inbox";
 import { SpCard } from "@/shared/ui/SpCard";
 import { AppShell } from "@/shared/ui/AppShell";
 import { listContacts } from "@/features/contacts/resources/contacts";
 import { NoteProcessingSheet } from "../components/NoteProcessingSheet";
+import { NotePageReview, notePageSummary } from "../components/NotePageReview";
 
 const kindLabels: Record<InboxItemKind, string> = { note: "Not", person: "Kişi", property: "Mülk", requirement: "Talep", follow_up: "Takip" };
 const sourceLabels: Record<InboxItemRecord["source"], string> = { typed: "Hızlı not", voice: "Sesli kayıt", whatsapp: "WhatsApp" };
@@ -45,6 +46,7 @@ interface NoteView {
   onRetry(id: string): void;
   onUndo(id: string): void;
   onProcess(item: InboxItemRecord): void;
+  onReviewPage(item: InboxItemRecord): void;
   onCreateContact(item: InboxItemRecord): void;
   onLocationOpen(id: string): void;
   onLocationCancel(): void;
@@ -73,13 +75,20 @@ function NoteLocation({ item, view }: { item: InboxItemRecord; view: NoteView })
   return <button className="location-prompt" onClick={() => view.onLocationOpen(item.id)} type="button"><MapPin size={16} /><span>Nerede? Konumu ekleyince eşleştirebilirim.</span></button>;
 }
 
+/** How many items on this page are still waiting for a decision. */
+function pageSegmentCount(item: InboxItemRecord): number {
+  return (item.segments ?? []).filter((segment) => segment.appliedAt === null).length;
+}
+
 function NoteActions({ item, view, compact = false }: { item: InboxItemRecord; view: NoteView; compact?: boolean }) {
   if (item.id.startsWith("queued-")) return null;
   if (view.showArchived) {
     return <button className="keep-edit-action" onClick={() => view.onUpdate(item.id, { archived: false })} type="button"><ArchiveRestore size={16} /> Geri getir</button>;
   }
   return <>
-    <button className="keep-edit-action" onClick={() => view.onProcess(item)} type="button"><Pencil size={16} /> {compact ? "İşle" : "Düzenle ve işle"}</button>
+    {pageSegmentCount(item) > 1
+      ? <button className="keep-edit-action" onClick={() => view.onReviewPage(item)} type="button"><ListChecks size={16} /> {compact ? `${pageSegmentCount(item)} satır` : `Sayfayı işle · ${pageSegmentCount(item)} satır`}</button>
+      : <button className="keep-edit-action" onClick={() => view.onProcess(item)} type="button"><Pencil size={16} /> {compact ? "İşle" : "Düzenle ve işle"}</button>}
     <button title={item.pinned ? "Sabitlemeyi kaldır" : "Sabitle"} aria-label={item.pinned ? "Sabitlemeyi kaldır" : "Sabitle"} onClick={() => view.onUpdate(item.id, { pinned: !item.pinned })} type="button"><Pin size={16} fill={item.pinned ? "currentColor" : "none"} /></button>
     {item.status === "needs_review" || item.status === "failed" ? <button title="Tekrar dene" aria-label="Sınıflandırmayı tekrar dene" onClick={() => view.onRetry(item.id)} type="button"><RefreshCw size={16} /></button> : null}
     {item.appliedActions.some((action) => action.type === "contact_created" && action.undoneAt === null) ? <button title="Oluşturulan kişiyi geri al" aria-label="Oluşturulan kişiyi geri al" onClick={() => view.onUndo(item.id)} type="button"><RotateCcw size={16} /></button> : null}
@@ -108,6 +117,12 @@ function NoteUnderstanding({ item, view }: { item: InboxItemRecord; view: NoteVi
   // The reading arrives a few seconds after the save, so the card says it is
   // coming rather than looking finished and empty.
   if (item.analysisStatus === "pending") return <p className="keep-understanding is-pending">Not okunuyor…</p>;
+  // A page of a dozen lines has no single reading to show. What it does have is
+  // a count of what is on it, which is what the advisor is deciding about.
+  const waitingSegments = (item.segments ?? []).filter((segment) => segment.appliedAt === null);
+  if (waitingSegments.length > 1) {
+    return <ul className="keep-understanding"><li>{notePageSummary(item.segments ?? [])}</li></ul>;
+  }
   const highlights = inboxAnalysisHighlights(item.analysis, item.safeText);
   // The note names someone the workspace has never seen. Making the advisor
   // pick a type and retype that name is the system asking for what it just read.
@@ -190,6 +205,7 @@ export function FeedView() {
   const [activeTask, setActiveTask] = useState<TodayTask | null>(null); const [resolving, setResolving] = useState(false); const [taskError, setTaskError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set()); const [locationFor, setLocationFor] = useState<string | null>(null); const [locationText, setLocationText] = useState("");
   const [noteScope, setNoteScope] = useState<"open" | "done" | "archived">("open"); const [activeNote, setActiveNote] = useState<InboxItemRecord | null>(null); const [activeNoteKind, setActiveNoteKind] = useState<InboxItemKind | undefined>();
+  const [pageNote, setPageNote] = useState<InboxItemRecord | null>(null); const [pagePending, setPagePending] = useState(false); const [pageError, setPageError] = useState<string | null>(null);
   const showArchived = noteScope === "archived";
   const today = useQuery({ queryKey: apiQueryKeys.todayOverviewPeriod("30d"), queryFn: () => loadTodayOverview("30d") });
   const inbox = useQuery({ queryKey: apiQueryKeys.inboxItems, queryFn: () => listInboxItems(session ?? undefined), enabled: Boolean(session), refetchInterval: (query) => (query.state.data as InboxItemRecord[] | undefined)?.some((item) => item.status === "queued" || item.status === "processing" || item.analysisStatus === "pending") ? 1_500 : false });
@@ -232,6 +248,7 @@ export function FeedView() {
     onRetry: (id) => void retry(id),
     onUndo: (id) => void undo(id),
     onProcess: (item) => { setActiveNoteKind(undefined); setActiveNote(item); },
+    onReviewPage: (item) => { setPageError(null); setPageNote(item); },
     onCreateContact: (item) => { setActiveNoteKind("person"); setActiveNote(item); },
     onLocationOpen: (id) => { setLocationFor(id); setLocationText(""); },
     onLocationCancel: () => { setLocationFor(null); setLocationText(""); },
@@ -337,6 +354,24 @@ export function FeedView() {
     </div>
 
     {activeTask ? <TaskResolutionSheet task={activeTask} pending={resolving} error={taskError} onClose={() => setActiveTask(null)} onResolve={(outcome) => void resolveTask(outcome)} /> : null}
+    {pageNote ? <NotePageReview
+      item={(inbox.data ?? []).find((entry) => entry.id === pageNote.id) ?? pageNote}
+      contacts={contacts.data ?? []}
+      pending={pagePending}
+      error={pageError}
+      onClose={() => setPageNote(null)}
+      onApply={async (input) => {
+        if (!session) return;
+        setPagePending(true); setPageError(null);
+        try {
+          await applyNotePage(session, input);
+          await Promise.all(commercialQueryKeys.map((queryKey) => client.invalidateQueries({ queryKey })));
+          await inbox.refetch();
+          setPageNote(null);
+        } catch (next) { setPageError(messageFrom(next)); }
+        finally { setPagePending(false); }
+      }}
+    /> : null}
     {currentActiveNote ? <NoteProcessingSheet item={currentActiveNote} contacts={contacts.data ?? []} initialKind={activeNoteKind} onClose={() => setActiveNote(null)} onChanged={async (updatedItem) => {
       if (updatedItem) client.setQueryData<InboxItemRecord[]>(apiQueryKeys.inboxItems, (current = []) => current.map((entry) => entry.id === updatedItem.id ? updatedItem : entry));
       await Promise.all([client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }), client.invalidateQueries({ queryKey: apiQueryKeys.contacts }), client.invalidateQueries({ queryKey: apiQueryKeys.opportunities }), client.invalidateQueries({ queryKey: apiQueryKeys.portfolioItems }), client.invalidateQueries({ queryKey: apiQueryKeys.listings }), client.invalidateQueries({ queryKey: apiQueryKeys.todayOverview })]);
