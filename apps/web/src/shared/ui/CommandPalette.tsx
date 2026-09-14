@@ -8,6 +8,7 @@ import {
   House,
   ListTodo,
   MessageSquarePlus,
+  NotebookPen,
   Pyramid,
   Search,
   Settings,
@@ -40,12 +41,14 @@ const pages: PaletteItem[] = [
   { id: "page-work", group: "Sayfalar", title: "İşler", subtitle: "Talepten kapanışa tek akış", href: "/opportunities", icon: BriefcaseBusiness },
   { id: "page-listings", group: "Sayfalar", title: "Portföy", subtitle: "Aktif envanter ve ofis havuzu", href: "/listings", icon: House },
   { id: "page-funnel", group: "Sayfalar", title: "Huni", subtitle: "Nerede takıldığının teşhisi", href: "/funnel", icon: Pyramid },
-  { id: "page-capture", group: "Sayfalar", title: "Temas kaydet", subtitle: "Sesli not veya manuel kayıt", href: "/capture", icon: MessageSquarePlus },
+  { id: "page-note", group: "Sayfalar", title: "Günlük not", subtitle: "Günün sayfası; satırları sonra kayda dönüşür", href: "/note", icon: NotebookPen },
+  { id: "page-capture", group: "Sayfalar", title: "Detaylı görüşme kaydet", subtitle: "Teklif, bağlı iş ve geriye tarihli görüşme", href: "/capture", icon: MessageSquarePlus },
   { id: "page-settings", group: "Sayfalar", title: "Ayarlar ve ekip", subtitle: "Profil, ofis ekibi, veri sahibi talepleri", href: "/settings", icon: Settings },
 ];
 
 const actions: PaletteItem[] = [
-  { id: "action-voice", group: "Eylemler", title: "Sesli temas notu başlat", subtitle: "\u2318\u21e7V \u00b7 görüşme sonrası not", href: "/capture", icon: MessageSquarePlus },
+  { id: "action-note", group: "Eylemler", title: "Günün notunu aç", subtitle: "\u2318\u21e7V \u00b7 aklındakini yaz", href: "/note", icon: NotebookPen },
+  { id: "action-voice", group: "Eylemler", title: "Sesli temas notu başlat", subtitle: "görüşme sonrası not", href: "/capture", icon: MessageSquarePlus },
   { id: "action-opportunity", group: "Eylemler", title: "Yeni iş oluştur", subtitle: "\u2318\u21e7F \u00b7 kişi ve sonraki aksiyon", href: "/opportunities?create=1", icon: BriefcaseBusiness },
 ];
 

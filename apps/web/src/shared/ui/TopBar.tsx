@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, Moon, Plus, Search, Sun } from "lucide-react";
+import { Bell, Moon, NotebookPen, Search, Sun } from "lucide-react";
 import { apiQueryKeys, type PortfolioMatchNotificationRecord } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
 import { listMatchNotifications, markMatchNotificationsRead } from "@/features/matching/resources/portfolio";
@@ -13,7 +13,8 @@ import { useThemePreference } from "./theme";
 /**
  * The page names itself in its own heading. A one-level breadcrumb above it
  * repeated that word and led nowhere, so the bar carries only what the heading
- * cannot: search, appearance, notifications and the single capture action.
+ * cannot: search, appearance, notifications and the single capture action,
+ * which opens the day's page.
  */
 export function TopBar({ pathname, onOpenSearch }: { pathname: string; onOpenSearch(): void }) {
   const { session } = useSession();
@@ -62,8 +63,11 @@ export function TopBar({ pathname, onOpenSearch }: { pathname: string; onOpenSea
           {notificationsOpen ? <div className="notification-popover" role="dialog" aria-label="Eşleşme bildirimleri"><div className="notification-heading"><div><strong>Eşleşmeler</strong><span>{notifications.length ? `${notifications.length} güncel eşleşme` : "Yeni bildirim yok"}</span></div><Link href="/listings?view=pool" onClick={() => setNotificationsOpen(false)}>Tümünü gör</Link></div>{notificationsQuery.isPending ? <div className="notification-empty">Eşleşmeler taranıyor…</div> : notificationsQuery.error ? <div className="notification-empty" role="alert">Eşleşmeler yüklenemedi. <button type="button" onClick={() => void notificationsQuery.refetch()}>Yeniden dene</button></div> : notifications.length ? <div className="notification-list">{notifications.slice(0, 5).map((item) => <Link href="/listings?view=pool" key={item.id} onClick={() => setNotificationsOpen(false)}><span className="notification-score">%{item.match.score}</span><span><strong>{item.match.contactName}</strong><small>{item.match.portfolioItem.headline}</small></span></Link>)}</div> : <div className="notification-empty">Yeni bir alıcı–portföy eşleşmesi oluştuğunda burada görünecek.</div>}</div> : null}
         </div>
         <div className="topbar-mobile-account"><AccountMenu /></div>
-        <Link className="primary-action inline-action compact-action" href="/capture" data-active={pathname === "/capture" ? "true" : undefined}>
-          <Plus size={15} aria-hidden /> Temas kaydet
+        {/* The one capture action in the bar, and it opens the day's page. Two
+            front doors is one too many: the sidebar said the page and this said
+            the form, so the advisor had to guess which one the product meant. */}
+        <Link className="primary-action inline-action compact-action" href="/note" data-active={pathname === "/note" ? "true" : undefined}>
+          <NotebookPen size={15} aria-hidden /> Günlük not
         </Link>
       </div>
       </div>
