@@ -620,6 +620,47 @@ describe("callable API vertical slice", () => {
     expect(ledger.contributions.some((entry) => entry.kind === "referral" && entry.subjectType === "contact")).toBe(true);
     expect(ledger.contributions.some((entry) => entry.note.includes("Ayşe Yılmaz"))).toBe(true);
 
+    // One line names somebody the workspace has never seen and the property they
+    // own. It has to produce both; before this the advisor had to pick a half.
+    const ownerPage = (await createInboxItem(envelope({
+      source: "typed",
+      // Two lines, because a single thought keeps the older single-subject
+      // review rather than becoming a page.
+      text: "Deniz Aktaş ile Urla İskele'de tanıştım, sahilde 3+1 dairesi var, satmayı düşünüyor\nPazartesi tekrar arayacağım",
+      linkedContactId: null, requestedKind: null, dayKey: null,
+    }, "request-owner-page", "command-owner-page"))).data as { item: { id: string } };
+    const readOwnerPage = async () => {
+      const listed = (await listWhatsAppInbox(envelope({}, `request-owner-read-${Date.now()}`))).data as {
+        items: Array<{ id: string; analysisStatus: string; segments: Array<{ id: string }> | null }>;
+      };
+      return listed.items.find((entry) => entry.id === ownerPage.item.id)!;
+    };
+    let owner = await readOwnerPage();
+    for (let attempt = 0; attempt < 40 && owner.analysisStatus === "pending"; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      owner = await readOwnerPage();
+    }
+    expect(owner.segments).toHaveLength(2);
+
+    await applyNoteSegments(envelope({
+      inboxItemId: ownerPage.item.id,
+      decisions: [{
+        segmentId: owner.segments![0]!.id,
+        action: "follow_up",
+        credits: [],
+        contactRef: { kind: "new", contact: { fullName: "Deniz Aktaş", phone: "", metAtPlace: "Günlük not", source: "in_person", role: "unknown", nextActionType: "call", nextActionAt: soon } },
+        nextActionType: "call",
+        nextActionAt: soon,
+      }],
+    }, "request-owner-apply", "command-owner-apply"));
+
+    const contactsWithOwner = (await listContacts(envelope(undefined, "request-list-owner"))).data as {
+      contacts: Array<{ fullName: string | null; relationship: { nextActionType: string | null } }>;
+    };
+    const deniz = contactsWithOwner.contacts.find((entry) => entry.fullName === "Deniz Aktaş");
+    expect(deniz).toBeDefined();
+    expect(deniz!.relationship.nextActionType).toBe("call");
+
     const pageReplay = (await applyNoteSegments({ ...pageCommand, requestId: `request-page-apply-replay-${runId}` })).data as { createdCount: number };
     expect(pageReplay.createdCount).toBe(applied.createdCount);
     const afterReplay = await readPage();

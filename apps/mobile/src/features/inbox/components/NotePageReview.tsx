@@ -53,6 +53,8 @@ interface RowState {
   personSource: ContactDraft["source"];
   contactId: string;
   contactFromSegmentId: string;
+  /** The line names its own owner, who does not exist yet. */
+  createsOwner: boolean;
   opportunityType: OpportunityType;
   nextActionType: NextActionType;
   nextActionAt: string;
@@ -89,6 +91,10 @@ function initialRow(segment: NoteSegmentReading): RowState {
     personSource: segment.sectionIntent === "leads" ? "other" : "in_person",
     contactId: segment.matchedContactId ?? "",
     contactFromSegmentId: "",
+    // A line that names somebody the workspace has never seen, and a property
+    // they own, has to be able to produce both. Without this the advisor picks
+    // which half to throw away.
+    createsOwner: segment.matchedContactId === null && (segmentContactName(segment)?.length ?? 0) >= 2,
     opportunityType: analysis?.opportunityType ?? "buyer_requirement",
     nextActionType: analysis?.nextActionType ?? "call",
     nextActionAt: analysis?.nextActionAt ? localDateTime(analysis.nextActionAt) : tomorrowMorning(),
@@ -148,7 +154,21 @@ export function NotePageReview({
   const creating = segments.filter((segment) => rows[segment.id]?.action !== "skip").length;
   const skipping = segments.length - creating;
 
-  function contactRefFor(row: RowState): SegmentContactRef | null {
+  function contactRefFor(row: RowState, segment: NoteSegmentReading): SegmentContactRef | null {
+    if (row.createsOwner && row.personName.trim().length >= 2) {
+      return {
+        kind: "new",
+        contact: {
+          fullName: row.personName.trim(),
+          phone: row.personPhone.trim(),
+          metAtPlace: segment.heading ?? "Günlük not",
+          source: row.personSource,
+          role: "unknown",
+          nextActionType: row.nextActionType,
+          nextActionAt: new Date(row.nextActionAt).getTime(),
+        },
+      };
+    }
     if (row.contactFromSegmentId) return { kind: "segment", segmentId: row.contactFromSegmentId };
     if (row.contactId) return { kind: "existing", contactId: row.contactId };
     return null;
@@ -185,7 +205,7 @@ export function NotePageReview({
         });
         continue;
       }
-      const contactRef = contactRefFor(row);
+      const contactRef = contactRefFor(row, segment);
       if (row.action === "portfolio") {
         const portfolio = segment.analysis?.portfolio;
         if (!portfolio) return setFormError(`“${segment.text.slice(0, 40)}” için mülk bilgisi okunamadı; bu satırı tek tek işleyebilirsin.`);
@@ -269,26 +289,33 @@ export function NotePageReview({
 
                   {row.action === "requirement" || row.action === "follow_up" || row.action === "portfolio" ? (
                     <>
-                      <ContactPicker
-                        contacts={contacts}
-                        label="Kişi"
-                        value={row.contactFromSegmentId ? "" : row.contactId}
-                        onChange={(value) => update(segment.id, { contactId: value, contactFromSegmentId: "" })}
-                      />
-                      {others.length ? (
-                        <SpField label="Ya da bu sayfadan">
-                          <View style={styles.choices}>
-                            {others.map((person) => (
-                              <SpChoice
-                                key={person.segmentId}
-                                label={person.name}
-                                onPress={() => update(segment.id, { contactFromSegmentId: person.segmentId, contactId: "" })}
-                                selected={row.contactFromSegmentId === person.segmentId}
-                              />
-                            ))}
-                          </View>
-                        </SpField>
-                      ) : null}
+                      <SpField label="Kimin">
+                        <View style={styles.choices}>
+                          <SpChoice label="Bu satırdaki kişi · yeni" onPress={() => update(segment.id, { createsOwner: true, contactId: "", contactFromSegmentId: "" })} selected={row.createsOwner} />
+                          <SpChoice label="Kayıtlı bir kişi" onPress={() => update(segment.id, { createsOwner: false, contactFromSegmentId: "" })} selected={!row.createsOwner && !row.contactFromSegmentId} />
+                          {others.map((person) => (
+                            <SpChoice
+                              key={person.segmentId}
+                              label={`${person.name} · bu sayfadan`}
+                              onPress={() => update(segment.id, { createsOwner: false, contactFromSegmentId: person.segmentId, contactId: "" })}
+                              selected={row.contactFromSegmentId === person.segmentId}
+                            />
+                          ))}
+                        </View>
+                      </SpField>
+                      {row.createsOwner ? (
+                        <>
+                          <SpField label="Ad soyad"><SpInput value={row.personName} onChangeText={(value) => update(segment.id, { personName: value })} /></SpField>
+                          <SpField label="Telefon" optional><PhoneInput value={row.personPhone} onChangeText={(value) => update(segment.id, { personPhone: value })} /></SpField>
+                        </>
+                      ) : row.contactFromSegmentId ? null : (
+                        <ContactPicker
+                          contacts={contacts}
+                          label="Kişi"
+                          value={row.contactId}
+                          onChange={(value) => update(segment.id, { contactId: value })}
+                        />
+                      )}
                     </>
                   ) : null}
 

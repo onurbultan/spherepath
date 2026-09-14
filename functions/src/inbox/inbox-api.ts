@@ -699,6 +699,8 @@ export const applyNoteSegments = onCall(callableOptions, async (request): Promis
     // opens, so the whole page can be read first and then written at once.
     const existingContactIds = [...new Set(decisions.flatMap((decision) =>
       "contactRef" in decision && decision.contactRef?.kind === "existing" ? [decision.contactRef.contactId] : []))];
+    /** Owners introduced by the very line that names what they own. */
+    const newContactRefs = new Map<string, FirebaseFirestore.DocumentReference>();
     const refs = new Map<string, {
       entity: FirebaseFirestore.DocumentReference;
       interaction?: FirebaseFirestore.DocumentReference;
@@ -718,6 +720,10 @@ export const applyNoteSegments = onCall(callableOptions, async (request): Promis
         refs.set(decision.segmentId, { entity: db.collection("opportunities").doc(), stageEvent: db.collection("stageEvents").doc() });
       } else if (decision.action === "portfolio") {
         refs.set(decision.segmentId, { entity: db.collection("portfolioItems").doc() });
+      }
+      // A line may name its own owner, who does not exist yet.
+      if ("contactRef" in decision && decision.contactRef?.kind === "new") {
+        newContactRefs.set(decision.segmentId, db.collection("contacts").doc());
       }
     }
 
@@ -805,8 +811,16 @@ export const applyNoteSegments = onCall(callableOptions, async (request): Promis
         }
       };
 
-      const resolveContactId = (ref: SegmentContactRef): string => {
+      const resolveContactId = (ref: SegmentContactRef, segmentId: string): string => {
         if (ref.kind === "existing") return ref.contactId;
+        if (ref.kind === "new") {
+          const contactRef = newContactRefs.get(segmentId)!;
+          const contact = createContactEntity(ref.contact, tenant, now);
+          transaction.create(contactRef, storedContact(contact));
+          createdCount += 1;
+          appliedActions.push({ type: "contact_created", entityId: contactRef.id, label: `${ref.contact.fullName} kişi olarak oluşturuldu`, appliedAt: nowStamp, undoneAt: null });
+          return contactRef.id;
+        }
         const created = createdContacts.get(ref.segmentId);
         if (!created) throw new HttpsError("failed-precondition", "Bağlanmak istenen kişi bu onayda oluşturulmadı.");
         return created;
@@ -888,7 +902,7 @@ export const applyNoteSegments = onCall(callableOptions, async (request): Promis
         }
 
         if (decision.action === "requirement") {
-          const contactId = resolveContactId(decision.contactRef);
+          const contactId = resolveContactId(decision.contactRef, decision.segmentId);
           const allocation = allocated!;
           const opportunity = createOpportunityEntity({
             subjectContactId: contactId,
@@ -928,14 +942,17 @@ export const applyNoteSegments = onCall(callableOptions, async (request): Promis
           const allocation = allocated!;
           const portfolio = createPortfolioItem(decision.portfolio, tenant, now);
           transaction.create(allocation.entity, { ...portfolio, createdAt: nowStamp, updatedAt: nowStamp });
-          if (decision.contactRef) linkedContactId = linkedContactId ?? resolveContactId(decision.contactRef);
+          if (decision.contactRef) {
+            const ownerId = resolveContactId(decision.contactRef, decision.segmentId);
+            linkedContactId = linkedContactId ?? ownerId;
+          }
           createdCount += 1;
           appliedActions.push({ type: "portfolio_created", entityId: allocation.entity.id, label: `${portfolio.headline} havuza eklendi`, appliedAt: nowStamp, undoneAt: null });
           creditFor(decision, "portfolio_item", allocation.entity.id, segment.text);
           continue;
         }
 
-        const contactId = resolveContactId(decision.contactRef);
+        const contactId = resolveContactId(decision.contactRef, decision.segmentId);
         const existing = contactsById.get(contactId);
         const contactRef = existing?.ref ?? db.collection("contacts").doc(contactId);
         // Merge rather than update: the contact may have been created moments

@@ -60,6 +60,8 @@ interface RowState {
   /** Empty means the line is about somebody created by another line on this page. */
   contactId: string;
   contactFromSegmentId: string;
+  /** The line names its own owner, who does not exist yet. */
+  createsOwner: boolean;
   opportunityType: OpportunityType;
   nextActionType: NextActionType;
   nextActionAt: string;
@@ -97,6 +99,10 @@ function initialRow(segment: NoteSegmentReading): RowState {
     personSource: segment.sectionIntent === "leads" ? "other" : "in_person",
     contactId: segment.matchedContactId ?? "",
     contactFromSegmentId: "",
+    // A line that names somebody the workspace has never seen, and a property
+    // they own, has to be able to produce both. Without this the advisor picks
+    // which half to throw away.
+    createsOwner: segment.matchedContactId === null && (segmentContactName(segment)?.length ?? 0) >= 2,
     opportunityType: analysis?.opportunityType ?? "buyer_requirement",
     nextActionType: analysis?.nextActionType ?? "call",
     nextActionAt: analysis?.nextActionAt ? localDateTime(analysis.nextActionAt) : tomorrowMorning(),
@@ -151,7 +157,21 @@ export function NotePageReview({
   const creating = segments.filter((segment) => rows[segment.id]?.action !== "skip").length;
   const skipping = segments.length - creating;
 
-  function contactRefFor(row: RowState): SegmentContactRef | null {
+  function contactRefFor(row: RowState, segment: NoteSegmentReading): SegmentContactRef | null {
+    if (row.createsOwner && row.personName.trim().length >= 2) {
+      return {
+        kind: "new",
+        contact: {
+          fullName: row.personName.trim(),
+          phone: row.personPhone.trim(),
+          metAtPlace: segment.heading ?? "Günlük not",
+          source: row.personSource,
+          role: "unknown",
+          nextActionType: row.nextActionType,
+          nextActionAt: new Date(row.nextActionAt).getTime(),
+        },
+      };
+    }
     if (row.contactFromSegmentId) return { kind: "segment", segmentId: row.contactFromSegmentId };
     if (row.contactId) return { kind: "existing", contactId: row.contactId };
     return null;
@@ -190,7 +210,7 @@ export function NotePageReview({
         });
         continue;
       }
-      const contactRef = contactRefFor(row);
+      const contactRef = contactRefFor(row, segment);
       if (row.action === "portfolio") {
         const portfolio = segment.analysis?.portfolio;
         if (!portfolio) return setFormError(`“${segment.text.slice(0, 40)}” için mülk bilgisi okunamadı; bu satırı tek tek işleyebilirsin.`);
@@ -223,26 +243,37 @@ export function NotePageReview({
   function contactField(segment: NoteSegmentReading, row: RowState) {
     const others = peopleFromThisPage.filter((person) => person.segmentId !== segment.id);
     return (
-      <div className="note-page-contact">
-        <ContactCombobox
-          contacts={contacts}
-          label="Kişi"
-          required={false}
-          value={row.contactFromSegmentId ? "" : row.contactId}
-          onChange={(value) => update(segment.id, { contactId: value, contactFromSegmentId: "" })}
-        />
-        {others.length ? (
-          <label>Ya da bu sayfadan
-            <SpSelect
-              value={row.contactFromSegmentId}
-              onChange={(event) => update(segment.id, { contactFromSegmentId: event.target.value, contactId: "" })}
-            >
-              <option value="">Seçilmedi</option>
-              {others.map((person) => <option key={person.segmentId} value={person.segmentId}>{person.name}</option>)}
-            </SpSelect>
-          </label>
-        ) : null}
-      </div>
+      <>
+        <label>Kimin
+          <SpSelect
+            value={row.createsOwner ? "new" : row.contactFromSegmentId ? `segment:${row.contactFromSegmentId}` : "existing"}
+            onChange={(event) => {
+              const value = event.target.value;
+              if (value === "new") return update(segment.id, { createsOwner: true, contactId: "", contactFromSegmentId: "" });
+              if (value === "existing") return update(segment.id, { createsOwner: false, contactFromSegmentId: "" });
+              update(segment.id, { createsOwner: false, contactFromSegmentId: value.slice("segment:".length), contactId: "" });
+            }}
+          >
+            <option value="new">Bu satırdaki kişi · yeni kaydet</option>
+            <option value="existing">Kayıtlı bir kişi</option>
+            {others.map((person) => <option key={person.segmentId} value={`segment:${person.segmentId}`}>{person.name} · bu sayfadan</option>)}
+          </SpSelect>
+        </label>
+        {row.createsOwner ? (
+          <>
+            <label>Ad soyad<SpInput value={row.personName} onChange={(event) => update(segment.id, { personName: event.target.value })} /></label>
+            <label>Telefon <span className="optional">isteğe bağlı</span><PhoneField value={row.personPhone} onChange={(phone) => update(segment.id, { personPhone: phone })} /></label>
+          </>
+        ) : row.contactFromSegmentId ? null : (
+          <ContactCombobox
+            contacts={contacts}
+            label="Kişi"
+            required={false}
+            value={row.contactId}
+            onChange={(value) => update(segment.id, { contactId: value })}
+          />
+        )}
+      </>
     );
   }
 
@@ -288,31 +319,39 @@ export function NotePageReview({
                     </SpSelect>
                   </label>
 
-                  {row.action === "person" ? (
-                    <div className="note-page-fields">
-                      <label>Ad soyad<SpInput value={row.personName} onChange={(event) => update(segment.id, { personName: event.target.value })} /></label>
-                      <label>Telefon <span className="optional">isteğe bağlı</span><PhoneField value={row.personPhone} onChange={(phone) => update(segment.id, { personPhone: phone })} /></label>
-                      <label>Kaynak<SpSelect value={row.personSource} onChange={(event) => update(segment.id, { personSource: event.target.value as ContactDraft["source"] })}>{contactSources.map((source) => <option key={source} value={source}>{contactSourceLabels[source]}</option>)}</SpSelect></label>
-                    </div>
-                  ) : null}
+                  {row.action !== "skip" ? (
+                    <div className="note-page-details">
+                      {row.action === "person" ? (
+                        <>
+                          <label>Ad soyad<SpInput value={row.personName} onChange={(event) => update(segment.id, { personName: event.target.value })} /></label>
+                          <label>Telefon <span className="optional">isteğe bağlı</span><PhoneField value={row.personPhone} onChange={(phone) => update(segment.id, { personPhone: phone })} /></label>
+                          <label>Kaynak<SpSelect value={row.personSource} onChange={(event) => update(segment.id, { personSource: event.target.value as ContactDraft["source"] })}>{contactSources.map((source) => <option key={source} value={source}>{contactSourceLabels[source]}</option>)}</SpSelect></label>
+                        </>
+                      ) : null}
 
-                  {row.action === "requirement" || row.action === "follow_up" || row.action === "portfolio" ? (
-                    <div className="note-page-fields">{contactField(segment, row)}</div>
-                  ) : null}
+                      {row.action === "requirement" || row.action === "follow_up" || row.action === "portfolio"
+                        ? contactField(segment, row)
+                        : null}
 
-                  {row.action === "requirement" ? (
-                    <div className="note-page-fields">
-                      <label>Talep türü<SpSelect value={row.opportunityType} onChange={(event) => update(segment.id, { opportunityType: event.target.value as OpportunityType })}>
-                        <option value="buyer_requirement">{opportunityTypeLabels.buyer_requirement}</option>
-                        <option value="tenant_requirement">{opportunityTypeLabels.tenant_requirement}</option>
-                      </SpSelect></label>
-                    </div>
-                  ) : null}
+                      {row.action === "requirement" ? (
+                        <>
+                          <label>Talep türü<SpSelect value={row.opportunityType} onChange={(event) => update(segment.id, { opportunityType: event.target.value as OpportunityType })}>
+                            <option value="buyer_requirement">{opportunityTypeLabels.buyer_requirement}</option>
+                            <option value="tenant_requirement">{opportunityTypeLabels.tenant_requirement}</option>
+                          </SpSelect></label>
+                        </>
+                      ) : null}
 
-                  {row.action === "person" || row.action === "requirement" || row.action === "follow_up" ? (
-                    <div className="note-page-fields">
-                      <label>Sonraki adım<SpSelect value={row.nextActionType} onChange={(event) => update(segment.id, { nextActionType: event.target.value as NextActionType })}>{nextActionTypes.map((type) => <option key={type} value={type}>{nextActionTypeLabels[type]}</option>)}</SpSelect></label>
-                      <QuickDateField label="Ne zaman" required value={row.nextActionAt} onChange={(value) => update(segment.id, { nextActionAt: value })} />
+                      {/* The step and its date are one decision and belong on one
+                          line. Apart, the step was orphaned in a row of its own and
+                          the date -- twice the height, with its preset chips -- sat
+                          in a column beside nothing. */}
+                      {row.action === "person" || row.action === "requirement" || row.action === "follow_up" ? (
+                        <div className="note-page-wide note-page-when">
+                          <label>Sonraki adım<SpSelect value={row.nextActionType} onChange={(event) => update(segment.id, { nextActionType: event.target.value as NextActionType })}>{nextActionTypes.map((type) => <option key={type} value={type}>{nextActionTypeLabels[type]}</option>)}</SpSelect></label>
+                          <QuickDateField label="Ne zaman" required value={row.nextActionAt} onChange={(value) => update(segment.id, { nextActionAt: value })} />
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
 

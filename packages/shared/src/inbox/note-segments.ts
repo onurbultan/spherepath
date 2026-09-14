@@ -224,6 +224,14 @@ export function matchSegmentContact(
 export const segmentContactRefSchema = z.union([
   z.object({ kind: z.literal("existing"), contactId: z.string().trim().min(1).max(160) }).strict(),
   z.object({ kind: z.literal("segment"), segmentId: z.string().trim().min(1).max(60) }).strict(),
+  /**
+   * The person this line is about, who does not exist yet. One line routinely
+   * names somebody and the property they own -- "Deniz Aktaş ile tanıştım,
+   * sahilde 3+1 dairesi var" -- and without this the line could produce the
+   * person or the property but never both, so the advisor had to pick which
+   * half to throw away.
+   */
+  z.object({ kind: z.literal("new"), contact: contactDraftSchema }).strict(),
 ]);
 export type SegmentContactRef = z.infer<typeof segmentContactRefSchema>;
 
