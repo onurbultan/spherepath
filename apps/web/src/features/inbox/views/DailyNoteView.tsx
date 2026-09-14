@@ -10,6 +10,7 @@ import {
   activeMentionQuery,
   completeMention,
   findDailyPage,
+  mentionSpans,
   istanbulDayKey,
   noteMaxLength,
   type ApplyNoteSegmentsInput,
@@ -64,6 +65,7 @@ export function DailyNoteView() {
   // Tagging somebody mid-sentence, the way you tag them in a comment. The name
   // goes in as plain text; the page resolves it to a contact when it is read.
   const areaRef = useRef<HTMLTextAreaElement>(null);
+  const mirrorRef = useRef<HTMLDivElement>(null);
   const [mention, setMention] = useState<{ query: string; start: number; caret: number } | null>(null);
   const mentionMatches = mention
     ? (contacts.data ?? [])
@@ -139,9 +141,21 @@ export function DailyNoteView() {
       </header>
 
       <section className="daily-note-sheet" aria-label="Günün notu">
+        {/* A textarea cannot colour part of its own value, so the marking is
+            drawn behind it: the same string, the same box, the same type, with
+            a tint behind each tag. Nothing here changes the text or its
+            metrics, which is why the two stay aligned as the note is typed. */}
+        <div className="daily-note-editor">
+        <div aria-hidden className="daily-note-mirror" ref={mirrorRef}>
+          {mentionSpans(text).map((span, position) => span.isMention
+            ? <mark key={position}>{span.text}</mark>
+            : <span key={position}>{span.text}</span>)}
+          {"\n"}
+        </div>
         <textarea
           aria-label="Günün notu"
           className="daily-note-area"
+          onScroll={(event) => { if (mirrorRef.current) mirrorRef.current.scrollTop = event.currentTarget.scrollTop; }}
           maxLength={noteMaxLength}
           onBlur={() => setMention(null)}
           onChange={(event) => { setDraft(event.target.value); setSavedAt(false); syncMention(event.target.value, event.target.selectionStart); }}
@@ -150,6 +164,7 @@ export function DailyNoteView() {
           placeholder={"Ayşe ve Murat ile tanıştım, Zeytinler'de ikiz villaları var\nAkın'ın 4 dönüm tarlası için yetki aldım\n\nYapılacaklar\n\nGökhan'a tarlanın durumunu yaz\nHüseyin Çeşme altında villalık arsa arıyor"}
           value={text}
         />
+        </div>
         {mention && mentionMatches.length ? (
           <ul className="mention-picker" aria-label="Kişi etiketle">
             {mentionMatches.map((contact) => (

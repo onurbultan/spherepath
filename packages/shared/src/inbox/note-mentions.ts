@@ -98,3 +98,27 @@ export function completeMention(text: string, start: number, caret: number, name
     caret: start + completed.length,
   };
 }
+
+export interface MentionSpan {
+  text: string;
+  isMention: boolean;
+}
+
+/**
+ * The note split into what is a tag and what is not, so an editor can mark the
+ * tags without the text ever stopping being plain text. A textarea cannot
+ * colour part of its own value, so the marking is drawn behind it from exactly
+ * this list -- which means the two must be built from the same string, in
+ * order, with nothing dropped.
+ */
+export function mentionSpans(text: string): MentionSpan[] {
+  const spans: MentionSpan[] = [];
+  let cursor = 0;
+  for (const mention of extractMentions(text)) {
+    if (mention.start > cursor) spans.push({ text: text.slice(cursor, mention.start), isMention: false });
+    spans.push({ text: text.slice(mention.start, mention.end), isMention: true });
+    cursor = mention.end;
+  }
+  if (cursor < text.length) spans.push({ text: text.slice(cursor), isMention: false });
+  return spans;
+}

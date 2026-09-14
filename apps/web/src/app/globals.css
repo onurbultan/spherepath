@@ -1272,7 +1272,26 @@ textarea.sp-control.is-compact { min-height: 80px; }
    the controls sit under it rather than competing with it. */
 .daily-note-header { align-items: flex-start; }
 .daily-note-sheet { display: grid; gap: var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); padding: var(--space-lg); }
-.daily-note-area { min-height: min(58vh, 520px); resize: vertical; border: 0; background: transparent; color: var(--text-primary); font: inherit; line-height: 1.7; outline: none; width: 100%; }
+/* The editor and the layer behind it must be one box with one type, or the
+   tint drifts off the tag the moment a line wraps. Everything that affects
+   glyph position is set once here and inherited by both. */
+.daily-note-editor { position: relative; }
+.daily-note-editor > * {
+  min-height: min(58vh, 520px);
+  font: inherit;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.daily-note-mirror { position: absolute; inset: 0; overflow: hidden; color: transparent; pointer-events: none; }
+/* The glyphs come from the editor above; this only lays the tint behind them. */
+.daily-note-mirror mark { color: transparent; background: var(--deed-bg); border-radius: 3px; box-shadow: 0 0 0 2px var(--deed-bg); }
+.daily-note-area { position: relative; resize: vertical; background: transparent; color: var(--text-primary); outline: none; }
 .daily-note-area::placeholder { color: var(--text-tertiary); }
 .mention-picker { list-style: none; margin: 0; padding: var(--space-xs); display: grid; gap: 2px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
 .mention-picker button { width: 100%; text-align: start; padding: var(--space-sm); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-primary); font: inherit; cursor: pointer; }

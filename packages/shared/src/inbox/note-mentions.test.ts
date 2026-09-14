@@ -3,6 +3,7 @@ import {
   activeMentionQuery,
   completeMention,
   extractMentions,
+  mentionSpans,
   mentionedContactIds,
   resolveMentions,
 } from "./note-mentions.js";
@@ -135,5 +136,30 @@ describe("Turkish case suffixes on a tagged name", () => {
 
   it("still refuses an address, where the @ follows a letter", () => {
     expect(extractMentions("onur@Example.com yazdı")).toEqual([]);
+  });
+});
+
+describe("marking the tags without changing the text", () => {
+  it("puts back exactly what it was given", () => {
+    const text = "Yetki aldık, @Deniz Aktaş referans oldu.\n@Burcu Şahin'e daire çıktı";
+    expect(mentionSpans(text).map((span) => span.text).join("")).toBe(text);
+  });
+
+  it("marks the tag and nothing around it", () => {
+    const spans = mentionSpans("Yetki aldık, @Deniz Aktaş referans oldu.");
+    expect(spans.filter((span) => span.isMention).map((span) => span.text)).toEqual(["@Deniz Aktaş"]);
+  });
+
+  it("marks the name without the Turkish suffix that follows it", () => {
+    const spans = mentionSpans("@Burcu Şahin'e daire çıktı");
+    expect(spans[0]).toEqual({ text: "@Burcu Şahin'e", isMention: true });
+  });
+
+  it("leaves a note with no tags as one span", () => {
+    expect(mentionSpans("Bugün kimseyle görüşmedim")).toEqual([{ text: "Bugün kimseyle görüşmedim", isMention: false }]);
+  });
+
+  it("returns nothing for an empty note", () => {
+    expect(mentionSpans("")).toEqual([]);
   });
 });
