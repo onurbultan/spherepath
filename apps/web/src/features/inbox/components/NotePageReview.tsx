@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Building2, BriefcaseBusiness, CalendarPlus, CircleSlash, UserRoundPlus, X } from "lucide-react";
+import Link from "next/link";
+import { Building2, BriefcaseBusiness, CalendarPlus, CircleSlash, FileText, UserRoundPlus, X } from "lucide-react";
 import {
   applyNoteSegmentsSchema,
   contactSourceLabels,
@@ -297,6 +298,19 @@ export function NotePageReview({
                   ) : null}
                   {row.action === "portfolio" && !segment.analysis?.portfolio ? (
                     <p className="note-page-hint is-warning">Bu satırdan mülk bilgisi çıkarılamadı.</p>
+                  ) : null}
+
+                  {/* Some lines are a negotiation, not a note: a counter-offer, a
+                      follow-up that belongs to somebody else, a conversation that
+                      happened last week. Those need the full form, and it is one
+                      click away rather than a different place to have gone. */}
+                  {row.action !== "skip" && row.action !== "portfolio" ? (
+                    <Link
+                      className="text-button note-page-detail"
+                      href={`/capture?contactId=${encodeURIComponent(row.contactId)}&outcome=${encodeURIComponent(segment.text.slice(0, 500))}`}
+                    >
+                      <FileText size={14} aria-hidden /> Bunun yerine detaylı görüşme kaydet
+                    </Link>
                   ) : null}
                 </article>
               </div>

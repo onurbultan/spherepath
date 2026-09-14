@@ -65,7 +65,9 @@ export function CaptureView() {
   const [channel, setChannel] = useState<ManualInteractionDraft["channel"]>("in_person");
   const [objective, setObjective] = useState<ManualInteractionDraft["objective"]>("get_acquainted");
   const [direction, setDirection] = useState<ManualInteractionDraft["direction"]>("mutual");
-  const [outcome, setOutcome] = useState("");
+  // A line carried over from the day's page arrives as the conversation it was,
+  // so the advisor is completing a record rather than retyping one.
+  const [outcome, setOutcome] = useState(() => searchParams.get("outcome") ?? "");
   const [askOutcome, setAskOutcome] = useState<ManualInteractionDraft["askOutcome"]>("not_asked");
   const [nextActionContactId, setNextActionContactId] = useState("");
   const [nextActionOpportunityId, setNextActionOpportunityId] = useState("");

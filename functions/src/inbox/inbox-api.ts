@@ -1,7 +1,7 @@
 import { getFirestore, Timestamp, type DocumentData } from "firebase-admin/firestore";
 import { contactPhoneFields } from "../contacts/phone-index.js";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
 import {
   analyzeInboxItemSchema,
@@ -149,6 +149,7 @@ function toRecord(id: string, data: DocumentData): InboxItemRecord {
   return {
     ...(data as InboxItem), id,
     analysis: (data.analysis ?? null) as InboxItem["analysis"],
+    dayKey: (data.dayKey ?? null) as string | null,
     segments: data.segments
       ? ((data.segments as DocumentData[]).map((segment) => ({ ...segment, appliedAt: millis(segment.appliedAt) })) as NoteSegmentReading[])
       : null,
@@ -254,6 +255,7 @@ export const createInboxItem = onCall(callableOptions, async (request): Promise<
         status: parsed.data.source === "voice" || classification.sensitiveContentMasked ? "needs_review" : "applied",
         confidence: classification.confidence, linkedContactId: parsed.data.linkedContactId ?? contactRef?.id ?? null,
         sourceEntityId: null, appliedActions: actions, pinned: false, needsLocation: classification.needsLocation,
+        dayKey: parsed.data.dayKey,
         errorCode: null, archivedAt: null, createdAt: now, updatedAt: now,
         // Filled by the trigger below, so saving stays instant.
         analysis: null, analysisStatus: "pending",
@@ -322,6 +324,12 @@ export const updateInboxItem = onCall(callableOptions, async (request): Promise<
           needsLocation: edited.needsLocation,
           status: edited.sensitiveContentMasked ? "needs_review" : snapshot.data()!.status === "archived" ? "archived" : "applied",
           errorCode: null,
+          // A day's page is added to through the afternoon. Changed text has to
+          // go back to be read, or every line written after the first save is
+          // never cut out of the page and never offered as a record.
+          ...(parsed.data.text === undefined || parsed.data.text === snapshot.data()!.safeText
+            ? {}
+            : { analysisStatus: "pending" }),
         }),
         ...(parsed.data.linkedContactId === undefined ? {} : { linkedContactId: parsed.data.linkedContactId }),
         ...(parsed.data.pinned === undefined ? {} : { pinned: parsed.data.pinned }),
@@ -345,12 +353,14 @@ export const updateInboxItem = onCall(callableOptions, async (request): Promise<
  * property and a requirement at the same time. This reads the note properly and
  * stores what it found, so the card can show it instead of offering a form.
  */
-export const analyzeInboxNote = onDocumentCreated(
+export const analyzeInboxNote = onDocumentWritten(
   { document: "inboxItems/{inboxItemId}", region: "europe-west8", memory: "512MiB", timeoutSeconds: 120, retry: false },
   async (event) => {
-    const data = event.data?.data();
+    const data = event.data?.after?.data();
+    // "pending" is the whole guard: it is set by the save and by an edit, and
+    // cleared by this function's own write, so the trigger cannot chase itself.
     if (!data || data.analysisStatus !== "pending") return;
-    const reference = event.data!.ref;
+    const reference = event.data!.after.ref;
     try {
       const linkedContactId = typeof data.linkedContactId === "string" ? data.linkedContactId : null;
       const linkedContact = linkedContactId ? await getFirestore().collection("contacts").doc(linkedContactId).get() : null;
@@ -386,7 +396,15 @@ export const analyzeInboxNote = onDocumentCreated(
         const analyzedKind = hasNotBeenEdited
           ? inboxKindAfterAnalysis(current.kind as InboxItem["kind"], current.source as InboxItem["source"], (current.linkedContactId ?? null) as string | null, analysis)
           : current.kind as InboxItem["kind"];
-        transaction.update(reference, { analysis: { ...analysis, portfolio }, segments, analysisStatus: "ready", kind: analyzedKind, updatedAt: Timestamp.now() });
+        // A page read again after an edit must not offer back the lines that
+        // already became records. Text is what identifies them: the advisor may
+        // have inserted three lines above one they applied this morning.
+        const previous = ((current.segments ?? []) as DocumentData[]) as NoteSegmentReading[];
+        const appliedByText = new Map(previous.filter((segment) => segment.appliedAt != null).map((segment) => [segment.text, segment.appliedAt]));
+        const merged = segments?.map((segment) => appliedByText.has(segment.text)
+          ? { ...segment, appliedAt: appliedByText.get(segment.text)! }
+          : segment) ?? null;
+        transaction.update(reference, { analysis: { ...analysis, portfolio }, segments: merged, analysisStatus: "ready", kind: analyzedKind, updatedAt: Timestamp.now() });
 
       });
     } catch (error) {

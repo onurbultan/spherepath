@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { X } from "lucide-react-native";
+import { FileText, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import {
   applyNoteSegmentsSchema,
   contactSourceLabels,
@@ -107,6 +108,7 @@ export function NotePageReview({
   onApply: (input: ApplyNoteSegmentsInput) => void;
 }) {
   const theme = useSpTheme();
+  const router = useRouter();
   const segments = useMemo(
     () => (item.segments ?? []).filter((segment) => segment.appliedAt === null),
     [item.segments],
@@ -290,6 +292,24 @@ export function NotePageReview({
                     </>
                   ) : null}
 
+                  {/* Some lines are a negotiation, not a note: a counter-offer, a
+                      follow-up that belongs to somebody else, a conversation that
+                      happened last week. Those need the full form, and it is one
+                      tap away rather than a different place to have gone. */}
+                  {row.action !== "skip" && row.action !== "portfolio" ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => {
+                        onClose();
+                        router.push(`/(tabs)/capture?contactId=${encodeURIComponent(row.contactId)}&outcome=${encodeURIComponent(segment.text.slice(0, 500))}`);
+                      }}
+                      style={styles.detailAction}
+                    >
+                      <FileText color={theme.deed} size={14} />
+                      <SpText variant="caption" color="deed">Bunun yerine detaylı görüşme kaydet</SpText>
+                    </Pressable>
+                  ) : null}
+
                   {row.action === "portfolio" ? (
                     <SpText variant="caption" color={segment.analysis?.portfolio ? "secondary" : "ask"}>
                       {segment.analysis?.portfolio
@@ -329,4 +349,5 @@ const styles = StyleSheet.create({
   section: { marginTop: space.md, marginBottom: space.xs },
   row: { gap: space.sm, padding: space.md, borderWidth: 1, borderRadius: radius.lg },
   choices: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
+  detailAction: { flexDirection: "row", alignItems: "center", gap: space.xs },
 });

@@ -11,7 +11,7 @@ const networkFailure = (error: unknown) => !isOnline() || (error instanceof ApiE
 
 function localRecord(session: WorkspaceSession, input: CreateInboxItemInput, commandId: string): InboxItemRecord {
   const result = classifyInboxText(input.text, input.requestedKind ?? null); const now = Date.now();
-  return { id: `queued-${commandId}`, officeId: session.officeId, ownerUid: session.uid, source: input.source, safeText: result.safeText, summary: result.summary, kind: result.kind, status: "queued", confidence: result.confidence, linkedContactId: input.linkedContactId ?? null, sourceEntityId: null, appliedActions: [], pinned: false, needsLocation: result.needsLocation, errorCode: null, archivedAt: null, analysis: null, analysisStatus: "pending", createdAt: now, updatedAt: now };
+  return { id: `queued-${commandId}`, officeId: session.officeId, ownerUid: session.uid, source: input.source, safeText: result.safeText, summary: result.summary, kind: result.kind, status: "queued", confidence: result.confidence, linkedContactId: input.linkedContactId ?? null, sourceEntityId: null, appliedActions: [], pinned: false, needsLocation: result.needsLocation, errorCode: null, archivedAt: null, analysis: null, analysisStatus: "pending", dayKey: input.dayKey ?? null, createdAt: now, updatedAt: now };
 }
 
 export async function listInboxItems(session?: WorkspaceSession): Promise<InboxItemRecord[]> {
@@ -20,8 +20,9 @@ export async function listInboxItems(session?: WorkspaceSession): Promise<InboxI
   const remote = (await apiClient.query<{ cursor: null; limit: number }, { items: InboxItemRecord[] }>("listInboxItems", { cursor: null, limit: 50 })).items;
   return [...local, ...remote];
 }
-export async function createInboxNote(session: WorkspaceSession, text: string): Promise<InboxItemRecord> {
-  const input: CreateInboxItemInput = { source: "typed", text, linkedContactId: null, requestedKind: null };
+/** `dayKey` marks a note written on the day's page, so that page can be reopened. */
+export async function createInboxNote(session: WorkspaceSession, text: string, dayKey: string | null = null): Promise<InboxItemRecord> {
+  const input: CreateInboxItemInput = { source: "typed", text, linkedContactId: null, requestedKind: null, dayKey };
   const commandId = createCommandId(session.uid); const local = localRecord(session, input, commandId);
   if (isOnline()) {
     try {

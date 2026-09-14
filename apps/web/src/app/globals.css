@@ -1263,6 +1263,22 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .known-property-listed { color: var(--deed); }
 .known-property-actions { display: flex; gap: var(--space-xs); }
 
+/* The day's page is a writing surface, so the sheet takes the height it can and
+   the controls sit under it rather than competing with it. */
+.daily-note-header { align-items: flex-start; }
+.daily-note-sheet { display: grid; gap: var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); padding: var(--space-lg); }
+.daily-note-area { min-height: min(58vh, 520px); resize: vertical; border: 0; background: transparent; color: var(--text-primary); font: inherit; line-height: 1.7; outline: none; width: 100%; }
+.daily-note-area::placeholder { color: var(--text-tertiary); }
+.daily-note-footer { display: flex; align-items: center; gap: var(--space-md); border-top: 1px solid var(--line); padding-top: var(--space-md); }
+.daily-note-count { font-size: var(--text-caption); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.daily-note-saved { display: inline-flex; align-items: center; gap: var(--space-xs); font-size: var(--text-caption); color: var(--good); }
+.daily-note-footer > button { margin-left: auto; }
+.daily-note-status { margin-top: var(--space-lg); }
+.daily-note-ready { display: flex; align-items: center; gap: var(--space-md); flex-wrap: wrap; border: 1px solid var(--deed); border-radius: var(--radius-lg); background: var(--deed-bg); padding: var(--space-md) var(--space-lg); }
+.daily-note-ready > div { display: grid; gap: 2px; flex: 1; min-width: 12rem; }
+.daily-note-ready span { font-size: var(--text-body-sm); color: var(--text-secondary); }
+.daily-note-archive { margin-top: var(--space-lg); }
+
 .note-page-review { width: min(720px, 100%); }
 .note-page-rows { display: grid; gap: var(--space-md); max-height: 60vh; overflow-y: auto; padding-right: var(--space-xs); }
 .note-page-section { margin: var(--space-md) 0 var(--space-xs); }
@@ -1276,6 +1292,7 @@ textarea.sp-control.is-compact { min-height: 80px; }
 .note-page-contact { display: grid; gap: var(--space-sm); }
 .note-page-hint { margin: 0; font-size: var(--text-caption); color: var(--text-secondary); }
 .note-page-hint.is-warning { color: var(--ask); }
+.note-page-detail { justify-self: start; }
 .note-extraction-review { display: grid; gap: var(--space-md); padding: var(--space-lg); border: 1px solid var(--good); border-radius: var(--radius-lg); background: var(--good-bg); }
 .note-extraction-review > strong { color: var(--good); }
 .note-process-action { width: 100%; }

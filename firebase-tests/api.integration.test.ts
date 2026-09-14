@@ -583,10 +583,36 @@ describe("callable API vertical slice", () => {
     expect(applied.item.segments.every((segment) => segment.appliedAt !== null)).toBe(true);
     expect(applied.item.status).toBe("applied");
 
+    // A day's page is added to through the afternoon. The lines written after the
+    // first save have to be read too, and the ones already applied must not come
+    // back offering to be applied again.
+    const extendedPage = `${notebookPage}\nŞafak abi görüş`;
+    await updateInboxItem(envelope({ inboxItemId: pageNote.item.id, text: extendedPage }, "request-page-extend", "command-page-extend"));
+    let extended = await readPage();
+    for (let attempt = 0; attempt < 40 && extended.analysisStatus !== "ready"; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      extended = await readPage();
+    }
+    expect(extended.analysisStatus).toBe("ready");
+    expect(extended.segments).toHaveLength(5);
+    expect(extended.segments!.map((segment) => segment.text)).toContain("Şafak abi görüş");
+    // A line the advisor skipped is decided, not pending: it must not come back
+    // asking again every time the page is read.
+    const stillDecided = extended.segments!.filter((segment) => segment.appliedAt !== null);
+    expect(stillDecided.map((segment) => segment.text).sort()).toEqual([
+      "Ayşe Yılmaz ile tanıştım, Zeytinler'de ikiz villaları var",
+      "Düğün salonu grubuna yaz",
+      "Integration Contact aranacak",
+      "Perihan Demir komşusu, mühendis, kite sörf malzemesi satıyor",
+    ].sort());
+    expect(extended.segments!.find((segment) => segment.text === "Şafak abi görüş")!.appliedAt).toBeNull();
+
     const pageReplay = (await applyNoteSegments({ ...pageCommand, requestId: `request-page-apply-replay-${runId}` })).data as { createdCount: number };
     expect(pageReplay.createdCount).toBe(applied.createdCount);
     const afterReplay = await readPage();
-    expect(afterReplay.segments).toHaveLength(4);
+    expect(afterReplay.segments).toHaveLength(5);
+    const contactsAfterReplay = (await listContacts(envelope(undefined, "request-list-after-replay"))).data as { contacts: Array<{ fullName: string | null }> };
+    expect(contactsAfterReplay.contacts.filter((entry) => entry.fullName === "Ayşe Yılmaz")).toHaveLength(1);
 
     // What the advisor simply knows, written by the advisor. Until now the only
     // way into contact memory was an approved reading of a note.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
-import { BriefcaseBusiness, ContactRound, House, ListTodo, Plus, Pyramid, SlidersHorizontal } from "lucide-react";
+import { BriefcaseBusiness, ContactRound, House, ListTodo, NotebookPen, Pyramid, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -27,13 +27,15 @@ import { TopBar } from "./TopBar";
 const navigation = [
   { label: "Bugün", icon: ListTodo, href: "/", count: "today" },
   { label: "Kişiler", icon: ContactRound, href: "/contacts", count: "contacts" },
-  { label: "Temas kaydet", icon: Plus, href: "/capture", count: null },
+  // The day's page is where capture starts now. The structured conversation
+  // form is still there, reached from a line that turns out to need it.
+  { label: "Günlük not", icon: NotebookPen, href: "/note", count: null },
   { label: "İşler", icon: BriefcaseBusiness, href: "/opportunities", count: "work" },
   { label: "Portföy", icon: House, href: "/listings", count: "listings" },
   { label: "Huni", icon: Pyramid, href: "/funnel", count: null },
 ] as const;
 
-const swipePaths = ["/", "/contacts", "/capture", "/opportunities", "/listings"] as const;
+const swipePaths = ["/", "/contacts", "/note", "/opportunities", "/listings"] as const;
 
 /** End of the current day: anything due at or before it is work for today. */
 function endOfToday(): number {
@@ -79,7 +81,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       } else if (event.shiftKey && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v") {
         event.preventDefault();
         setPaletteOpen(false);
-        router.push("/capture");
+        router.push("/note");
       } else if (event.shiftKey && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
         event.preventDefault();
         setPaletteOpen(false);
@@ -94,7 +96,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     const active = currentPathname === href;
     const badge = count ? counts[count] : undefined;
     return (
-      <Link key={href} href={href} className={`${active ? "nav-item active" : "nav-item"}${href === "/capture" ? " nav-capture" : ""}${href === "/funnel" ? " nav-desktop-only" : ""}`} aria-current={active ? "page" : undefined}>
+      <Link key={href} href={href} className={`${active ? "nav-item active" : "nav-item"}${href === "/note" ? " nav-capture" : ""}${href === "/funnel" ? " nav-desktop-only" : ""}`} aria-current={active ? "page" : undefined}>
         <Icon size={17} aria-hidden />
         <span>{label}</span>
         {badge?.value !== undefined ? <span className={badge.urgent ? "nav-count urgent" : "nav-count"}>{badge.value}</span> : null}

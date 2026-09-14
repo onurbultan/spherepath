@@ -64,7 +64,7 @@ const whenOptions = [
 ] as const;
 
 export default function CaptureView() {
-  const params = useLocalSearchParams<{ contactId?: string }>();
+  const params = useLocalSearchParams<{ contactId?: string; outcome?: string }>();
   const router = useRouter();
   const requestedContactId = typeof params.contactId === "string" ? params.contactId : "";
   const theme = useSpTheme();
@@ -76,7 +76,9 @@ export default function CaptureView() {
   const [contactId, setContactId] = useState(requestedContactId);
   const [channel, setChannel] = useState<ManualInteractionDraft["channel"]>("in_person");
   const [objective, setObjective] = useState<ManualInteractionDraft["objective"]>("get_acquainted");
-  const [outcome, setOutcome] = useState("");
+  // A line carried over from the day's page arrives as the conversation it was,
+  // so the advisor is completing a record rather than retyping one.
+  const [outcome, setOutcome] = useState(() => typeof params.outcome === "string" ? params.outcome : "");
   const [askOutcome, setAskOutcome] = useState<ManualInteractionDraft["askOutcome"]>("not_asked");
   const [nextActionContactId, setNextActionContactId] = useState("");
   const [nextActionOpportunityId, setNextActionOpportunityId] = useState("");

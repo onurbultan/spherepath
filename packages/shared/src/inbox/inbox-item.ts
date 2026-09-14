@@ -76,6 +76,13 @@ export interface InboxItem extends TenantOwned, Audited {
    */
   segments?: NoteSegmentReading[] | null;
   analysisStatus: "pending" | "ready" | "failed";
+  /**
+   * The Istanbul day this page belongs to, for notes written on the daily page.
+   * A notebook has one page per day that you keep adding to, so the day is the
+   * page's identity rather than the minute it happened to be started. Absent on
+   * a note captured anywhere else.
+   */
+  dayKey?: string | null;
   errorCode: string | null;
   archivedAt: Instant | null;
 }
@@ -84,6 +91,8 @@ export interface InboxItemRecord extends InboxItem { id: string }
 
 export const createInboxItemSchema = z.object({
   source: z.enum(inboxItemSources).default("typed"),
+  /** Set by the daily page, so the day's page can be reopened and added to. */
+  dayKey: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/u).nullable().default(null),
   text: z.string().trim().min(1, "Not boş bırakılamaz.").max(noteMaxLength, "Not en fazla 20.000 karakter olabilir."),
   linkedContactId: z.string().trim().min(1).max(160).nullable().default(null),
   requestedKind: z.enum(inboxItemKinds).nullable().default(null),

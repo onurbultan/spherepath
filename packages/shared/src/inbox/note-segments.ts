@@ -303,3 +303,15 @@ export function orderedSegmentDecisions(decisions: readonly NoteSegmentDecision[
   const rank = (decision: NoteSegmentDecision) => decision.action === "person" ? 0 : decision.action === "skip" ? 2 : 1;
   return [...decisions].sort((left, right) => rank(left) - rank(right));
 }
+
+/**
+ * A notebook has one page per day that you keep adding to, so the day is the
+ * page's identity rather than the minute it happened to be started. Returns
+ * the page already open for this day, if there is one.
+ */
+export function findDailyPage<T extends { dayKey?: string | null; archivedAt: number | null }>(
+  items: readonly T[],
+  dayKey: string,
+): T | null {
+  return items.find((item) => item.dayKey === dayKey && item.archivedAt === null) ?? null;
+}
