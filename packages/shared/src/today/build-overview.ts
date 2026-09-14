@@ -41,7 +41,9 @@ export interface TodayTask {
   title: string;
   reason: string;
   dueAt: number | null;
-  type: "record_interaction" | "next_action" | "complete_listing" | "return_call";
+  type: "record_interaction" | "next_action" | "complete_listing" | "return_call" | "process_note";
+  /** Set on a note task, so the plan can open the page it is about. */
+  inboxItemId?: string;
   opportunityId?: string;
   dealId?: string;
   priority: "overdue" | "bottleneck" | "relationship";
@@ -53,6 +55,44 @@ export interface TodayTask {
   opportunityStage?: Opportunity["stage"];
   /** Weighted urgency from rankDailyTaskCandidates; higher comes first. */
   priorityScore?: number;
+}
+
+/**
+ * A day's page with lines nobody has decided about. Everything else in the plan
+ * comes from a record that exists; this is the work that has not become one
+ * yet, and it is the only kind that silently disappears -- a page written on
+ * Tuesday and left alone is three people and a portfolio nobody will ever be
+ * reminded of.
+ */
+export interface TodayNotePage {
+  id: string;
+  /** The Istanbul day the page belongs to, or null for a note captured elsewhere. */
+  dayKey: string | null;
+  createdAt: number;
+  pendingCount: number;
+  linkedContactId: string | null;
+}
+
+/**
+ * Today's page is still being written, so it is not work yet -- it has its own
+ * banner on the note screen and does not need a line in the plan. A page from a
+ * day that has passed is the opposite: it is finished thinking that never
+ * became a record.
+ */
+export function notePageTasks(pages: readonly TodayNotePage[], now: number): TodayTask[] {
+  const today = istanbulDayKey(now);
+  return pages
+    .filter((page) => page.pendingCount > 0 && (page.dayKey ?? istanbulDayKey(page.createdAt)) < today)
+    .map((page) => ({
+      id: `process-note-${page.id}`,
+      inboxItemId: page.id,
+      contactId: page.linkedContactId ?? "",
+      title: `${page.dayKey ?? istanbulDayKey(page.createdAt)} notu`,
+      reason: `${page.pendingCount} satır karar bekliyor`,
+      dueAt: page.createdAt,
+      type: "process_note" as const,
+      priority: "overdue" as const,
+    }));
 }
 
 export interface TodayCall {
@@ -178,6 +218,7 @@ export function buildTodayOverview(
   interactions: readonly TodayInteraction[] = [],
   period: ReportingPeriod = "30d",
   calls: readonly TodayCall[] = [],
+  notePages: readonly TodayNotePage[] = [],
 ): TodayOverview {
   const windowStart = now - reportingPeriodDays[period] * 24 * 60 * 60 * 1_000;
   const periodLabel = reportingPeriodLabels[period];
@@ -308,7 +349,7 @@ export function buildTodayOverview(
       complianceBlocked: false,
     });
   };
-  const rankedTasks = [...missedCalls, ...dealTasks, ...opportunityTasks, ...unpricedListings, ...scheduled, ...uncontacted]
+  const rankedTasks = [...notePageTasks(notePages, now), ...missedCalls, ...dealTasks, ...opportunityTasks, ...unpricedListings, ...scheduled, ...uncontacted]
     .filter((task) => !completedTaskIds.has(task.id))
     .map((task) => {
       const contact = contactById.get(task.contactId);

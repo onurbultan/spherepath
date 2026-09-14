@@ -48,6 +48,7 @@ export default function TabsLayout() {
           }}
         />
         <Tabs.Screen name="capture" options={{ href: null }} />
+        <Tabs.Screen name="planner" options={{ href: null }} />
         <Tabs.Screen name="opportunities" options={{ title: "İşler", tabBarIcon: ({ color }) => <BriefcaseBusiness color={color} size={21} /> }} />
         <Tabs.Screen name="listings" options={{ title: "Portföy", tabBarIcon: ({ color }) => <House color={color} size={21} /> }} />
         {/* The bar holds five; the funnel and settings are reached from the

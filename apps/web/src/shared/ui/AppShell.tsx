@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
-import { BriefcaseBusiness, ContactRound, House, ListTodo, NotebookPen, Pyramid, SlidersHorizontal } from "lucide-react";
+import { BriefcaseBusiness, CalendarDays, ContactRound, House, ListTodo, NotebookPen, Pyramid, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -32,6 +32,7 @@ const navigation = [
   { label: "Günlük not", icon: NotebookPen, href: "/note", count: null },
   { label: "İşler", icon: BriefcaseBusiness, href: "/opportunities", count: "work" },
   { label: "Portföy", icon: House, href: "/listings", count: "listings" },
+  { label: "Takvim", icon: CalendarDays, href: "/planner", count: null },
   { label: "Huni", icon: Pyramid, href: "/funnel", count: null },
 ] as const;
 
@@ -96,7 +97,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     const active = currentPathname === href;
     const badge = count ? counts[count] : undefined;
     return (
-      <Link key={href} href={href} className={`${active ? "nav-item active" : "nav-item"}${href === "/note" ? " nav-capture" : ""}${href === "/funnel" ? " nav-desktop-only" : ""}`} aria-current={active ? "page" : undefined}>
+      <Link key={href} href={href} className={`${active ? "nav-item active" : "nav-item"}${href === "/note" ? " nav-capture" : ""}${href === "/funnel" || href === "/planner" ? " nav-desktop-only" : ""}`} aria-current={active ? "page" : undefined}>
         <Icon size={17} aria-hidden />
         <span>{label}</span>
         {badge?.value !== undefined ? <span className={badge.urgent ? "nav-count urgent" : "nav-count"}>{badge.value}</span> : null}

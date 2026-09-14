@@ -1275,6 +1275,35 @@ textarea.sp-control.is-compact { min-height: 80px; }
 /* The editor and the layer behind it must be one box with one type, or the
    tint drifts off the tag the moment a line wraps. Everything that affects
    glyph position is set once here and inherited by both. */
+/* A week reads across, so the days are columns that keep their width and let
+   their own contents scroll rather than stretching the row to the busiest day. */
+.planner-header { align-items: flex-start; }
+.planner-nav { align-items: center; gap: var(--space-xs); }
+.planner-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-sm); margin-top: var(--space-lg); }
+@media (max-width: 900px) { .planner-week { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .planner-week { grid-template-columns: 1fr; } }
+.planner-day { display: grid; align-content: start; gap: var(--space-sm); min-height: 8rem; padding: var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.planner-day.is-today { border-color: var(--deed); background: var(--deed-bg); }
+.planner-day.is-past { opacity: .72; }
+.planner-day-heading { display: flex; align-items: baseline; gap: var(--space-xs); }
+.planner-weekday { font-size: var(--text-caption); color: var(--text-secondary); letter-spacing: .06em; }
+.planner-day-heading strong { font-variant-numeric: tabular-nums; }
+.planner-day-count { margin-left: auto; font-size: var(--text-caption); color: var(--text-secondary); }
+.planner-day-empty { margin: 0; color: var(--text-tertiary); }
+.planner-day-tasks { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-xs); }
+.planner-task { display: flex; align-items: start; gap: var(--space-xs); }
+.planner-task > button { flex: 1; display: grid; grid-template-columns: auto 1fr; gap: var(--space-xs); align-items: baseline; text-align: start; padding: var(--space-xs); border: 0; border-left: 3px solid var(--line); border-radius: var(--radius-sm); background: transparent; color: inherit; font: inherit; cursor: pointer; min-width: 0; }
+.planner-task > button:hover, .planner-task > button:focus-visible { background: var(--sunk); }
+.planner-task.priority-overdue > button { border-left-color: var(--ask); }
+.planner-task.priority-bottleneck > button { border-left-color: var(--deed); }
+.planner-task time { font-size: var(--text-caption); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.planner-task span { display: grid; gap: 1px; min-width: 0; }
+.planner-task strong { font-size: var(--text-body-sm); overflow-wrap: anywhere; }
+.planner-task small { color: var(--text-secondary); overflow-wrap: anywhere; }
+.planner-task-open { align-self: center; color: var(--text-tertiary); text-decoration: none; }
+.planner-overdue { margin-top: var(--space-lg); }
+.planner-foot { display: flex; align-items: center; gap: var(--space-xs); flex-wrap: wrap; margin-top: var(--space-lg); font-size: var(--text-body-sm); color: var(--text-secondary); }
+
 .daily-note-editor { position: relative; }
 .daily-note-editor > * {
   min-height: min(58vh, 520px);

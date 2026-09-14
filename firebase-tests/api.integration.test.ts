@@ -726,6 +726,34 @@ describe("callable API vertical slice", () => {
     };
     expect(afterArchive.properties.map((entry) => entry.id)).toEqual([mandated.id]);
 
+    // A page left undecided from a day that has passed is the only work that
+    // silently disappears, so the plan has to ask about it.
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const oldPage = (await createInboxItem(envelope({
+      source: "typed", dayKey: yesterday, linkedContactId: null, requestedKind: null,
+      text: "Selin Yalçın ile tanıştım, Urla'da arsa arıyor\nOdin Otel görüş",
+    }, "request-old-page", "command-old-page"))).data as { item: { id: string } };
+    const readOldPage = async () => {
+      const listed = (await listWhatsAppInbox(envelope({}, `request-old-read-${Date.now()}`))).data as {
+        items: Array<{ id: string; analysisStatus: string; segments: unknown[] | null }>;
+      };
+      return listed.items.find((entry) => entry.id === oldPage.item.id)!;
+    };
+    let stale = await readOldPage();
+    for (let attempt = 0; attempt < 40 && stale.analysisStatus === "pending"; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      stale = await readOldPage();
+    }
+    expect(stale.segments).toHaveLength(2);
+
+    const planWithNote = (await getTodayOverview(envelope({ period: "30d" }, "request-today-note-page"))).data as {
+      overview: { allTasks: Array<{ id: string; type: string; reason: string; inboxItemId?: string }> };
+    };
+    const noteTask = planWithNote.overview.allTasks.find((task) => task.type === "process_note");
+    expect(noteTask).toBeDefined();
+    expect(noteTask!.inboxItemId).toBe(oldPage.item.id);
+    expect(noteTask!.reason).toBe("2 satır karar bekliyor");
+
     const contactsAfterPage = (await listContacts(envelope(undefined, "request-list-after-page"))).data as { contacts: Array<{ fullName: string | null }> };
     const namesAfterPage = contactsAfterPage.contacts.map((contact) => contact.fullName);
     expect(namesAfterPage).toContain("Ayşe Yılmaz");
