@@ -14,6 +14,7 @@ import {
   createInboxItemSchema,
   createInteraction,
   emptyVoiceInsights,
+  importKeepNotesSchema,
   inboxItemIdSchema,
   inboxKindAfterAnalysis,
   inboxOpportunityType,
@@ -297,13 +298,87 @@ export const createInboxItem = onCall(callableOptions, async (request): Promise<
   });
 });
 
+/**
+ * Brings a Google Keep archive across as it stands. An advisor who has kept
+ * five years of working memory on their phone is not going to retype it, and a
+ * system that cannot read it is a system they keep a second notebook beside.
+ *
+ * Nothing here is read by the model. Hundreds of pages arriving at once would
+ * be a bill nobody agreed to and a review queue nobody would open, so each note
+ * is stored whole and marked unread; opening one and asking for it sends that
+ * single page through the same reading every typed note gets.
+ *
+ * The note keeps the day it was written. An archive that all landed on the day
+ * it was imported would be a pile, not a history, and the plan would treat five
+ * year old notes as today's unprocessed work.
+ */
+export const importKeepNotes = onCall(callableOptions, async (request): Promise<{ importedCount: number; skippedCount: number }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<unknown>(request.data, { command: true });
+  const parsed = importKeepNotesSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Keep arşivi girdisi geçersiz.", parsed.error.flatten());
+  return observeApiRequest("importKeepNotes", envelope.requestId, async () => {
+    const db = getFirestore();
+    const commandRef = db.collection("commands").doc(envelope.commandId!);
+    const now = Date.now();
+    const nowStamp = Timestamp.fromMillis(now);
+
+    return db.runTransaction(async (transaction) => {
+      const receipt = await transaction.get(commandRef);
+      if (receipt.exists) {
+        const data = receipt.data()!;
+        if (!canManage(data, claims) || data.type !== "importKeepNotes") throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+        return { importedCount: (data.importedCount ?? 0) as number, skippedCount: (data.skippedCount ?? 0) as number };
+      }
+      let importedCount = 0;
+      let skippedCount = 0;
+      for (const note of parsed.data.notes) {
+        // The same masking every note goes through. An archive is not a way
+        // around the rule about what may be stored.
+        const classification = classifyInboxText(note.text, null);
+        if (!classification.safeText) { skippedCount += 1; continue; }
+        // Keep's clock is the advisor's phone; a note dated after this import
+        // ran would sort above today's work and is not believable anyway.
+        const createdAt = note.createdAt > 0 && note.createdAt <= now ? note.createdAt : now;
+        const createdStamp = Timestamp.fromMillis(createdAt);
+        const item: InboxItem = {
+          officeId: claims.officeId, ownerUid: claims.uid, source: "import",
+          safeText: classification.safeText, summary: classification.summary, kind: classification.kind,
+          status: note.archived ? "archived" : "applied",
+          confidence: classification.confidence, linkedContactId: null,
+          sourceEntityId: null,
+          appliedActions: [{ type: "classification", entityId: null, label: "Keep arşivinden aktarıldı", appliedAt: createdAt, undoneAt: null }],
+          pinned: note.pinned, needsLocation: false, dayKey: null,
+          errorCode: null, archivedAt: note.archived ? now : null, createdAt, updatedAt: createdAt,
+          analysis: null, segments: null, analysisStatus: "skipped",
+        };
+        transaction.create(db.collection("inboxItems").doc(), {
+          ...item,
+          createdAt: createdStamp, updatedAt: createdStamp,
+          archivedAt: note.archived ? createdStamp : null,
+          appliedActions: item.appliedActions.map((action) => ({ ...action, appliedAt: createdStamp, undoneAt: null })),
+        });
+        importedCount += 1;
+      }
+      transaction.create(commandRef, { officeId: claims.officeId, ownerUid: claims.uid, type: "importKeepNotes", importedCount, skippedCount, createdAt: nowStamp });
+      return { importedCount, skippedCount };
+    });
+  });
+});
+
 export const listInboxItems = onCall(callableOptions, async (request): Promise<{ items: InboxItemRecord[]; nextCursor: string | null }> => {
   const claims = requireSpherepathClaims(request);
   const envelope = readApiEnvelope<unknown>(request.data);
   const parsed = inboxPageQuerySchema.safeParse(envelope.data);
   if (!parsed.success) throw new HttpsError("invalid-argument", "Inbox query is invalid.", parsed.error.flatten());
   return observeApiRequest("listInboxItems", envelope.requestId, async () => {
-    const query: FirebaseFirestore.Query = getFirestore().collection("inboxItems").where("officeId", "==", claims.officeId);
+    // Ordered, because the cap below has to keep the newest thousand rather
+    // than whichever thousand Firestore returns first. An imported archive can
+    // be hundreds of notes on its own, and burying this week's under a Keep
+    // export from 2019 would be the import quietly costing the advisor their
+    // working list.
+    const query: FirebaseFirestore.Query = getFirestore().collection("inboxItems")
+      .where("officeId", "==", claims.officeId).orderBy("createdAt", "desc");
     let snapshot = await query.limit(1_000).get();
     if (snapshot.empty && parsed.data.cursor === null) {
       await backfillHistoricalInboxItems(claims);
@@ -359,6 +434,10 @@ export const updateInboxItem = onCall(callableOptions, async (request): Promise<
             ? {}
             : { analysisStatus: "pending" }),
         }),
+        // An imported archive arrives unread, so this is how one of its pages
+        // is asked for: it hands the note back to the same trigger every typed
+        // note goes through.
+        ...(parsed.data.analyze === undefined ? {} : { analysisStatus: "pending" }),
         ...(parsed.data.linkedContactId === undefined ? {} : { linkedContactId: parsed.data.linkedContactId }),
         ...(parsed.data.pinned === undefined ? {} : { pinned: parsed.data.pinned }),
         ...(parsed.data.archived === undefined ? {} : { status: parsed.data.archived ? "archived" : "applied", archivedAt: parsed.data.archived ? now : null }),

@@ -17,7 +17,7 @@ import { sensitiveTermExpression } from "../privacy/sensitive-terms.js";
  */
 export const noteMaxLength = 20_000;
 
-export const inboxItemSources = ["typed", "voice", "whatsapp"] as const;
+export const inboxItemSources = ["typed", "voice", "whatsapp", "import"] as const;
 export const inboxItemKinds = ["note", "person", "property", "requirement", "follow_up"] as const;
 export const inboxItemStatuses = ["queued", "processing", "needs_review", "applied", "failed", "archived"] as const;
 
@@ -75,7 +75,13 @@ export interface InboxItem extends TenantOwned, Audited {
    * review has one shape rather than two.
    */
   segments?: NoteSegmentReading[] | null;
-  analysisStatus: "pending" | "ready" | "failed";
+  /**
+   * "skipped" is an archive that was never read. An import of years of Keep
+   * notes must not send hundreds of pages to the model on arrival: that is a
+   * bill the advisor never agreed to and a review queue nobody would open.
+   * The note is stored whole and read only when it is asked for.
+   */
+  analysisStatus: "pending" | "ready" | "failed" | "skipped";
   /**
    * The Istanbul day this page belongs to, for notes written on the daily page.
    * A notebook has one page per day that you keep adding to, so the day is the
@@ -106,10 +112,12 @@ export const updateInboxItemSchema = z.object({
   linkedContactId: z.string().trim().min(1).max(160).nullable().optional(),
   pinned: z.boolean().optional(),
   archived: z.boolean().optional(),
+  /** Sends an imported note to be read now, which the archive import does not do on its own. */
+  analyze: z.literal(true).optional(),
   /** Answers the card's own "Nerede?" prompt; appended to the note and reclassified. */
   location: z.string().trim().min(2, "Konum en az 2 karakter olmalı.").max(120).optional(),
 }).strict().refine(
-  (value) => value.text !== undefined || value.kind !== undefined || value.linkedContactId !== undefined || value.pinned !== undefined || value.archived !== undefined || value.location !== undefined,
+  (value) => value.text !== undefined || value.kind !== undefined || value.linkedContactId !== undefined || value.pinned !== undefined || value.archived !== undefined || value.location !== undefined || value.analyze !== undefined,
   "En az bir değişiklik gerekli.",
 );
 export type UpdateInboxItemInput = z.infer<typeof updateInboxItemSchema>;

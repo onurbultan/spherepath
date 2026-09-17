@@ -3,6 +3,7 @@ import { MatchInterest } from "@/features/closing/components/MatchInterest";
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useSearchParams } from "next/navigation";
 import { Check, Copy, ExternalLink, Link as LinkIcon, Network, RefreshCw, Sparkles, X } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -10,14 +11,14 @@ import {
   moneyInputValue,
   parseMoneyInput,
   apiQueryKeys, buildMatchMessageFallback, currencyCodes, formatMatchScore, portfolioAuthorizationLabels, portfolioAuthorizationTypes, portfolioItemDraftSchema,
-  portfolioSourceLabels, propertyTypeLabels, propertyTypes, titleDeedTypeLabels, titleDeedTypes,
+  portfolioSourceLabels, portfolioVerification, portfolioVerificationHints, portfolioVerificationLabels, propertyTypeLabels, propertyTypes, titleDeedTypeLabels, titleDeedTypes,
   type CurrencyCode, type PortfolioAuthorizationType, type PortfolioItemDraft, type PortfolioSource,
-  type MatchMessageDraft, type PortfolioMatchRecord, type PropertyType, type TitleDeedType,
+  type MatchMessageDraft, type PortfolioItemRecord, type PortfolioMatchRecord, type PropertyType, type TitleDeedType,
 } from "@spherepath/shared";
 import { useSession } from "@/features/auth/resources/session";
 import { SpCard } from "@/shared/ui/SpCard";
 import { useSheetDismiss } from "@/shared/ui/useSheetDismiss";
-import { analyzePortfolioText, draftMatchMessage, listPortfolioItems, listPortfolioMatches, savePortfolioItem, withdrawPortfolioItem } from "../resources/portfolio";
+import { analyzePortfolioText, draftMatchMessage, listPortfolioItems, listPortfolioMatches, savePortfolioItem, setPortfolioVerification, withdrawPortfolioItem } from "../resources/portfolio";
 import { MoneyField } from "@/shared/ui/MaskedFields";
 import { SpInput, SpSelect, SpTextarea } from "@/shared/ui/SpField";
 
@@ -115,6 +116,37 @@ export function PortfolioMatchCard({ match, nearMiss = false }: { match: Portfol
   </SpCard>;
 }
 
+/**
+ * A line forwarded from a WhatsApp group is a rumour until somebody reaches the
+ * owner. The pool filed a rumour and a signed mandate under the same words, so
+ * a message somebody half-remembered matched a buyer as confidently as a
+ * portfolio the office actually holds. This says which one is on the card, and
+ * moves it one step when the advisor has made the call.
+ */
+function PoolVerification({ item, onDone }: { item: PortfolioItemRecord; onDone: () => Promise<void> }) {
+  const { session } = useSession();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const status = portfolioVerification(item);
+  const next = status === "hearsay" ? "owner_contacted" as const : status === "owner_contacted" ? "verified" as const : null;
+
+  async function advance() {
+    if (!session || !next) return;
+    setPending(true); setError(null);
+    try {
+      await setPortfolioVerification(session, { portfolioItemId: item.id, verificationStatus: next, note: "" });
+      await onDone();
+    } catch (nextError) { setError(messageFrom(nextError)); }
+    finally { setPending(false); }
+  }
+
+  return <div className={`pool-verification is-${status}`}>
+    <p><span className="verification-dot" aria-hidden />{portfolioVerificationLabels[status]} <small>{portfolioVerificationHints[status]}</small></p>
+    {next ? <button className="text-button" disabled={pending} onClick={() => void advance()} type="button">{pending ? "Kaydediliyor…" : `${portfolioVerificationLabels[next]} olarak işaretle`}</button> : null}
+    {error ? <p className="form-error">{error}</p> : null}
+  </div>;
+}
+
 export function OfficePortfolioSection({ openSignal = 0 }: { openSignal?: number }) {
   const { session } = useSession();
   const queryClient = useQueryClient();
@@ -134,10 +166,26 @@ export function OfficePortfolioSection({ openSignal = 0 }: { openSignal?: number
   const [contactFilter, setContactFilter] = useState("");
   const [showPool, setShowPool] = useState(false);
   const previousOpenSignal = useRef(openSignal);
-  const items = itemsQuery.data ?? [];
+  const searchParams = useSearchParams();
+  // The plan can send an advisor straight to one rumour it wants chased. The
+  // pool otherwise opens on matches with the list folded away, so arriving
+  // there from a task would show none of the card the task was about.
+  const requestedItemId = searchParams.get("portfolioItemId") ?? "";
+  const previousRequestedItemId = useRef("");
+  const pool = itemsQuery.data ?? [];
+  const items = requestedItemId
+    ? [...pool].sort((left, right) => Number(right.id === requestedItemId) - Number(left.id === requestedItemId))
+    : pool;
   const matches = (matchesQuery.data?.matches ?? []).filter((item) => !contactFilter || item.contactId === contactFilter); const nearMisses = (matchesQuery.data?.nearMisses ?? []).filter((item) => !contactFilter || item.contactId === contactFilter);
   const detectedMessageCount = source === "whatsapp_group" ? splitPortfolioMessages(text).length : text.trim().length >= 10 ? 1 : 0;
   const batchTotal = savedBatchCount + draftQueue.length + (draft ? 1 : 0);
+
+  useEffect(() => {
+    if (requestedItemId && requestedItemId !== previousRequestedItemId.current) {
+      previousRequestedItemId.current = requestedItemId;
+      setShowPool(true);
+    }
+  }, [requestedItemId]);
 
   useEffect(() => {
     if (openSignal !== previousOpenSignal.current) {
@@ -183,6 +231,14 @@ export function OfficePortfolioSection({ openSignal = 0 }: { openSignal?: number
     } catch (nextError) { setError(messageFrom(nextError)); setPending(null); }
   }
 
+  async function refreshPool() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: apiQueryKeys.portfolioItems }),
+      queryClient.invalidateQueries({ queryKey: apiQueryKeys.portfolioMatches }),
+      queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
+    ]);
+  }
+
   async function withdraw(portfolioItemId: string) {
     if (!session) return;
     setWithdrawingId(portfolioItemId); setError(null);
@@ -201,7 +257,7 @@ export function OfficePortfolioSection({ openSignal = 0 }: { openSignal?: number
     {!showPool && !matches.length && !nearMisses.length && !matchesQuery.isPending && !matchesQuery.error ? <SpCard className="office-pool-empty"><Network size={22} /><div><strong>Henüz uygun eşleşme yok</strong><p>{matchesQuery.data?.candidateCount === 0 ? "Eşleştirilecek portföy yok. Kendi portföyüne veya ofis havuzuna kayıt ekle." : matchesQuery.data?.demandCount === 0 ? "Kriterleri kaydedilmiş açık alıcı veya kiracı talebi yok." : "Kendi portföyün ve ofis havuzunda bu kriterlere uygun aday bulunamadı."}</p></div></SpCard> : null}
     {Math.max(matches.length, nearMisses.length, showPool ? items.length : 0) > visibleCount ? <button type="button" className="secondary-action" onClick={() => setVisibleCount((count) => count + 12)}>12 kayıt daha göster</button> : null}
     {error && !open ? <p className="form-error notice">{error}</p> : null}{itemsQuery.isPending || matchesQuery.isPending ? <div className="content-state compact"><RefreshCw className="spin" size={20} /> Ofis havuzu taranıyor…</div> : itemsQuery.error || matchesQuery.error ? <p className="form-error notice">{messageFrom(itemsQuery.error ?? matchesQuery.error)}</p> : items.length === 0 ? <SpCard className="office-pool-empty"><Network size={22} /><div><strong>Ortak havuz henüz boş</strong><p>Bir WhatsApp portföy mesajını yapıştırarak ilk kaydı oluşturabilirsiniz.</p></div></SpCard> : null}
-    {showPool && items.length ? <div className="portfolio-pool-grid">{items.slice(0, visibleCount).map((item) => <SpCard className="pool-item-card" key={item.id}><div className="opportunity-top"><span className="stage-badge">{portfolioSourceLabels[item.source]}</span><span>{portfolioAuthorizationLabels[item.authorizationType]}</span></div><h3>{item.headline}</h3><p>{item.location} · {propertyTypeLabels[item.propertyType]}</p><strong>{item.askingPrice ? money(item.askingPrice.amount, item.askingPrice.currency) : "Fiyat belirtilmedi"}</strong><small>{item.sourceAuthorName || item.sharedByName} tarafından paylaşıldı</small><div className="pool-card-actions">{item.listingUrl ? <a className="text-link" href={item.listingUrl} rel="noreferrer" target="_blank">İlanı aç <ExternalLink size={14} /></a> : null}{session && (session.role === "broker" || session.uid === item.ownerUid) ? <button className="text-button danger" disabled={withdrawingId === item.id} onClick={() => void withdraw(item.id)} type="button">{withdrawingId === item.id ? "Kaldırılıyor…" : "Havuzdan kaldır"}</button> : null}</div></SpCard>)}</div> : null}
+    {showPool && items.length ? <div className="portfolio-pool-grid">{items.slice(0, visibleCount).map((item) => <SpCard className={`pool-item-card${item.id === requestedItemId ? " is-requested" : ""}`} key={item.id}><div className="opportunity-top"><span className="stage-badge">{portfolioSourceLabels[item.source]}</span><span>{portfolioAuthorizationLabels[item.authorizationType]}</span></div><h3>{item.headline}</h3><p>{item.location} · {propertyTypeLabels[item.propertyType]}</p><strong>{item.askingPrice ? money(item.askingPrice.amount, item.askingPrice.currency) : "Fiyat belirtilmedi"}</strong><small>{item.sourceAuthorName || item.sharedByName} tarafından paylaşıldı</small><PoolVerification item={item} onDone={refreshPool} /><div className="pool-card-actions">{item.listingUrl ? <a className="text-link" href={item.listingUrl} rel="noreferrer" target="_blank">İlanı aç <ExternalLink size={14} /></a> : null}{session && (session.role === "broker" || session.uid === item.ownerUid) ? <button className="text-button danger" disabled={withdrawingId === item.id} onClick={() => void withdraw(item.id)} type="button">{withdrawingId === item.id ? "Kaldırılıyor…" : "Havuzdan kaldır"}</button> : null}</div></SpCard>)}</div> : null}
     {open ? <div className="sheet-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) close(); }}><section className="form-sheet wide-sheet" role="dialog" aria-modal="true"><div className="sheet-heading"><div><p className="eyebrow">ORTAK PORTFÖY</p><h2>{draft && batchTotal > 1 ? `Portföyleri incele · ${savedBatchCount + 1}/${batchTotal}` : "Mesajdan portföy oluştur"}</h2></div><button className="icon-action" aria-label="Kapat" onClick={close} type="button"><X size={20} /></button></div>
       {!draft ? <div className="form-stack"><label>Kaynak<SpSelect value={source} onChange={(event) => setSource(event.target.value as PortfolioSource)}><option value="whatsapp_group">WhatsApp grubu</option><option value="manual">Manuel not</option><option value="listing">İlan metni</option></SpSelect></label><label>{source === "whatsapp_group" ? "Portföy mesajları" : "Portföy notu"}<SpTextarea className="portfolio-note-input" placeholder="WhatsApp dışa aktarımından bir veya birden çok portföy mesajını yapıştırın. Mesajlar tarih/saat başlıklarına ya da boş satırlara göre ayrılır." value={text} onChange={(event) => setText(event.target.value)} /></label>{detectedMessageCount > 1 ? <p className="batch-detection"><Check size={15} /> {detectedMessageCount} ayrı portföy mesajı algılandı; her biri kaydetmeden önce tek tek onaylanacak.</p> : null}<p className="privacy-hint">En fazla 10 mesaj tek seferde işlenir. Orijinal mesaj saklanmaz; yalnız onayladığınız yapılandırılmış bilgiler ofis havuzuna eklenir.</p>{error ? <p className="form-error">{error}</p> : null}<button className="primary-action auth-submit" disabled={pending === "analyze" || detectedMessageCount === 0} onClick={() => void analyze()} type="button"><Sparkles size={18} /> {pending === "analyze" ? `${detectedMessageCount || 1} mesaj çözümleniyor…` : detectedMessageCount > 1 ? `${detectedMessageCount} mesajı çözümle` : "Mesajı çözümle"}</button></div>
       : <form className="form-stack" onSubmit={save}><div className="review-banner"><Sparkles size={18} /><div><strong>Yapay zekâ taslağı hazır</strong><p>Kaydetmeden önce bilgileri kontrol edip düzeltebilirsiniz.</p></div></div><label>Başlık<SpInput value={draft.headline} onChange={(event) => update("headline", event.target.value)} /></label><label>Güvenli özet<SpTextarea value={draft.summary} onChange={(event) => update("summary", event.target.value)} /></label><div className="form-row"><label>İşlem<SpSelect value={draft.transactionType} onChange={(event) => update("transactionType", event.target.value as "sell" | "let")}><option value="sell">Satılık</option><option value="let">Kiralık</option></SpSelect></label><label>Gayrimenkul türü<SpSelect value={draft.propertyType} onChange={(event) => update("propertyType", event.target.value as PropertyType)}>{propertyTypes.map((item) => <option key={item} value={item}>{propertyTypeLabels[item]}</option>)}</SpSelect></label></div><label>Konum<SpInput value={draft.location} onChange={(event) => update("location", event.target.value)} /></label><div className="form-row"><label>Fiyat<MoneyField currency={draft.askingPrice?.currency ?? "TRY"} value={moneyInputValue(draft.askingPrice?.amount)} onChange={(value) => { const amount = parseMoneyInput(value); update("askingPrice", amount === null ? null : { amount, currency: draft.askingPrice?.currency ?? "TRY" }); }} /></label><label>Para birimi<SpSelect value={draft.askingPrice?.currency ?? "TRY"} onChange={(event) => update("askingPrice", draft.askingPrice ? { ...draft.askingPrice, currency: event.target.value as CurrencyCode } : null)}>{currencyCodes.map((item) => <option key={item} value={item}>{item}</option>)}</SpSelect></label><label>Alan m²<SpInput min="0" type="number" value={(draft.propertyType === "land" ? draft.landAreaM2 : draft.areaM2) ?? ""} onChange={(event) => draft.propertyType === "land" ? update("landAreaM2", numberOrNull(event.target.value)) : update("areaM2", numberOrNull(event.target.value))} /></label></div>{draft.propertyType !== "land" ? <div className="form-row"><label>Oda<SpInput min="0" type="number" value={draft.bedroomCount ?? ""} onChange={(event) => update("bedroomCount", numberOrNull(event.target.value))} /></label><label>Salon<SpInput min="0" type="number" value={draft.livingRoomCount ?? ""} onChange={(event) => update("livingRoomCount", numberOrNull(event.target.value))} /></label></div> : null}<div className="form-row"><label>Yetki<SpSelect value={draft.authorizationType} onChange={(event) => update("authorizationType", event.target.value as PortfolioAuthorizationType)}>{portfolioAuthorizationTypes.map((item) => <option key={item} value={item}>{portfolioAuthorizationLabels[item]}</option>)}</SpSelect></label><label>Tapu<SpSelect value={draft.titleDeedType} onChange={(event) => update("titleDeedType", event.target.value as TitleDeedType)}>{titleDeedTypes.map((item) => <option key={item} value={item}>{titleDeedTypeLabels[item]}</option>)}</SpSelect></label><label>Yapılaşma<SpSelect value={draft.constructionAllowed === null ? "unknown" : String(draft.constructionAllowed)} onChange={(event) => update("constructionAllowed", event.target.value === "unknown" ? null : event.target.value === "true")}><option value="unknown">Belirsiz</option><option value="true">Uygun</option><option value="false">Uygun değil</option></SpSelect></label></div><label>Diğer özellikler<SpInput value={attributes} onChange={(event) => setAttributes(event.target.value)} placeholder="Virgülle ayırın" /></label><label>İlan bağlantısı <span className="optional">isteğe bağlı</span><div className="input-with-icon"><LinkIcon size={16} /><SpInput value={draft.listingUrl ?? ""} onChange={(event) => update("listingUrl", event.target.value.trim() || null)} /></div></label>{error ? <p className="form-error">{error}</p> : null}<div className="review-actions"><button className="secondary-action" disabled={pending !== null} onClick={() => setDraft(null)} type="button">Metne dön</button><button className="primary-action" disabled={pending === "save"} type="submit">{pending === "save" ? "Kaydediliyor…" : "Onayla ve havuza ekle"}</button></div></form>}

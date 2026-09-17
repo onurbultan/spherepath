@@ -15,6 +15,7 @@ import {
   portfolioItemCarriesMandate,
   portfolioItemCommandSchema,
   portfolioTextInputSchema,
+  portfolioVerificationUpdateSchema,
   unverifiedPortfolioOutreachMessage,
   scorePortfolioItem,
   type PortfolioItem,
@@ -34,7 +35,7 @@ const callableOptions = { region: "europe-west8" as const, cors: true, maxInstan
 const millis = (value: unknown): number => value instanceof Timestamp ? value.toMillis() : 0;
 
 function toRecord(id: string, data: DocumentData, sharedByName: string): PortfolioItemRecord {
-  return { ...(data as PortfolioItem), id, sharedByName, createdAt: millis(data.createdAt), updatedAt: millis(data.updatedAt) };
+  return { ...(data as PortfolioItem), id, sharedByName, createdAt: millis(data.createdAt), updatedAt: millis(data.updatedAt), verifiedAt: data.verifiedAt == null ? null : millis(data.verifiedAt) };
 }
 
 async function displayNamesFor(ownerUids: string[]): Promise<Map<string, string>> {
@@ -369,5 +370,56 @@ export const draftMatchMessage = onCall(callableOptions, async (request): Promis
       logger.warn("Match message draft fell back to the template", { error: error instanceof Error ? error.message : "unknown" });
       return fallback;
     }
+  });
+});
+
+/**
+ * Moves a pool row along its chase. A rumour that nobody ever follows up is not
+ * protected by being blocked from customers -- it is simply lost, and the pool
+ * fills with prices nobody checked. The note is kept with it so the next person
+ * to open the row learns what was already found out.
+ */
+export const updatePortfolioVerification = onCall(callableOptions, async (request): Promise<{ portfolioItem: PortfolioItemRecord }> => {
+  const claims = requireSpherepathClaims(request);
+  const envelope = readApiEnvelope<unknown>(request.data, { command: true });
+  const parsed = portfolioVerificationUpdateSchema.safeParse(envelope.data);
+  if (!parsed.success) throw new HttpsError("invalid-argument", "Doğrulama bilgisi geçersiz.", parsed.error.flatten());
+
+  return observeApiRequest("updatePortfolioVerification", envelope.requestId, async () => {
+    const db = getFirestore();
+    const itemRef = db.collection("portfolioItems").doc(parsed.data.portfolioItemId);
+    const commandRef = db.collection("commands").doc(envelope.commandId!);
+    await db.runTransaction(async (transaction) => {
+      const [receipt, snapshot] = await Promise.all([transaction.get(commandRef), transaction.get(itemRef)]);
+      if (receipt.exists) {
+        const data = receipt.data()!;
+        if (data.officeId !== claims.officeId || data.ownerUid !== claims.uid || data.type !== "updatePortfolioVerification") {
+          throw new HttpsError("permission-denied", "Command receipt is outside your workspace.");
+        }
+        return;
+      }
+      const data = snapshot.data();
+      if (!snapshot.exists || !data || data.officeId !== claims.officeId) throw new HttpsError("not-found", "Portföy bulunamadı.");
+      const now = Timestamp.now();
+      transaction.update(itemRef, {
+        verificationStatus: parsed.data.verificationStatus,
+        // Only the last step is a verification. Stamping the moment an advisor
+        // merely reached the owner would date the row as checked when nobody
+        // has confirmed anything about it yet.
+        verifiedAt: parsed.data.verificationStatus === "verified" ? now : null,
+        // What was learned belongs with the row, not in a separate log nobody opens.
+        attributes: parsed.data.note
+          ? [...((data.attributes ?? []) as string[]).slice(0, 19), parsed.data.note.slice(0, 120)]
+          : (data.attributes ?? []),
+        updatedAt: now,
+      });
+      transaction.create(commandRef, {
+        officeId: claims.officeId, ownerUid: claims.uid, type: "updatePortfolioVerification",
+        portfolioItemId: itemRef.id, verificationStatus: parsed.data.verificationStatus, createdAt: now,
+      });
+    });
+    const saved = await itemRef.get();
+    const names = await displayNamesFor([saved.data()!.ownerUid as string]);
+    return { portfolioItem: toRecord(saved.id, saved.data()!, names.get(saved.data()!.ownerUid as string) ?? "Ofis danışmanı") };
   });
 });

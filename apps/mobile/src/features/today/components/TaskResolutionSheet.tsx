@@ -41,6 +41,11 @@ export function taskRecordRoute(task: TodayTask): string {
   // Finishing a listing means entering its price, which happens on the
   // portfolio page -- the capture form would ask for a conversation instead.
   // Returning a call starts on the contact, where the dial button is.
+  // These two carry no contact at all: one is a page of a day, the other a
+  // rumour in the pool. Falling through to the capture form sent both to
+  // "?contactId=" with nothing after it.
+  if (task.inboxItemId) return `/(tabs)/note?inboxItemId=${encodeURIComponent(task.inboxItemId)}`;
+  if (task.portfolioItemId) return "/(tabs)/listings";
   if (task.type === "return_call") return `/contact/${encodeURIComponent(task.contactId)}`;
   if (task.type === "complete_listing") return "/(tabs)/listings";
   if (task.dealId) return "/(tabs)/listings";

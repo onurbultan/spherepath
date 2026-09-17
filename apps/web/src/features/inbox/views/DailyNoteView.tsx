@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCheck, ListChecks, Mic, NotebookPen, RefreshCw } from "lucide-react";
 import {
@@ -39,6 +40,11 @@ export function DailyNoteView() {
   const queryClient = useQueryClient();
   const [openedAt] = useState(() => Date.now());
   const [dayKey] = useState(() => istanbulDayKey(Date.now()));
+  // The plan can send the advisor back to a page from a day that has passed.
+  // Without this the link opened today's empty page, which says nothing about
+  // the note the plan was asking them to finish.
+  const searchParams = useSearchParams();
+  const requestedItemId = searchParams.get("inboxItemId") ?? "";
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(false);
@@ -55,7 +61,9 @@ export function DailyNoteView() {
   });
   const contacts = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts, enabled: Boolean(session) });
 
-  const page = findDailyPage(inbox.data ?? [], dayKey);
+  const page = requestedItemId
+    ? (inbox.data ?? []).find((item) => item.id === requestedItemId) ?? null
+    : findDailyPage(inbox.data ?? [], dayKey);
   const waiting = (page?.segments ?? []).filter((segment) => segment.appliedAt === null);
 
   // The page's own text is the starting value. The moment the advisor types,
@@ -123,7 +131,8 @@ export function DailyNoteView() {
     finally { setApplyPending(false); }
   }
 
-  const dateLabel = new Intl.DateTimeFormat("tr-TR", { dateStyle: "full" }).format(openedAt);
+  const dateLabel = new Intl.DateTimeFormat("tr-TR", { dateStyle: "full" }).format(requestedItemId && page ? page.createdAt : openedAt);
+  const isPastPage = Boolean(requestedItemId && page && page.createdAt < openedAt && istanbulDayKey(page.createdAt) !== dayKey);
   const dirty = text.trim() !== (page?.safeText ?? "");
   const reading = page?.analysisStatus === "pending";
 
@@ -131,11 +140,14 @@ export function DailyNoteView() {
     <AppShell>
       <header className="page-header daily-note-header">
         <div>
-          <p className="eyebrow">GÜNLÜK NOT</p>
+          <p className="eyebrow">{isPastPage ? "GEÇMİŞ SAYFA" : "GÜNLÜK NOT"}</p>
           <h1>{dateLabel}</h1>
-          <p className="context-sentence">Aklındakini olduğu gibi yaz. Satırlara ayırmayı ve neye dönüşeceğini sonra birlikte kararlaştırırız.</p>
+          <p className="context-sentence">{isPastPage
+            ? "Bu sayfa geçmiş bir günün notu. Kalan satırları karara bağlayabilir, sayfaya ekleme yapabilirsin."
+            : "Aklındakini olduğu gibi yaz. Satırlara ayırmayı ve neye dönüşeceğini sonra birlikte kararlaştırırız."}</p>
         </div>
         <div className="header-actions">
+          {isPastPage ? <Link className="secondary-action inline-link" href="/note"><NotebookPen size={17} /> Bugünün sayfası</Link> : null}
           <Link className="secondary-action inline-link" href="/capture"><Mic size={17} /> Sesli anlat</Link>
         </div>
       </header>

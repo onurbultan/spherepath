@@ -1,6 +1,6 @@
 import {
-  createCommandId,
   apiQueryKeys,
+  createCommandId,
   type MatchMessageDraft,
   type MatchMessageRequest,
   type PortfolioItemDraft,
@@ -8,6 +8,7 @@ import {
   type PortfolioMatchNotificationRecord,
   type PortfolioMatchRecord,
   type PortfolioSource,
+  type PortfolioVerificationUpdate,
 } from "@spherepath/shared";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
 import { apiClient } from "@/shared/api/client";
@@ -65,4 +66,10 @@ export async function withdrawPortfolioItem(session: WorkspaceSession, portfolio
 
 export async function draftMatchMessage(request: MatchMessageRequest): Promise<MatchMessageDraft> {
   return apiClient.query<MatchMessageRequest, MatchMessageDraft>("draftMatchMessage", request);
+}
+
+export async function setPortfolioVerification(session: WorkspaceSession, input: PortfolioVerificationUpdate): Promise<PortfolioItemRecord> {
+  return (await apiClient.command<PortfolioVerificationUpdate, { portfolioItem: PortfolioItemRecord }>(
+    "updatePortfolioVerification", input, createCommandId(session.uid),
+  )).portfolioItem;
 }

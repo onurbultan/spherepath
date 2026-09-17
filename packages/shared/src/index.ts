@@ -17,6 +17,7 @@ export * from "./interactions/manual-interaction.js";
 export * from "./inbox/inbox-item.js";
 export * from "./inbox/note-segments.js";
 export * from "./inbox/note-mentions.js";
+export * from "./inbox/keep-archive.js";
 export * from "./contributions/contribution.js";
 export * from "./funnel/build-funnel.js";
 export * from "./funnel/funnel-metrics.js";

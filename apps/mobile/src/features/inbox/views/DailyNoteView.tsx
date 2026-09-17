@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCheck, ListChecks, Mic, NotebookPen } from "lucide-react-native";
 import {
@@ -43,6 +43,10 @@ export function DailyNoteView() {
   const queryClient = useQueryClient();
   const [openedAt] = useState(() => Date.now());
   const [dayKey] = useState(() => istanbulDayKey(Date.now()));
+  // The plan can send the advisor back to a page from a day that has passed.
+  // Without this the link opened today's empty page, which says nothing about
+  // the note the plan was asking them to finish.
+  const { inboxItemId: requestedItemId = "" } = useLocalSearchParams<{ inboxItemId?: string }>();
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(false);
@@ -59,7 +63,9 @@ export function DailyNoteView() {
   });
   const contacts = useQuery({ queryKey: apiQueryKeys.contacts, queryFn: listContacts, enabled: Boolean(session) });
 
-  const page = findDailyPage(inbox.data ?? [], dayKey);
+  const page = requestedItemId
+    ? (inbox.data ?? []).find((item) => item.id === requestedItemId) ?? null
+    : findDailyPage(inbox.data ?? [], dayKey);
   const waiting = (page?.segments ?? []).filter((segment) => segment.appliedAt === null);
 
   // The page's own text is the starting value. The moment the advisor types,
@@ -118,7 +124,8 @@ export function DailyNoteView() {
     finally { setApplyPending(false); }
   }
 
-  const dateLabel = new Intl.DateTimeFormat("tr-TR", { dateStyle: "full" }).format(openedAt);
+  const dateLabel = new Intl.DateTimeFormat("tr-TR", { dateStyle: "full" }).format(requestedItemId && page ? page.createdAt : openedAt);
+  const isPastPage = Boolean(requestedItemId && page && page.createdAt < openedAt && istanbulDayKey(page.createdAt) !== dayKey);
   const dirty = text.trim() !== (page?.safeText ?? "");
 
   return (
@@ -126,15 +133,22 @@ export function DailyNoteView() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <View style={styles.flex}>
-            <SpText variant="caption" color="secondary">GÜNLÜK NOT</SpText>
+            <SpText variant="caption" color="secondary">{isPastPage ? "GEÇMİŞ SAYFA" : "GÜNLÜK NOT"}</SpText>
             <SpText variant="title">{dateLabel}</SpText>
           </View>
+          {isPastPage ? (
+            <Pressable accessibilityLabel="Bugünün sayfası" accessibilityRole="button" hitSlop={8} onPress={() => router.replace("/note" as never)}>
+              <NotebookPen color={theme.deed} size={20} />
+            </Pressable>
+          ) : null}
           <Pressable accessibilityLabel="Sesli anlat" accessibilityRole="button" hitSlop={8} onPress={() => router.push("/(tabs)/capture")}>
             <Mic color={theme.deed} size={20} />
           </Pressable>
         </View>
         <SpText variant="bodySmall" color="secondary">
-          Aklındakini olduğu gibi yaz. Satırlara ayırmayı ve neye dönüşeceğini sonra birlikte kararlaştırırız.
+          {isPastPage
+            ? "Bu sayfa geçmiş bir günün notu. Kalan satırları karara bağlayabilir, sayfaya ekleme yapabilirsin."
+            : "Aklındakini olduğu gibi yaz. Satırlara ayırmayı ve neye dönüşeceğini sonra birlikte kararlaştırırız."}
         </SpText>
 
         <SpTextarea

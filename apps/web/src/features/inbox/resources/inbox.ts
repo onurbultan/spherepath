@@ -1,4 +1,4 @@
-import { ApiError, classifyInboxText, createCommandId, type AnalyzeInboxItemInput, type ApplyNoteSegmentsInput, type CreateInboxItemInput, type InboxItemAnalysis, type InboxItemRecord, type ProcessInboxItemInput, type UpdateInboxItemInput } from "@spherepath/shared";
+import { ApiError, classifyInboxText, createCommandId, type AnalyzeInboxItemInput, type ApplyNoteSegmentsInput, type CreateInboxItemInput, type ImportKeepNotesInput, type InboxItemAnalysis, type InboxItemRecord, type ProcessInboxItemInput, type UpdateInboxItemInput } from "@spherepath/shared";
 import type { WorkspaceSession } from "@/features/auth/resources/session";
 import { apiClient } from "@/shared/api/client";
 
@@ -59,5 +59,12 @@ export async function retryInboxItem(session: WorkspaceSession, inboxItemId: str
 export async function applyNotePage(session: WorkspaceSession, input: ApplyNoteSegmentsInput): Promise<{ item: InboxItemRecord; createdCount: number }> {
   return apiClient.command<ApplyNoteSegmentsInput, { item: InboxItemRecord; createdCount: number }>(
     "applyNoteSegments", input, createCommandId(session.uid),
+  );
+}
+
+/** One batch of an archive. The caller sends them in order so a failure stops there. */
+export async function importKeepNotes(session: WorkspaceSession, input: ImportKeepNotesInput): Promise<{ importedCount: number; skippedCount: number }> {
+  return apiClient.command<ImportKeepNotesInput, { importedCount: number; skippedCount: number }>(
+    "importKeepNotes", input, createCommandId(session.uid),
   );
 }

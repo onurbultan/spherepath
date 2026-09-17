@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createHmac } from "node:crypto";
+import { buildPlannerWeek, istanbulDayKey, istanbulWeekStart, portfolioVerification } from "../packages/shared/src/index.js";
 import { initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
 import { deleteApp, initializeApp } from "firebase/app";
 import { connectAuthEmulator, createUserWithEmailAndPassword, getAuth } from "firebase/auth";
@@ -442,6 +443,36 @@ describe("callable API vertical slice", () => {
     const listPortfolioMatches = httpsCallable(functions, "listPortfolioMatches");
     const portfolioMatches = (await listPortfolioMatches(envelope(undefined, "request-portfolio-matches"))).data as { matches: Array<{ contactId: string; portfolioItem: { id: string }; eligible: boolean; score: number }> };
     expect(portfolioMatches.matches).toEqual([expect.objectContaining({ contactId: reassignedContact.contact.id, eligible: true, score: 100, portfolioItem: expect.objectContaining({ id: portfolio.portfolioItem.id }) })]);
+    // A line forwarded from a WhatsApp group with no mandate behind it is a
+    // rumour. It used to sit in the pool looking exactly like a signed
+    // portfolio, and the plan never asked anybody to chase it.
+    const updatePortfolioVerification = httpsCallable(functions, "updatePortfolioVerification");
+    expect(portfolioVerification(listedPortfolio.portfolioItems[0] as { authorizationType: string })).toBe("hearsay");
+
+    const chaseCommand = envelope({
+      portfolioItemId: portfolio.portfolioItem.id, verificationStatus: "owner_contacted",
+      note: "Sahibi aradı, yetkiyi düşünüyor",
+    }, "request-portfolio-verify", "command-portfolio-verify");
+    const chased = (await updatePortfolioVerification(chaseCommand)).data as {
+      portfolioItem: { verificationStatus: string; verifiedAt: number | null; attributes: string[] };
+    };
+    expect(chased.portfolioItem.verificationStatus).toBe("owner_contacted");
+    expect(chased.portfolioItem.verifiedAt).toBeNull();
+    expect(chased.portfolioItem.attributes.some((entry) => entry.includes("Sahibi aradı"))).toBe(true);
+
+    const chaseReplay = (await updatePortfolioVerification({ ...chaseCommand, requestId: `request-portfolio-verify-replay-${runId}` })).data as {
+      portfolioItem: { verificationStatus: string; attributes: string[] };
+    };
+    expect(chaseReplay.portfolioItem.attributes).toEqual(chased.portfolioItem.attributes);
+
+    const verified = (await updatePortfolioVerification(envelope({
+      portfolioItemId: portfolio.portfolioItem.id, verificationStatus: "verified", note: "",
+    }, "request-portfolio-verified", "command-portfolio-verified"))).data as {
+      portfolioItem: { verificationStatus: string; verifiedAt: number | null };
+    };
+    expect(verified.portfolioItem.verificationStatus).toBe("verified");
+    expect(verified.portfolioItem.verifiedAt).toBeGreaterThan(0);
+
     const withdrawPortfolioItem = httpsCallable(functions, "withdrawPortfolioItem");
     await withdrawPortfolioItem(envelope({ portfolioItemId: portfolio.portfolioItem.id }, "request-portfolio-withdraw", "command-portfolio-withdraw"));
     const portfolioAfterWithdrawal = (await listPortfolioItems(envelope(undefined, "request-portfolio-list-after-withdrawal"))).data as { portfolioItems: unknown[] };
@@ -726,6 +757,53 @@ describe("callable API vertical slice", () => {
     };
     expect(afterArchive.properties.map((entry) => entry.id)).toEqual([mandated.id]);
 
+    // Years of an advisor's working memory usually already exist somewhere
+    // else. The archive arrives whole and unread: nothing is sent to the model
+    // on arrival, and each note keeps the day it was written.
+    const importKeepNotes = httpsCallable(functions, "importKeepNotes");
+    const keepCommand = envelope({
+      notes: [
+        { text: "Keep Kişisi ile tanıştım, Urla'da arsa arıyor", createdAt: Date.now() - 400 * 86_400_000, pinned: true, archived: false },
+        { text: "Eski liste\n[x] Tapu fotokopisi\n[ ] Kroki iste", createdAt: Date.now() - 200 * 86_400_000, pinned: false, archived: true },
+      ],
+    }, "request-keep-import", "command-keep-import");
+    const keepImported = (await importKeepNotes(keepCommand)).data as { importedCount: number; skippedCount: number };
+    expect(keepImported).toEqual({ importedCount: 2, skippedCount: 0 });
+
+    const keepReplay = (await importKeepNotes({ ...keepCommand, requestId: `request-keep-import-replay-${runId}` })).data as { importedCount: number };
+    expect(keepReplay.importedCount).toBe(2);
+
+    const afterKeep = (await listWhatsAppInbox(envelope({}, "request-keep-list"))).data as {
+      items: Array<{ id: string; source: string; analysisStatus: string; safeText: string; status: string; pinned: boolean; createdAt: number }>;
+    };
+    const keepNotes = afterKeep.items.filter((entry) => entry.source === "import");
+    // The replay must not have written the archive a second time.
+    expect(keepNotes).toHaveLength(2);
+    // Unread on purpose: an archive of hundreds of pages is not worth a model
+    // bill until somebody asks for one of them.
+    expect(keepNotes.every((entry) => entry.analysisStatus === "skipped")).toBe(true);
+    const oldest = keepNotes.find((entry) => entry.safeText.startsWith("Keep Kişisi"))!;
+    expect(oldest.pinned).toBe(true);
+    // An archive that all landed on today would be a pile, not a history.
+    expect(Date.now() - oldest.createdAt).toBeGreaterThan(300 * 86_400_000);
+    expect(keepNotes.find((entry) => entry.safeText.startsWith("Eski liste"))!.status).toBe("archived");
+
+    // Asking for one page sends that page, and only that page, to be read.
+    await updateInboxItem(envelope({ inboxItemId: oldest.id, analyze: true }, "request-keep-analyze", "command-keep-analyze"));
+    const readKeepNote = async () => {
+      const listed = (await listWhatsAppInbox(envelope({}, `request-keep-read-${Date.now()}`))).data as {
+        items: Array<{ id: string; analysisStatus: string; segments: unknown[] | null }>;
+      };
+      return listed.items.find((entry) => entry.id === oldest.id)!;
+    };
+    let keepRead = await readKeepNote();
+    for (let attempt = 0; attempt < 40 && keepRead.analysisStatus !== "ready"; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      keepRead = await readKeepNote();
+    }
+    expect(keepRead.analysisStatus).toBe("ready");
+    expect(keepRead.segments).not.toBeNull();
+
     // A page left undecided from a day that has passed is the only work that
     // silently disappears, so the plan has to ask about it.
     const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
@@ -749,10 +827,35 @@ describe("callable API vertical slice", () => {
     const planWithNote = (await getTodayOverview(envelope({ period: "30d" }, "request-today-note-page"))).data as {
       overview: { allTasks: Array<{ id: string; type: string; reason: string; inboxItemId?: string }> };
     };
-    const noteTask = planWithNote.overview.allTasks.find((task) => task.type === "process_note");
+    // The imported Keep note that was sent to be read is also a page from a day
+    // that has passed, so it is work too -- which is the point of asking for it.
+    const noteTask = planWithNote.overview.allTasks.find((task) => task.inboxItemId === oldPage.item.id);
     expect(noteTask).toBeDefined();
-    expect(noteTask!.inboxItemId).toBe(oldPage.item.id);
+    expect(noteTask!.type).toBe("process_note");
     expect(noteTask!.reason).toBe("2 satır karar bekliyor");
+    expect(planWithNote.overview.allTasks.some((task) => task.inboxItemId === oldest.id)).toBe(true);
+
+    // Rescheduling to tomorrow moved the work out of every list the plan shows,
+    // and the calendar read one of those lists, so the work simply vanished.
+    const tomorrowNoon = new Date(Date.now() + 86_400_000);
+    tomorrowNoon.setHours(12, 0, 0, 0);
+    await completeDailyTask(envelope({
+      taskId: `next-action-${created.contact.id}`, status: "rescheduled",
+      outcomeNote: null, skippedReason: null,
+      rescheduledAt: tomorrowNoon.getTime(), rescheduledActionType: "call",
+    }, "request-reschedule-tomorrow", "command-reschedule-tomorrow"));
+
+    const planAfterReschedule = (await getTodayOverview(envelope({ period: "30d" }, "request-today-after-reschedule"))).data as {
+      overview: { scheduledTasks: Array<{ contactId: string; dueAt: number | null }> };
+    };
+    const moved = planAfterReschedule.overview.scheduledTasks.find((task) => task.dueAt === tomorrowNoon.getTime());
+    expect(moved).toBeDefined();
+    // Today's reschedule stamps today's task for the rest of the day. The work
+    // has moved, not finished, so it has to survive that stamp and land on the
+    // day it was moved to.
+    const movedWeek = buildPlannerWeek(planAfterReschedule.overview.scheduledTasks, istanbulWeekStart(Date.now()), Date.now());
+    const movedDay = movedWeek.days.find((day) => day.dayKey === istanbulDayKey(tomorrowNoon.getTime()));
+    expect(movedDay?.tasks.map((task) => task.contactId)).toContain(created.contact.id);
 
     const contactsAfterPage = (await listContacts(envelope(undefined, "request-list-after-page"))).data as { contacts: Array<{ fullName: string | null }> };
     const namesAfterPage = contactsAfterPage.contacts.map((contact) => contact.fullName);

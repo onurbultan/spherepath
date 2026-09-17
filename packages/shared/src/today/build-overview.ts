@@ -41,9 +41,11 @@ export interface TodayTask {
   title: string;
   reason: string;
   dueAt: number | null;
-  type: "record_interaction" | "next_action" | "complete_listing" | "return_call" | "process_note";
+  type: "record_interaction" | "next_action" | "complete_listing" | "return_call" | "process_note" | "chase_portfolio";
   /** Set on a note task, so the plan can open the page it is about. */
   inboxItemId?: string;
+  /** Set on a chase task, so the plan can open the pool row it is about. */
+  portfolioItemId?: string;
   opportunityId?: string;
   dealId?: string;
   priority: "overdue" | "bottleneck" | "relationship";
@@ -95,6 +97,52 @@ export function notePageTasks(pages: readonly TodayNotePage[], now: number): Tod
     }));
 }
 
+/**
+ * A pool row somebody put down as a rumour. The office pool quietly fills with
+ * these: a price nobody has checked, on a property nobody has an owner for.
+ * Blocking one from reaching a customer protects the advisor's name; it does
+ * not turn the rumour into anything. Chasing it does.
+ */
+export interface TodayPortfolioLead {
+  id: string;
+  headline: string;
+  location: string;
+  createdAt: number;
+  verificationStatus: "hearsay" | "owner_contacted" | "verified";
+}
+
+/** How long a rumour may sit before the plan asks about it. */
+export const portfolioChaseAfterDays = 2;
+
+/**
+ * A rumour written this morning is not yet neglected -- the advisor heard it an
+ * hour ago and may already be on it. One that has sat for days is the thing
+ * this is for, and it is asked about once, not every day forever: after two
+ * weeks nobody is going to chase it and a plan that keeps saying so is a plan
+ * the advisor stops reading.
+ */
+export function portfolioChaseTasks(leads: readonly TodayPortfolioLead[], now: number): TodayTask[] {
+  const dayMs = 86_400_000;
+  return leads
+    .filter((lead) => lead.verificationStatus !== "verified")
+    .filter((lead) => {
+      const ageDays = (now - lead.createdAt) / dayMs;
+      return ageDays >= portfolioChaseAfterDays && ageDays <= 14;
+    })
+    .map((lead) => ({
+      id: `chase-portfolio-${lead.id}`,
+      portfolioItemId: lead.id,
+      contactId: "",
+      title: lead.headline,
+      reason: lead.verificationStatus === "hearsay"
+        ? `${lead.location} · duyum, sahibine ulaşılmadı`
+        : `${lead.location} · sahibiyle konuşuldu, yetki netleşmedi`,
+      dueAt: lead.createdAt + portfolioChaseAfterDays * dayMs,
+      type: "chase_portfolio" as const,
+      priority: "bottleneck" as const,
+    }));
+}
+
 export interface TodayCall {
   id: string;
   contactId: string | null;
@@ -134,6 +182,16 @@ export interface TodayOverview {
   tasks: TodayTask[];
   /** Ranked work beyond the stable daily five, for advisors who want the full queue. */
   allTasks: TodayTask[];
+  /**
+   * Every piece of dated work, whenever it falls and one entry per piece.
+   *
+   * The plan's lists are deliberately narrower than this: they stop at today,
+   * because a plan is what to do now, and they keep one line per person,
+   * because a working list should not ask an advisor to choose between two
+   * rows about the same person. A calendar is the opposite object -- it has to
+   * show next Thursday, and it has to show both of Thursday's appointments.
+   */
+  scheduledTasks: TodayTask[];
   overdueTasks: TodayTask[];
   todayTasks: TodayTask[];
   upcomingTasks: TodayTask[];
@@ -194,15 +252,20 @@ export function todayTaskBucket(task: Pick<TodayTask, "dueAt">, now: number): To
 export function mergeContactTasks(tasks: readonly TodayTask[]): TodayTask[] {
   const merged = new Map<string, TodayTask>();
   for (const task of tasks) {
-    const current = merged.get(task.contactId);
+    // One person should not take three lines of the plan. A page of notes and
+    // an unchased rumour are not people: they carry no contact at all, and
+    // keying them by an empty string collapsed every one of them into a single
+    // line, so a second undecided page simply disappeared from the plan.
+    const key = task.contactId || task.id;
+    const current = merged.get(key);
     if (!current) {
-      merged.set(task.contactId, task);
+      merged.set(key, task);
       continue;
     }
     const currentScore = current.priorityScore ?? 0;
     const nextScore = task.priorityScore ?? 0;
     if (nextScore > currentScore || (nextScore === currentScore && (task.dueAt ?? Infinity) < (current.dueAt ?? Infinity))) {
-      merged.set(task.contactId, task);
+      merged.set(key, task);
     }
   }
   return [...merged.values()];
@@ -219,6 +282,7 @@ export function buildTodayOverview(
   period: ReportingPeriod = "30d",
   calls: readonly TodayCall[] = [],
   notePages: readonly TodayNotePage[] = [],
+  portfolioLeads: readonly TodayPortfolioLead[] = [],
 ): TodayOverview {
   const windowStart = now - reportingPeriodDays[period] * 24 * 60 * 60 * 1_000;
   const periodLabel = reportingPeriodLabels[period];
@@ -349,7 +413,7 @@ export function buildTodayOverview(
       complianceBlocked: false,
     });
   };
-  const rankedTasks = [...notePageTasks(notePages, now), ...missedCalls, ...dealTasks, ...opportunityTasks, ...unpricedListings, ...scheduled, ...uncontacted]
+  const rankedTasks = [...notePageTasks(notePages, now), ...portfolioChaseTasks(portfolioLeads, now), ...missedCalls, ...dealTasks, ...opportunityTasks, ...unpricedListings, ...scheduled, ...uncontacted]
     .filter((task) => !completedTaskIds.has(task.id))
     .map((task) => {
       const contact = contactById.get(task.contactId);
@@ -395,5 +459,5 @@ export function buildTodayOverview(
             ? { title: "Talebi portföye dönüştür", description: `${stages.lead} açık talep var; aktif portföy henüz yok.`, evidence: `${stages.lead} açık talep / 0 aktif portföy`, action: "En eski kaydı değerleme veya yetki adımına ilerlet.", sampleSufficient, targetOpportunityId: activeOpportunities.filter((item) => item.stage !== "won").sort((a, b) => (a.createdAt ?? now) - (b.createdAt ?? now))[0]?.id ?? null, targetContactId: null }
             : { title: "Aktif portföyleri sonuca taşı", description: `${stages.listing} aktif portföy ve ${stages.closing} tamamlanan işlem var.`, evidence: `${stages.listing} aktif portföy / ${stages.closing} kapanan işlem`, action: "En uygun alıcı için sunum veya teklif takibini tamamla.", sampleSufficient, targetOpportunityId: null, targetContactId: null };
 
-  return { period, stages, focus, tasks, allTasks: tasks, overdueTasks, todayTasks, upcomingTasks, recentInteractions, completedTaskCount: completedTaskIds.size };
+  return { period, stages, focus, tasks, allTasks: tasks, scheduledTasks: rankedTasks, overdueTasks, todayTasks, upcomingTasks, recentInteractions, completedTaskCount: completedTaskIds.size };
 }

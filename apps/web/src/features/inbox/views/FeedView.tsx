@@ -3,7 +3,7 @@
 import { onboardingCopy, dailyTaskQueryKeys } from "@spherepath/shared";
 
 import { useState } from "react";
-import { ListChecks, Archive, ArchiveRestore, ArrowRight, Check, ChevronDown, ChevronUp, MapPin, Mic, Pencil, PhoneOff, Pin, RefreshCw, RotateCcw, Send, Shuffle, Target } from "lucide-react";
+import { ListChecks, Archive, FolderOpen, Sparkles, ArchiveRestore, ArrowRight, Check, ChevronDown, ChevronUp, MapPin, Mic, Pencil, PhoneOff, Pin, RefreshCw, RotateCcw, Send, Shuffle, Target } from "lucide-react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiQueryKeys, commercialQueryKeys, dailyTaskResolutionLabels, inboxAnalysisHighlights, todayTaskBucket, inboxItemKinds, inboxItemTrace, inboxKindAfterAnalysis, isInboxItemResolved, type DailyTaskOutcome, type InboxItemKind, type InboxItemRecord, type TodayTask } from "@spherepath/shared";
@@ -18,7 +18,7 @@ import { NoteProcessingSheet } from "../components/NoteProcessingSheet";
 import { NotePageReview, notePageSummary } from "../components/NotePageReview";
 
 const kindLabels: Record<InboxItemKind, string> = { note: "Not", person: "Kişi", property: "Mülk", requirement: "Talep", follow_up: "Takip" };
-const sourceLabels: Record<InboxItemRecord["source"], string> = { typed: "Hızlı not", voice: "Sesli kayıt", whatsapp: "WhatsApp" };
+const sourceLabels: Record<InboxItemRecord["source"], string> = { typed: "Hızlı not", voice: "Sesli kayıt", whatsapp: "WhatsApp", import: "Keep arşivi" };
 const messageFrom = (error: unknown) => error instanceof Error ? error.message : "İşlem tamamlanamadı.";
 const interpretedItem = (item: InboxItemRecord): InboxItemRecord => {
   if (!item.analysis) return item;
@@ -42,7 +42,7 @@ interface NoteView {
   locationText: string;
   setLocationText(value: string): void;
   onToggleExpanded(id: string): void;
-  onUpdate(id: string, values: { kind?: InboxItemKind; pinned?: boolean; archived?: boolean }): void;
+  onUpdate(id: string, values: { kind?: InboxItemKind; pinned?: boolean; archived?: boolean; analyze?: true }): void;
   onRetry(id: string): void;
   onUndo(id: string): void;
   onProcess(item: InboxItemRecord): void;
@@ -117,6 +117,13 @@ function NoteUnderstanding({ item, view }: { item: InboxItemRecord; view: NoteVi
   // The reading arrives a few seconds after the save, so the card says it is
   // coming rather than looking finished and empty.
   if (item.analysisStatus === "pending") return <p className="keep-understanding is-pending">Not okunuyor…</p>;
+  // An imported archive arrives unread on purpose: hundreds of old pages are
+  // not worth a model bill until somebody wants one of them.
+  if (item.analysisStatus === "skipped") {
+    return <button className="keep-understanding is-skipped" onClick={() => view.onUpdate(item.id, { analyze: true })} type="button">
+      <Sparkles size={14} aria-hidden /> Arşivden geldi · Oku ve kayda dönüştür
+    </button>;
+  }
   // A page of a dozen lines has no single reading to show. What it does have is
   // a count of what is on it, which is what the advisor is deciding about.
   const waitingSegments = (item.segments ?? []).filter((segment) => segment.appliedAt === null);
@@ -226,7 +233,7 @@ export function FeedView() {
     } catch (next) { setTaskError(messageFrom(next)); } finally { setResolving(false); }
   }
   async function replace(taskId: string) { if (!session) return; try { await replaceDailyTask(session, taskId); await client.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }); } catch (next) { setError(messageFrom(next)); } }
-  async function update(inboxItemId: string, values: { kind?: InboxItemKind; pinned?: boolean; archived?: boolean }) { if (!session) return; try { await changeInboxItem(session, { inboxItemId, ...values }); await client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }); } catch (next) { setError(messageFrom(next)); } }
+  async function update(inboxItemId: string, values: { kind?: InboxItemKind; pinned?: boolean; archived?: boolean; analyze?: true }) { if (!session) return; try { await changeInboxItem(session, { inboxItemId, ...values }); await client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }); } catch (next) { setError(messageFrom(next)); } }
   async function retry(inboxItemId: string) { if (!session) return; try { await retryInboxItem(session, inboxItemId); await client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }); } catch (next) { setError(messageFrom(next)); } }
   async function addLocation(inboxItemId: string) { if (!session || locationText.trim().length < 2) return; try { await changeInboxItem(session, { inboxItemId, location: locationText.trim() }); setLocationFor(null); setLocationText(""); await client.invalidateQueries({ queryKey: apiQueryKeys.inboxItems }); } catch (next) { setError(messageFrom(next)); } }
   function toggleExpanded(id: string) { setExpanded((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }
@@ -327,7 +334,7 @@ export function FeedView() {
       </section>
 
       {error ? <p className="form-error notice" role="alert">{error}</p> : null}
-      <div className="feed-title note-list-heading"><div><h2>Notların</h2><p className="context-sentence">Sistem tür önerir; gerçek kayda dönüştürmeye sen karar verirsin.</p></div><div className="note-heading-controls"><div className="note-view-toggle" role="group" aria-label="Not listesi">{([["open", openCount ? `Aktif · ${openCount}` : "Aktif"], ["done", "İşlendi"], ["archived", "Arşiv"]] as const).map(([scope, label]) => <button key={scope} className={noteScope === scope ? "selected" : ""} onClick={() => setNoteScope(scope)} type="button">{label}</button>)}</div></div></div>
+      <div className="feed-title note-list-heading"><div><h2>Notların</h2><p className="context-sentence">Sistem tür önerir; gerçek kayda dönüştürmeye sen karar verirsin.</p></div><div className="note-heading-controls"><Link className="text-button" href="/note-archive"><FolderOpen size={15} aria-hidden /> Keep arşivi</Link><div className="note-view-toggle" role="group" aria-label="Not listesi">{([["open", openCount ? `Aktif · ${openCount}` : "Aktif"], ["done", "İşlendi"], ["archived", "Arşiv"]] as const).map(([scope, label]) => <button key={scope} className={noteScope === scope ? "selected" : ""} onClick={() => setNoteScope(scope)} type="button">{label}</button>)}</div></div></div>
       {inbox.isPending ? <p className="context-sentence">Notlar yükleniyor…</p> : inbox.isError ? <div className="sp-card empty-state"><p>Notlar şu anda gösterilemiyor.</p></div> : visibleNotes.length
         ? <section className="note-rows" aria-label="Akış notları">{visibleNotes.map((item) => <NoteRow key={item.id} item={item} view={noteView} />)}</section>
         : <div className="sp-card empty-state"><p>{noteScope === "archived" ? "Arşivlenmiş not yok." : noteScope === "done" ? "Henüz kayda dönüşmüş not yok." : "Bekleyen not yok."}</p></div>}

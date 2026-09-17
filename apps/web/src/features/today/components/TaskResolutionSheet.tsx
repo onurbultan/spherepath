@@ -83,6 +83,11 @@ export function taskRecordHref(task: TodayTask): string {
   // portfolio page -- sending the advisor to the capture form instead would
   // ask them to record a conversation they did not have.
   // Returning a call starts on the contact, where the dial button is.
+  // These two carry no contact at all: one is a page of a day, the other a
+  // rumour in the pool. Falling through to the capture form sent both to
+  // "?contactId=" with nothing after it.
+  if (task.inboxItemId) return `/note?inboxItemId=${encodeURIComponent(task.inboxItemId)}`;
+  if (task.portfolioItemId) return `/listings?view=pool&portfolioItemId=${encodeURIComponent(task.portfolioItemId)}`;
   if (task.type === "return_call") return `/contacts/__contact__?contactId=${encodeURIComponent(task.contactId)}`;
   if (task.type === "complete_listing") return "/listings";
   if (task.dealId) return "/opportunities#closing";

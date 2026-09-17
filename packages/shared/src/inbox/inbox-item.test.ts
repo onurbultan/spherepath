@@ -208,3 +208,13 @@ describe("short property roots that everyday Turkish words start with", () => {
     }
   });
 });
+
+describe("asking for one archived note to be read", () => {
+  it("counts as a change on its own, so the update is not refused as empty", () => {
+    expect(updateInboxItemSchema.safeParse({ inboxItemId: "note-1", analyze: true }).success).toBe(true);
+  });
+
+  it("still refuses an update that changes nothing", () => {
+    expect(updateInboxItemSchema.safeParse({ inboxItemId: "note-1" }).success).toBe(false);
+  });
+});

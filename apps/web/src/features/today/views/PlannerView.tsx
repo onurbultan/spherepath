@@ -27,7 +27,8 @@ const messageFrom = (error: unknown) => error instanceof Error ? error.message :
 
 /** Where a piece of work is worked, which is not always the contact it belongs to. */
 function taskHref(task: TodayTask): string {
-  if (task.type === "process_note") return "/note";
+  if (task.inboxItemId) return `/note?inboxItemId=${encodeURIComponent(task.inboxItemId)}`;
+  if (task.portfolioItemId) return `/listings?view=pool&portfolioItemId=${encodeURIComponent(task.portfolioItemId)}`;
   if (task.opportunityId) return `/opportunities?opportunityId=${encodeURIComponent(task.opportunityId)}`;
   return `/contacts/__contact__?contactId=${encodeURIComponent(task.contactId)}`;
 }
@@ -56,7 +57,7 @@ export function PlannerView() {
     enabled: Boolean(session),
   });
 
-  const week = buildPlannerWeek(overview.data?.allTasks ?? [], weekStart, now);
+  const week = buildPlannerWeek(overview.data?.scheduledTasks ?? [], weekStart, now);
   const total = week.days.reduce((count, day) => count + day.tasks.length, 0);
 
   async function resolve(outcome: DailyTaskOutcome) {

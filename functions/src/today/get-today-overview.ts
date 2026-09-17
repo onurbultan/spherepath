@@ -1,6 +1,6 @@
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { isMirroredOpenAction, buildTodayOverview, dailyTaskOutcomeSchema, istanbulDayKey, replaceDailyPlanItemSchema, replaceDailyPlanTask, selectDailyPlanTasks, todayOverviewQuerySchema, topUpDailyPlanTasks, type DailyTaskOutcome, type OpportunityStage, type OpportunityType, type ReplaceDailyPlanItemInput, type TodayOverview, type TodayTask } from "../../../packages/shared/src/index";
+import { portfolioVerification, type PortfolioAuthorizationType, type PortfolioVerificationStatus, isMirroredOpenAction, buildTodayOverview, dailyTaskOutcomeSchema, istanbulDayKey, replaceDailyPlanItemSchema, replaceDailyPlanTask, selectDailyPlanTasks, todayOverviewQuerySchema, topUpDailyPlanTasks, type DailyTaskOutcome, type OpportunityStage, type OpportunityType, type ReplaceDailyPlanItemInput, type TodayOverview, type TodayTask } from "../../../packages/shared/src/index";
 import { requireSpherepathClaims } from "../auth/claims.js";
 import { observeApiRequest, readApiEnvelope } from "../api/request.js";
 
@@ -42,6 +42,9 @@ export const getTodayOverview = onCall(
     // A page written on Tuesday and left alone is three people and a portfolio
     // nobody will ever be reminded of; the plan could not see it at all.
     let notesQuery: FirebaseFirestore.Query = firestore.collection("inboxItems").where("officeId", "==", claims.officeId);
+    // The office pool quietly fills with prices nobody checked; blocking one
+    // from a customer protects the advisor's name but chases nothing.
+    let poolQuery: FirebaseFirestore.Query = firestore.collection("portfolioItems").where("officeId", "==", claims.officeId);
     if (claims.role !== "broker") {
       contactsQuery = contactsQuery.where("ownerUid", "==", claims.uid);
       opportunitiesQuery = opportunitiesQuery.where("ownerUid", "==", claims.uid);
@@ -51,9 +54,10 @@ export const getTodayOverview = onCall(
       interactionsQuery = interactionsQuery.where("ownerUid", "==", claims.uid);
       completionsQuery = completionsQuery.where("ownerUid", "==", claims.uid);
       notesQuery = notesQuery.where("ownerUid", "==", claims.uid);
+      poolQuery = poolQuery.where("ownerUid", "==", claims.uid);
     }
 
-    const [contactsSnapshot, opportunitiesSnapshot, listingsSnapshot, dealsSnapshot, completionsSnapshot, interactionsSnapshot, callsSnapshot, notesSnapshot] = await Promise.all([
+    const [contactsSnapshot, opportunitiesSnapshot, listingsSnapshot, dealsSnapshot, completionsSnapshot, interactionsSnapshot, callsSnapshot, notesSnapshot, poolSnapshot] = await Promise.all([
       contactsQuery.get(),
       opportunitiesQuery.limit(1_000).get(),
       listingsQuery.limit(1_000).get(),
@@ -62,6 +66,7 @@ export const getTodayOverview = onCall(
       interactionsQuery.limit(1_000).get(),
       callsQuery.limit(500).get(),
       notesQuery.limit(200).get(),
+      poolQuery.limit(300).get(),
     ]);
     const contacts = contactsSnapshot.docs
       .map((item) => {
@@ -185,7 +190,18 @@ export const getTodayOverview = onCall(
         linkedContactId: (data.linkedContactId ?? null) as string | null,
       }];
     });
-    const candidateOverview = buildTodayOverview(contacts, opportunities, now, listings, deals, new Set(), interactions, parsedQuery.data.period, calls, notePages);
+    const portfolioLeads = poolSnapshot.docs.flatMap((item) => {
+      const data = item.data();
+      if (data.availability !== "available") return [];
+      return [{
+        id: item.id,
+        headline: (data.headline ?? "Portföy") as string,
+        location: (data.location ?? "") as string,
+        createdAt: millis(data.createdAt) ?? 0,
+        verificationStatus: portfolioVerification(data as { authorizationType: PortfolioAuthorizationType; verificationStatus?: PortfolioVerificationStatus }),
+      }];
+    });
+    const candidateOverview = buildTodayOverview(contacts, opportunities, now, listings, deals, new Set(), interactions, parsedQuery.data.period, calls, notePages, portfolioLeads);
     const planRef = firestore.collection("dailyPlans").doc(`${claims.uid}-${dayKey}`.replace(/[^a-zA-Z0-9_-]/g, "_"));
     const planSnapshot = await planRef.get();
     const suppressedContactIds = planSnapshot.exists ? ((planSnapshot.data()!.suppressedContactIds ?? []) as string[]) : [];
@@ -233,6 +249,11 @@ export const getTodayOverview = onCall(
       overdueTasks: candidateOverview.overdueTasks.filter((task) => visibleContactIds.has(task.contactId)).map(withResolution),
       todayTasks: candidateOverview.todayTasks.filter((task) => visibleContactIds.has(task.contactId)).map(withResolution),
       upcomingTasks: candidateOverview.upcomingTasks.filter((task) => !suppressedContactIds.includes(task.contactId)).map(withResolution),
+      // The calendar needs what the plan's lists deliberately leave out: work
+      // beyond today, and both of a day's entries for the same person. Nor is it
+      // filtered by suppression -- swapping somebody out of today's five says
+      // "not in my next five", not "this appointment does not exist".
+      scheduledTasks: candidateOverview.scheduledTasks.map(withResolution),
       completedTaskCount: plannedTasks.filter((task) => task.resolutionStatus).length,
     } };
     });

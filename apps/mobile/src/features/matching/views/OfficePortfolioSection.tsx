@@ -17,12 +17,16 @@ import {
   portfolioItemDraftSchema,
   portfolioSourceLabels,
   portfolioSources,
+  portfolioVerification,
+  portfolioVerificationHints,
+  portfolioVerificationLabels,
   propertyTypeLabels,
   propertyTypes,
   titleDeedTypeLabels,
   titleDeedTypes,
   type CurrencyCode,
   type PortfolioItemDraft,
+  type PortfolioItemRecord,
   type PortfolioMatchRecord,
   type PortfolioSource,
 } from "@spherepath/shared";
@@ -41,6 +45,7 @@ import {
   listPortfolioMatches,
   markMatchNotificationsRead,
   savePortfolioItem,
+  setPortfolioVerification,
   withdrawPortfolioItem,
 } from "../resources/portfolio";
 
@@ -153,7 +158,53 @@ export function MatchCard({ match, nearMiss }: { match: PortfolioMatchRecord; ne
   );
 }
 
-export function OfficePortfolioSection() {
+/**
+ * A line forwarded from a WhatsApp group is a rumour until somebody reaches the
+ * owner. The pool filed a rumour and a signed mandate under the same words, so
+ * a message somebody half-remembered matched a buyer as confidently as a
+ * portfolio the office actually holds. This says which one is on the card, and
+ * moves it one step when the advisor has made the call.
+ */
+function PoolVerification({ item, onDone }: { item: PortfolioItemRecord; onDone: () => Promise<void> }) {
+  const theme = useSpTheme();
+  const { session } = useSession();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const status = portfolioVerification(item);
+  const next = status === "hearsay" ? "owner_contacted" as const : status === "owner_contacted" ? "verified" as const : null;
+  const dot = status === "hearsay" ? theme.warm : status === "owner_contacted" ? theme.cool : theme.deed;
+
+  async function advance() {
+    if (!session || !next) return;
+    setPending(true); setError(null);
+    try {
+      await setPortfolioVerification(session, { portfolioItemId: item.id, verificationStatus: next, note: "" });
+      await onDone();
+    } catch (nextError) { setError(messageFrom(nextError)); }
+    finally { setPending(false); }
+  }
+
+  return (
+    <View style={styles.verification}>
+      <View style={styles.verificationLine}>
+        <View style={[styles.verificationDot, { backgroundColor: dot }]} />
+        <SpText variant="caption" color="secondary">
+          {portfolioVerificationLabels[status]} · {portfolioVerificationHints[status]}
+        </SpText>
+      </View>
+      {next ? (
+        <Pressable disabled={pending} onPress={() => void advance()}>
+          <SpText variant="bodySmall" color="deed">
+            {pending ? "Kaydediliyor…" : `${portfolioVerificationLabels[next]} olarak işaretle`}
+          </SpText>
+        </Pressable>
+      ) : null}
+      {error ? <SpText variant="caption" color="ask">{error}</SpText> : null}
+    </View>
+  );
+}
+
+export function OfficePortfolioSection({ requestedItemId = "" }: { requestedItemId?: string } = {}) {
   const theme = useSpTheme();
   const { session } = useSession();
   const queryClient = useQueryClient();
@@ -171,10 +222,15 @@ export function OfficePortfolioSection() {
   const [error, setError] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(12);
   const [contactFilter, setContactFilter] = useState("");
-  const [showPool, setShowPool] = useState(false);
+  // The plan can send an advisor straight to one rumour it wants chased;
+  // the pool otherwise opens with the list folded away.
+  const [showPool, setShowPool] = useState(Boolean(requestedItemId));
   const [showNearMisses, setShowNearMisses] = useState(false);
 
-  const items = itemsQuery.data ?? [];
+  const pool = itemsQuery.data ?? [];
+  const items = requestedItemId
+    ? [...pool].sort((left, right) => Number(right.id === requestedItemId) - Number(left.id === requestedItemId))
+    : pool;
   const matches = (matchesQuery.data?.matches ?? []).filter((item) => !contactFilter || item.contactId === contactFilter);
   const nearMisses = (matchesQuery.data?.nearMisses ?? []).filter((item) => !contactFilter || item.contactId === contactFilter);
   const unread = (notificationsQuery.data ?? []).filter((item) => item.readAt === null);
@@ -229,6 +285,14 @@ export function OfficePortfolioSection() {
     } finally {
       setPending(null);
     }
+  }
+
+  async function refreshPool() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: apiQueryKeys.portfolioItems }),
+      queryClient.invalidateQueries({ queryKey: apiQueryKeys.portfolioMatches }),
+      queryClient.invalidateQueries({ queryKey: apiQueryKeys.todayOverview }),
+    ]);
   }
 
   async function withdraw(portfolioItemId: string) {
@@ -299,13 +363,14 @@ export function OfficePortfolioSection() {
         </SpText>
       </Pressable>
       {showPool ? items.slice(0, visibleCount).map((item) => (
-        <SpCard key={item.id} style={styles.poolItem}>
+        <SpCard key={item.id} style={item.id === requestedItemId ? { ...styles.poolItem, borderColor: theme.deed, borderWidth: 1 } : styles.poolItem}>
           <SpText variant="title">{item.headline}</SpText>
           <SpText variant="bodySmall" color="secondary">
             {item.location}
             {item.askingPrice ? ` · ${money(item.askingPrice.amount, item.askingPrice.currency)}` : ""}
           </SpText>
           <SpText variant="caption" color="secondary">{item.sharedByName} paylaştı · {portfolioSourceLabels[item.source]}</SpText>
+          <PoolVerification item={item} onDone={refreshPool} />
           <SpButton label="Havuzdan çek" onPress={() => void withdraw(item.id)} tone="secondary" />
         </SpCard>
       )) : null}
@@ -450,6 +515,9 @@ function inputStyleFor(theme: ReturnType<typeof useSpTheme>) {
 }
 
 const styles = StyleSheet.create({
+  verification: { gap: 4 },
+  verificationLine: { flexDirection: "row", alignItems: "center", gap: space.xs },
+  verificationDot: { width: 7, height: 7, borderRadius: 4 },
   section: { gap: space.md },
   heading: { flexDirection: "row", alignItems: "center", gap: space.md },
   flex: { flex: 1 },

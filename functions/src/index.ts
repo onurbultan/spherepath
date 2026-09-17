@@ -11,10 +11,10 @@ export { configureCallIntegration, connectCallProvider, getCallIntegration, getC
 export { createOfficeInvite, getOfficeTeam, joinOffice, revokeOfficeInvite } from "./auth/office-team.js";
 export { archiveContact, archiveKnownProperty, createContact, listContactInteractions, listContacts, listKnownProperties, saveKnownProperty, updateContact, updateContactMemory, updateContactPrivacy } from "./contacts/contact-api.js";
 export { recordInteraction, updateInteraction } from "./interactions/record-interaction.js";
-export { analyzeInboxItem, analyzeInboxNote, applyNoteSegments, createInboxItem, listInboxItems, processInboxItem, updateInboxItem, retryInboxItem, undoInboxApplication } from "./inbox/inbox-api.js";
+export { analyzeInboxItem, analyzeInboxNote, applyNoteSegments, createInboxItem, importKeepNotes, listInboxItems, processInboxItem, updateInboxItem, retryInboxItem, undoInboxApplication } from "./inbox/inbox-api.js";
 export { getFunnelOverview } from "./funnel/get-funnel-overview.js";
 export { advanceListing, createListing, importExistingListing, listListings, updateListingAuthorization, updateListingPrice, updateListingReadiness } from "./listings/listing-api.js";
-export { createPortfolioItemFromDraft, draftMatchMessage, extractPortfolioText, listMatchNotifications, listPortfolioItems, listPortfolioMatches, markMatchNotificationsRead, withdrawPortfolioItem } from "./matching/portfolio-api.js";
+export { createPortfolioItemFromDraft, draftMatchMessage, extractPortfolioText, listMatchNotifications, listPortfolioItems, listPortfolioMatches, markMatchNotificationsRead, updatePortfolioVerification, withdrawPortfolioItem } from "./matching/portfolio-api.js";
 export { createReferral, listContributions, listReferrals } from "./referrals/referral-api.js";
 export { createDataSubjectRequest, getContactDataExport, listDataSubjectRequests, resolveDataSubjectRequest } from "./privacy/data-subject-api.js";
 export { processDeletionJob } from "./privacy/deletion-worker.js";

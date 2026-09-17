@@ -12,6 +12,29 @@ export const portfolioAuthorizationTypes = ["exclusive", "open", "verbal", "none
 export const titleDeedTypes = ["full", "shared", "unknown"] as const;
 export const portfolioTransactionTypes = ["sell", "let"] as const;
 
+/**
+ * How far a pool row has been chased. A rumour is not inventory: somebody said
+ * there is a 1+1 going for four million, and nobody has spoken to an owner.
+ * Blocking such a row from leaving the building was the first half of the fix;
+ * this is the other half, because a rumour that nobody ever chases is not
+ * protected, it is just lost -- and the office pool quietly fills with rows
+ * that will never become anything.
+ */
+export const portfolioVerificationStatuses = ["hearsay", "owner_contacted", "verified"] as const;
+export type PortfolioVerificationStatus = typeof portfolioVerificationStatuses[number];
+
+export const portfolioVerificationLabels: Record<PortfolioVerificationStatus, string> = {
+  hearsay: "Duyum",
+  owner_contacted: "Sahibine ulaşıldı",
+  verified: "Doğrulandı",
+};
+
+export const portfolioVerificationHints: Record<PortfolioVerificationStatus, string> = {
+  hearsay: "Kulaktan duyma. Fiyat ve bilgiler doğrulanmadı; müşteriye mesaj çıkmaz.",
+  owner_contacted: "Sahibiyle konuşuldu, yetki henüz netleşmedi.",
+  verified: "Bilgiler mülk sahibinden doğrulandı.",
+};
+
 export type PortfolioSource = typeof portfolioSources[number];
 export type PortfolioAvailability = typeof portfolioAvailabilityValues[number];
 export type PortfolioAuthorizationType = typeof portfolioAuthorizationTypes[number];
@@ -62,7 +85,31 @@ export type PortfolioItemDraft = z.infer<typeof portfolioItemDraftSchema>;
 
 export interface PortfolioItem extends TenantOwned, Audited, PortfolioItemDraft {
   availability: PortfolioAvailability;
+  /**
+   * Optional for rows written before chasing was tracked; absent is read as
+   * whatever the authorization already implied, so no existing row changes
+   * meaning by having this added around it.
+   */
+  verificationStatus?: PortfolioVerificationStatus;
+  /** When the advisor last moved it along, for saying how long it has sat. */
+  verifiedAt?: number | null;
 }
+
+/** What a row's chasing state is, including rows written before it was tracked. */
+export function portfolioVerification(
+  item: Pick<PortfolioItem, "authorizationType"> & { verificationStatus?: PortfolioVerificationStatus },
+): PortfolioVerificationStatus {
+  if (item.verificationStatus) return item.verificationStatus;
+  return item.authorizationType === "none" || item.authorizationType === "unknown" ? "hearsay" : "verified";
+}
+
+export const portfolioVerificationUpdateSchema = z.object({
+  portfolioItemId: z.string().trim().min(1).max(160),
+  verificationStatus: z.enum(portfolioVerificationStatuses),
+  /** What was learned, in the advisor's words, so the chase leaves a trace. */
+  note: z.string().trim().max(500).default(""),
+}).strict();
+export type PortfolioVerificationUpdate = z.infer<typeof portfolioVerificationUpdateSchema>;
 
 export interface PortfolioItemRecord extends PortfolioItem {
   id: string;
@@ -80,10 +127,10 @@ export interface PortfolioItemRecord extends PortfolioItem {
  * own listings already carry a mandate and passed the readiness gates.
  */
 export function portfolioItemCarriesMandate(
-  item: Pick<PortfolioItemRecord, "authorizationType"> & { sourceListingId?: string },
+  item: Pick<PortfolioItemRecord, "authorizationType"> & { sourceListingId?: string; verificationStatus?: PortfolioVerificationStatus },
 ): boolean {
   if (item.sourceListingId) return true;
-  return item.authorizationType !== "none" && item.authorizationType !== "unknown";
+  return portfolioVerification(item) === "verified";
 }
 
 export const unverifiedPortfolioOutreachMessage =

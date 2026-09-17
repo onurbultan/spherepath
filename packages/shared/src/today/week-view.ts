@@ -73,7 +73,12 @@ export function buildPlannerWeek(
   const overdue: TodayTask[] = [];
   for (const task of tasks) {
     if (task.dueAt === null) continue;
-    if (task.resolutionStatus) continue;
+    // Closed work leaves the calendar; moved work does not. A task rescheduled
+    // this morning carries today's "rescheduled" stamp for the rest of the day,
+    // and dropping every stamped task took the moved work off the very day it
+    // had just been moved to. A skipped task is still undone and still sits on
+    // its date.
+    if (task.resolutionStatus === "completed" || task.resolutionStatus === "contact_opt_out") continue;
     if (task.dueAt < weekStart) {
       overdue.push(task);
       continue;

@@ -52,7 +52,7 @@ export function PlannerView() {
     enabled: Boolean(session),
   });
 
-  const week = buildPlannerWeek(overview.data?.allTasks ?? [], weekStart, now);
+  const week = buildPlannerWeek(overview.data?.scheduledTasks ?? [], weekStart, now);
   const total = week.days.reduce((count, day) => count + day.tasks.length, 0);
 
   async function resolve(outcome: DailyTaskOutcome) {
