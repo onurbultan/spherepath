@@ -185,13 +185,12 @@ function PoolVerification({ item, onDone }: { item: PortfolioItemRecord; onDone:
   }
 
   return (
-    <View style={styles.verification}>
+    <View style={[styles.verification, { borderTopColor: theme.line }]}>
       <View style={styles.verificationLine}>
         <View style={[styles.verificationDot, { backgroundColor: dot }]} />
-        <SpText variant="caption" color="secondary">
-          {portfolioVerificationLabels[status]} · {portfolioVerificationHints[status]}
-        </SpText>
+        <SpText variant="bodySmall" style={{ color: dot, fontWeight: "700" }}>{portfolioVerificationLabels[status]}</SpText>
       </View>
+      <SpText variant="bodySmall" color="secondary">{portfolioVerificationHints[status]}</SpText>
       {next ? (
         <Pressable disabled={pending} onPress={() => void advance()}>
           <SpText variant="bodySmall" color="deed">
@@ -515,7 +514,7 @@ function inputStyleFor(theme: ReturnType<typeof useSpTheme>) {
 }
 
 const styles = StyleSheet.create({
-  verification: { gap: 4 },
+  verification: { gap: 5, paddingTop: space.sm, borderTopWidth: 1 },
   verificationLine: { flexDirection: "row", alignItems: "center", gap: space.xs },
   verificationDot: { width: 7, height: 7, borderRadius: 4 },
   section: { gap: space.md },

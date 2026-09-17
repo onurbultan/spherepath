@@ -141,8 +141,9 @@ function PoolVerification({ item, onDone }: { item: PortfolioItemRecord; onDone:
   }
 
   return <div className={`pool-verification is-${status}`}>
-    <p><span className="verification-dot" aria-hidden />{portfolioVerificationLabels[status]} <small>{portfolioVerificationHints[status]}</small></p>
-    {next ? <button className="text-button" disabled={pending} onClick={() => void advance()} type="button">{pending ? "Kaydediliyor…" : `${portfolioVerificationLabels[next]} olarak işaretle`}</button> : null}
+    <p className="verification-state"><span className="verification-dot" aria-hidden />{portfolioVerificationLabels[status]}</p>
+    <p className="verification-hint">{portfolioVerificationHints[status]}</p>
+    {next ? <button className="secondary-action compact-action" disabled={pending} onClick={() => void advance()} type="button">{pending ? "Kaydediliyor…" : `${portfolioVerificationLabels[next]} olarak işaretle`}</button> : null}
     {error ? <p className="form-error">{error}</p> : null}
   </div>;
 }
