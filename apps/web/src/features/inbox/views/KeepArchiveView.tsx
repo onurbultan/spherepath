@@ -39,11 +39,11 @@ export function KeepArchiveView() {
   const [imported, setImported] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function readFiles(fileList: FileList | null) {
-    if (!fileList?.length) return;
+  async function readFiles(chosen: readonly File[]) {
+    if (!chosen.length) return;
     setReading(true); setError(null); setImported(null);
     try {
-      const files = await Promise.all(Array.from(fileList)
+      const files = await Promise.all(chosen
         .filter((file) => file.name.toLowerCase().endsWith(".json"))
         .map(async (file) => ({ name: file.name, content: await file.text() })));
       if (!files.length) {
@@ -121,7 +121,10 @@ export function KeepArchiveView() {
           // Lets the whole Keep folder be picked at once instead of a thousand files by hand.
           {...{ webkitdirectory: "", directory: "" }}
           disabled={reading || progress !== null}
-          onChange={(event) => { const files = event.target.files; event.target.value = ""; void readFiles(files); }}
+          // The list has to be copied out before the input is reset: `files` is
+          // live, so clearing the value empties the very list being read, and
+          // the picker silently did nothing at all.
+          onChange={(event) => { const chosen = Array.from(event.target.files ?? []); event.target.value = ""; void readFiles(chosen); }}
         />
         <div className="keep-import-actions">
           <button
